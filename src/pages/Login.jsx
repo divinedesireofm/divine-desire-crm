@@ -20,9 +20,10 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
-      <Panel className="w-full max-w-sm p-8">
-        <img src={logo} alt="Divine Desire" className="h-16 mx-auto mb-5 object-contain" />
-        <p className="text-sm mb-6 text-center" style={{ color: 'var(--text-muted)' }}>
+      <Panel className="w-full max-w-sm p-8 text-center">
+        <img src={logo} alt="Divine Desire" className="h-28 mx-auto mb-3 object-contain" />
+        <div className="h-px w-24 mx-auto mb-5" style={{ background: 'linear-gradient(90deg, transparent, var(--gold), transparent)' }} />
+        <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
           Entra con tu cuenta para acceder al panel.
         </p>
         <form onSubmit={handleSubmit} className="space-y-3">

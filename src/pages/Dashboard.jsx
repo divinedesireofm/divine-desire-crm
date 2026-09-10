@@ -7,7 +7,7 @@ function Kpi({ label, value }) {
   return (
     <Panel className="p-5">
       <p className="text-sm mb-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
-      <p className="text-2xl font-display font-semibold">{value}</p>
+      <p className="text-2xl font-display font-semibold gold-text">{value}</p>
     </Panel>
   )
 }

@@ -74,9 +74,10 @@ export default function Layout() {
         className="w-64 shrink-0 flex flex-col p-4"
         style={{ background: 'var(--panel-alt)', borderRight: '1px solid var(--border)' }}
       >
-        <div className="mb-6 px-2">
-          <img src={logo} alt="Divine Desire" className="h-10 object-contain mb-1" />
+        <div className="mb-8 px-2 text-center">
+          <img src={logo} alt="Divine Desire" className="h-28 object-contain mx-auto mb-2" />
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>CRM interno</p>
+          <div className="h-px w-full mt-4" style={{ background: 'linear-gradient(90deg, transparent, var(--gold), transparent)' }} />
         </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto">

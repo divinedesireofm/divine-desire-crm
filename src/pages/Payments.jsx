@@ -214,7 +214,7 @@ function PeriodoEditor({ pid, onBack }) {
           <Panel key={r.chatter_id} className="p-5 mb-4">
             <div className="flex justify-between items-center mb-4">
               <strong>{nombre(r.chatter_id)}</strong>
-              <span>A pagar: <strong style={{ color: 'var(--accent)' }}>{fmtMoney(c.aPagar)}</strong></span>
+              <span>A pagar: <strong className="gold-text">{fmtMoney(c.aPagar)}</strong></span>
             </div>
             <div className="grid grid-cols-4 gap-3 mb-4">
               <div>
@@ -290,7 +290,7 @@ function MisPagos() {
           <Panel key={r.id} className="p-5 mb-4">
             <div className="flex justify-between items-center mb-4">
               <strong>{p ? `Periodo ${fmtFecha(p.fecha)}` : 'Periodo'}</strong>
-              <span>A pagar: <strong style={{ color: 'var(--accent)' }}>{fmtMoney(c.aPagar)}</strong></span>
+              <span>A pagar: <strong className="gold-text">{fmtMoney(c.aPagar)}</strong></span>
             </div>
             <div className="space-y-1.5 text-sm">
               {[
@@ -310,7 +310,7 @@ function MisPagos() {
               ))}
               <div className="flex justify-between pt-2 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
                 <span>A pagar</span>
-                <strong style={{ color: 'var(--accent)' }}>{fmtMoney(c.aPagar)}</strong>
+                <strong className="gold-text">{fmtMoney(c.aPagar)}</strong>
               </div>
             </div>
           </Panel>
