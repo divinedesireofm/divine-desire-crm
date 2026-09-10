@@ -72,9 +72,9 @@ export default function Models() {
       <PageHeader
         title="Modelos"
         subtitle="Ficha de creadoras activas, en negociación o de baja."
-        action={canEdit && (
-          <Button onClick={showForm && !editingId ? () => setShowForm(false) : startCreate}>
-            {showForm && !editingId ? 'Cancelar' : 'Añadir modelo'}
+        action={canEdit && !editingId && (
+          <Button onClick={showForm ? () => setShowForm(false) : startCreate}>
+            {showForm ? 'Cancelar' : 'Añadir modelo'}
           </Button>
         )}
       />

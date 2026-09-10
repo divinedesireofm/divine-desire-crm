@@ -120,9 +120,9 @@ export default function InstagramAccounts() {
       <PageHeader
         title="Cuentas de Instagram"
         subtitle="Ficha completa de cada cuenta: origen, credenciales, responsable y estado."
-        action={canEdit && (
-          <Button onClick={showForm && !editingId ? () => setShowForm(false) : startCreate}>
-            {showForm && !editingId ? 'Cancelar' : 'Añadir cuenta'}
+        action={canEdit && !editingId && (
+          <Button onClick={showForm ? () => setShowForm(false) : startCreate}>
+            {showForm ? 'Cancelar' : 'Añadir cuenta'}
           </Button>
         )}
       />
