@@ -76,7 +76,7 @@ export default function Layout() {
       >
         <div className="mb-8 px-2 text-center">
           <img src={logo} alt="Divine Desire" className="h-28 object-contain mx-auto mb-2" />
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>CRM interno</p>
+          <p className="text-xs italic" style={{ color: 'var(--text-muted)' }}>Disciplina · Dedicación · Distinción.</p>
           <div className="h-px w-full mt-4" style={{ background: 'linear-gradient(90deg, transparent, var(--gold), transparent)' }} />
         </div>
 
