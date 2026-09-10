@@ -2,15 +2,15 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #0B1020;
-  --panel: #151D31;
-  --panel-alt: #10182B;
-  --border: #232C45;
-  --text: #E8ECF5;
-  --text-muted: #8B93A7;
-  --accent: #6C8CFF;
-  --accent-soft: #6C8CFF22;
-  --gold: #E8B34D;
+  --bg: #060606;
+  --panel: #141210;
+  --panel-alt: #0C0A08;
+  --border: #2B2620;
+  --text: #F1ECE2;
+  --text-muted: #9A9284;
+  --accent: #D4AF6A;
+  --accent-soft: #D4AF6A22;
+  --gold: #D4AF6A;
   --danger: #E5646B;
   --success: #4FBF8B;
 }

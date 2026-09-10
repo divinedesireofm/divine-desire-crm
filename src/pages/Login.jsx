@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Panel, Input, Button } from '../components/ui'
+import logo from '../assets/logo.png'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -20,8 +21,8 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <Panel className="w-full max-w-sm p-8">
-        <h1 className="text-2xl font-display font-semibold mb-1">Divine Desire</h1>
-        <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
+        <img src={logo} alt="Divine Desire" className="h-16 mx-auto mb-5 object-contain" />
+        <p className="text-sm mb-6 text-center" style={{ color: 'var(--text-muted)' }}>
           Entra con tu cuenta para acceder al panel.
         </p>
         <form onSubmit={handleSubmit} className="space-y-3">

@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import logo from '../assets/logo.png'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Panel general', roles: ['admin', 'chatter', 'ig_assistant'] },
@@ -27,7 +28,7 @@ export default function Layout() {
         style={{ background: 'var(--panel-alt)', borderRight: '1px solid var(--border)' }}
       >
         <div className="mb-8 px-2">
-          <h2 className="font-display font-semibold text-lg">Divine Desire</h2>
+          <img src={logo} alt="Divine Desire" className="h-10 object-contain mb-1" />
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>CRM interno</p>
         </div>
         <nav className="flex-1 space-y-1">
