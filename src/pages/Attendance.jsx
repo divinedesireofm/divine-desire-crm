@@ -1,119 +1,149 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { Panel, Button, Select, Table, Td, PageHeader } from '../components/ui'
+import { Panel, Select, Input, PageHeader } from '../components/ui'
 
-const TURNOS = ['Mañana (8:00–16:00)', 'Tarde (16:00–24:00)', 'Madrugada (0:00–8:00)']
+const TIPOS = {
+  entrada: { n: 'Entró', color: 'var(--success)' },
+  break: { n: 'Break', color: 'var(--gold)' },
+  fin_break: { n: 'Volvió del break', color: 'var(--accent)' },
+  salida: { n: 'Salió', color: 'var(--danger)' },
+}
 
-function fmt(ts) {
-  if (!ts) return '—'
-  return new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+function fmtTS(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function Attendance() {
-  const { profile, role } = useAuth()
-  const isSupervisor = role === 'admin' || role === 'manager'
-  const [active, setActive] = useState(null)
-  const [turno, setTurno] = useState(TURNOS[0])
-  const [history, setHistory] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { profile } = useAuth()
+  const [feed, setFeed] = useState([])
+  const [miUltimo, setMiUltimo] = useState(null)
+  const [fUser, setFUser] = useState('todos')
+  const [fFecha, setFFecha] = useState('')
+  const [busy, setBusy] = useState('')
   const [error, setError] = useState(null)
 
+  async function loadMio() {
+    const { data } = await supabase
+      .from('attendance_events')
+      .select('*')
+      .eq('chatter_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    setMiUltimo(data?.[0] || null)
+  }
+
   async function load() {
-    setLoading(true)
-    let query = supabase.from('attendance').select('*, profiles(full_name)').order('clock_in', { ascending: false }).limit(50)
+    let query = supabase
+      .from('attendance_events')
+      .select('*, profiles(full_name)')
+      .order('created_at', { ascending: false })
+      .limit(300)
+    if (fUser !== 'todos') query = query.eq('chatter_id', fUser)
+    if (fFecha) query = query.gte('created_at', `${fFecha}T00:00:00`).lte('created_at', `${fFecha}T23:59:59`)
     const { data } = await query
-    setHistory(data || [])
-    if (!isSupervisor) {
-      const mine = (data || []).find((a) => a.chatter_id === profile?.id && !a.clock_out)
-      setActive(mine || null)
-    }
-    setLoading(false)
+    setFeed(data || [])
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [fUser, fFecha])
+  useEffect(() => { if (profile) loadMio() }, [profile])
 
-  async function clockIn() {
+  const miEstado = miUltimo?.tipo
+  const permitido = !miEstado ? ['entrada']
+    : miEstado === 'entrada' ? ['break', 'salida']
+    : miEstado === 'break' ? ['fin_break']
+    : miEstado === 'fin_break' ? ['break', 'salida']
+    : ['entrada'] // salida
+  const puede = (t) => busy === '' && permitido.includes(t)
+
+  async function marcar(tipo) {
+    setBusy(tipo)
     setError(null)
-    const { data, error } = await supabase
-      .from('attendance')
-      .insert([{ chatter_id: profile.id, turno }])
-      .select()
-      .single()
-    if (error) { setError('No se pudo fichar entrada.'); return }
-    setActive(data)
-    load()
+    const { error } = await supabase.from('attendance_events').insert([{ chatter_id: profile.id, tipo }])
+    if (error) setError('No se pudo registrar.')
+    await load()
+    await loadMio()
+    setBusy('')
   }
 
-  async function clockOut() {
-    if (!active) return
-    await supabase.from('attendance').update({ clock_out: new Date().toISOString() }).eq('id', active.id)
-    setActive(null)
-    load()
-  }
+  const usuariosVistos = useMemo(() => {
+    const map = new Map()
+    feed.forEach((f) => { if (f.profiles?.full_name) map.set(f.chatter_id, f.profiles.full_name) })
+    if (profile) map.set(profile.id, profile.full_name)
+    return Array.from(map.entries())
+  }, [feed, profile])
 
-  async function toggleBreak() {
-    if (!active) return
-    const breaks = [...(active.breaks || [])]
-    const open = breaks.find((b) => !b.end)
-    if (open) {
-      open.end = new Date().toISOString()
-    } else {
-      breaks.push({ start: new Date().toISOString(), end: null })
-    }
-    const { data } = await supabase.from('attendance').update({ breaks }).eq('id', active.id).select().single()
-    setActive(data)
-  }
-
-  const onBreak = active?.breaks?.some((b) => !b.end)
+  const BOTONES = [
+    { tipo: 'entrada', label: 'Entro', sub: 'inicio de jornada', variant: 'primary' },
+    { tipo: 'break', label: 'Break', sub: 'pausa comida / personal', variant: 'ghost' },
+    { tipo: 'fin_break', label: 'Vuelvo', sub: 'fin del break', variant: 'ghost' },
+    { tipo: 'salida', label: 'Salgo', sub: 'fin de jornada', variant: 'danger' },
+  ]
 
   return (
     <div>
-      <PageHeader title="Entradas y salidas" subtitle="Marca tu jornada y tus breaks (pausas para comer o asuntos personales)." />
+      <PageHeader
+        title="Entradas y salidas"
+        subtitle="Marca tu jornada y tus breaks. Turnos: Mañana 8:00–16:00 · Tarde 16:00–24:00 · Madrugada 0:00–8:00 (hora COL)"
+      />
 
-      {!isSupervisor && (
-        <Panel className="p-5 mb-6">
-          {!active ? (
-            <div className="flex items-center gap-3">
-              <Select value={turno} onChange={(e) => setTurno(e.target.value)} className="max-w-xs">
-                {TURNOS.map((t) => <option key={t} value={t}>{t}</option>)}
-              </Select>
-              <Button onClick={clockIn}>Fichar entrada</Button>
-            </div>
-          ) : (
-            <div>
-              <p className="text-sm mb-3">
-                Turno activo: <strong>{active.turno}</strong> — entrada {fmt(active.clock_in)}
-              </p>
-              <div className="flex gap-2">
-                <Button variant={onBreak ? 'primary' : 'ghost'} onClick={toggleBreak}>
-                  {onBreak ? 'Terminar break' : 'Iniciar break'}
-                </Button>
-                <Button variant="danger" onClick={clockOut}>Fichar salida</Button>
-              </div>
-            </div>
-          )}
-          {error && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{error}</p>}
-        </Panel>
-      )}
+      <Panel className="p-5 mb-6">
+        <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
+          Tu último registro:{' '}
+          {miEstado ? <strong style={{ color: 'var(--text)' }}>{TIPOS[miEstado].n} · {fmtTS(miUltimo.created_at)}</strong> : 'sin registros recientes'}
+        </p>
+        <div className="grid grid-cols-4 gap-3">
+          {BOTONES.map((b) => (
+            <button
+              key={b.tipo}
+              disabled={!puede(b.tipo)}
+              onClick={() => marcar(b.tipo)}
+              className="rounded-lg py-4 text-center transition-opacity disabled:opacity-30 hover:opacity-85"
+              style={{
+                background: b.variant === 'danger' ? 'transparent' : b.variant === 'ghost' ? 'var(--panel-alt)' : 'var(--accent)',
+                border: b.variant === 'danger' ? '1px solid var(--danger)' : '1px solid var(--border)',
+                color: b.variant === 'danger' ? 'var(--danger)' : b.variant === 'primary' ? '#0B1020' : 'var(--text)',
+              }}
+            >
+              <div className="font-semibold">{b.label}</div>
+              <div className="text-xs mt-0.5 opacity-70">{b.sub}</div>
+            </button>
+          ))}
+        </div>
+        {error && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{error}</p>}
+      </Panel>
 
-      <Panel>
-        {loading ? (
-          <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
+      <Panel className="p-5">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <p className="text-sm font-medium">Registro del equipo</p>
+          <div className="flex gap-2">
+            <Select value={fUser} onChange={(e) => setFUser(e.target.value)} className="max-w-[180px]">
+              <option value="todos">Todos</option>
+              {usuariosVistos.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </Select>
+            <Input type="date" value={fFecha} onChange={(e) => setFFecha(e.target.value)} className="max-w-[160px]" />
+          </div>
+        </div>
+        {feed.length === 0 ? (
+          <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>Sin registros</p>
         ) : (
-          <Table
-            columns={['Chatter', 'Turno', 'Entrada', 'Salida', 'Breaks']}
-            rows={history}
-            renderRow={(a) => (
-              <>
-                <Td>{a.profiles?.full_name}</Td>
-                <Td>{a.turno}</Td>
-                <Td>{fmt(a.clock_in)}</Td>
-                <Td>{fmt(a.clock_out)}</Td>
-                <Td>{(a.breaks || []).length}</Td>
-              </>
-            )}
-          />
+          <div className="space-y-2">
+            {feed.map((f) => (
+              <div key={f.id} className="flex items-center gap-3 text-sm py-1.5">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: TIPOS[f.tipo]?.color }} />
+                <strong className="w-32 truncate">{f.profiles?.full_name}</strong>
+                <span
+                  className="px-2 py-0.5 rounded-full text-xs"
+                  style={{ background: `${TIPOS[f.tipo]?.color}22`, color: TIPOS[f.tipo]?.color }}
+                >
+                  {TIPOS[f.tipo]?.n}
+                </span>
+                <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>{fmtTS(f.created_at)}</span>
+              </div>
+            ))}
+          </div>
         )}
       </Panel>
     </div>
