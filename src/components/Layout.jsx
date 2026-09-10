@@ -3,16 +3,19 @@ import { useAuth } from '../context/AuthContext'
 import logo from '../assets/logo.png'
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Panel general', roles: ['admin', 'chatter', 'ig_assistant'] },
-  { to: '/modelos', label: 'Modelos', roles: ['admin', 'chatter', 'ig_assistant'] },
-  { to: '/metricas', label: 'Métricas semanales', roles: ['admin', 'chatter', 'ig_assistant'] },
-  { to: '/chatters', label: 'Chatters', roles: ['admin', 'chatter'] },
+  { to: '/', label: 'Panel general', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
+  { to: '/asistencia', label: 'Entradas y salidas', roles: ['admin', 'manager', 'chatter'] },
+  { to: '/reportes-turno', label: 'Reportes de turno', roles: ['admin', 'manager', 'chatter'] },
+  { to: '/modelos', label: 'Modelos', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
+  { to: '/metricas', label: 'Métricas semanales', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
+  { to: '/chatters', label: 'Chatters', roles: ['admin', 'manager'] },
   { to: '/instagram', label: 'Cuentas de Instagram', roles: ['admin', 'ig_assistant'] },
   { to: '/leads', label: 'Reclutamiento', roles: ['admin'] },
 ]
 
 const ROLE_LABELS = {
   admin: 'Administrador',
+  manager: 'Manager',
   chatter: 'Chatter',
   ig_assistant: 'Asistente de Instagram',
 }

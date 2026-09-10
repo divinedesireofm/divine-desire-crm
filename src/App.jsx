@@ -8,6 +8,8 @@ import InstagramAccounts from './pages/InstagramAccounts'
 import WeeklyMetrics from './pages/WeeklyMetrics'
 import Chatters from './pages/Chatters'
 import Leads from './pages/Leads'
+import Attendance from './pages/Attendance'
+import ShiftReports from './pages/ShiftReports'
 
 function Protected({ children }) {
   const { session, loading } = useAuth()
@@ -41,6 +43,8 @@ function AppRoutes() {
         <Route path="chatters" element={<Chatters />} />
         <Route path="instagram" element={<InstagramAccounts />} />
         <Route path="leads" element={<Leads />} />
+        <Route path="asistencia" element={<Attendance />} />
+        <Route path="reportes-turno" element={<ShiftReports />} />
       </Route>
     </Routes>
   )
