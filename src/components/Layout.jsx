@@ -9,6 +9,9 @@ const NAV_ITEMS = [
   { to: '/modelos', label: 'Modelos', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
   { to: '/metricas', label: 'Métricas semanales', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
   { to: '/chatters', label: 'Chatters', roles: ['admin', 'manager'] },
+  { to: '/horarios', label: 'Horarios', roles: ['admin', 'manager', 'chatter'] },
+  { to: '/pagos', label: 'Pagos', roles: ['admin', 'manager', 'chatter'] },
+  { to: '/sanciones', label: 'Sanciones', roles: ['admin', 'manager'] },
   { to: '/instagram', label: 'Cuentas de Instagram', roles: ['admin', 'ig_assistant'] },
   { to: '/leads', label: 'Reclutamiento', roles: ['admin'] },
 ]

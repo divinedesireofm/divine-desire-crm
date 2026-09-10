@@ -10,6 +10,9 @@ import Chatters from './pages/Chatters'
 import Leads from './pages/Leads'
 import Attendance from './pages/Attendance'
 import ShiftReports from './pages/ShiftReports'
+import Schedules from './pages/Schedules'
+import Payments from './pages/Payments'
+import Sanctions from './pages/Sanctions'
 
 function Protected({ children }) {
   const { session, loading } = useAuth()
@@ -45,6 +48,9 @@ function AppRoutes() {
         <Route path="leads" element={<Leads />} />
         <Route path="asistencia" element={<Attendance />} />
         <Route path="reportes-turno" element={<ShiftReports />} />
+        <Route path="horarios" element={<Schedules />} />
+        <Route path="pagos" element={<Payments />} />
+        <Route path="sanciones" element={<Sanctions />} />
       </Route>
     </Routes>
   )
