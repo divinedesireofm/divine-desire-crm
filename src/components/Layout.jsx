@@ -2,45 +2,49 @@ import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import logo from '../assets/logo.png'
+import Icon from './Icon'
 
 const SECTIONS = [
   {
     id: 'general',
     label: null, // sin cabecera, siempre visible arriba del todo
     items: [
-      { to: '/', label: '🏠 Panel general', roles: ['admin', 'manager', 'chatter', 'ig_assistant'], end: true },
+      { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_assistant'], end: true },
     ],
   },
   {
     id: 'chatting',
-    label: '💬 Chatting',
+    label: 'Chatting',
+    icon: 'chat',
     items: [
-      { to: '/asistencia', label: '🕐 Entradas y salidas', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/reportes-turno', label: '📋 Reportes de turno', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/chatters', label: '👥 Chatters', roles: ['admin', 'manager'] },
-      { to: '/horarios', label: '📅 Horarios', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/pagos', label: '💰 Pagos', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/sanciones', label: '⚠️ Sanciones', roles: ['admin', 'manager'] },
-      { to: '/packs', label: '🎁 Packs', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/scripts', label: '💭 Scripts', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/activacion', label: '⚡ Activación', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/precios', label: '🏷️ Precios', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/asistencia', label: 'Entradas y salidas', icon: 'clock', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/reportes-turno', label: 'Reportes de turno', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/chatters', label: 'Chatters', icon: 'users', roles: ['admin', 'manager'] },
+      { to: '/horarios', label: 'Horarios', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/pagos', label: 'Pagos', icon: 'dollar', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/sanciones', label: 'Sanciones', icon: 'alert', roles: ['admin', 'manager'] },
+      { to: '/packs', label: 'Packs', icon: 'package', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/scripts', label: 'Scripts', icon: 'chat', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/activacion', label: 'Activación', icon: 'zap', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/precios', label: 'Precios', icon: 'tag', roles: ['admin', 'manager', 'chatter'] },
     ],
   },
   {
     id: 'instagram',
-    label: '📸 Instagram',
+    label: 'Instagram',
+    icon: 'camera',
     items: [
-      { to: '/instagram', label: '📱 Cuentas de Instagram', roles: ['admin', 'ig_assistant'] },
-      { to: '/leads', label: '🎯 Reclutamiento', roles: ['admin'] },
+      { to: '/instagram', label: 'Cuentas de Instagram', icon: 'camera', roles: ['admin', 'ig_assistant'] },
+      { to: '/leads', label: 'Reclutamiento', icon: 'target', roles: ['admin'] },
     ],
   },
   {
     id: 'recursos',
-    label: '📁 Recursos compartidos',
+    label: 'Recursos compartidos',
+    icon: 'file',
     items: [
-      { to: '/modelos', label: '💎 Modelos', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
-      { to: '/metricas', label: '📊 Métricas semanales', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
+      { to: '/modelos', label: 'Modelos', icon: 'diamond', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
+      { to: '/metricas', label: 'Métricas semanales', icon: 'chart', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
     ],
   },
 ]
@@ -88,7 +92,8 @@ export default function Layout() {
               <div key={section.id}>
                 {section.label && (
                   fija ? (
-                    <p className="px-2 py-1 mb-1 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                    <p className="px-2 py-1 mb-1 text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                      <Icon name={section.icon} size={13} />
                       {section.label}
                     </p>
                   ) : (
@@ -97,7 +102,7 @@ export default function Layout() {
                       className="w-full flex items-center justify-between px-2 py-1 mb-1 text-xs font-semibold uppercase tracking-wide"
                       style={{ color: 'var(--text-muted)' }}
                     >
-                      <span>{section.label}</span>
+                      <span className="flex items-center gap-1.5"><Icon name={section.icon} size={13} />{section.label}</span>
                       <span style={{ fontSize: 10 }}>{collapsed[section.id] ? '▸' : '▾'}</span>
                     </button>
                   )
@@ -109,13 +114,14 @@ export default function Layout() {
                         key={item.to}
                         to={item.to}
                         end={item.end}
-                        className="block px-3 py-2 rounded-md text-sm transition-colors"
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors"
                         style={({ isActive }) => ({
                           background: isActive ? 'var(--accent-soft)' : 'transparent',
                           color: isActive ? 'var(--accent)' : 'var(--text)',
                           fontWeight: isActive ? 500 : 400,
                         })}
                       >
+                        <Icon name={item.icon} />
                         {item.label}
                       </NavLink>
                     ))}
