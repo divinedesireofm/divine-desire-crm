@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, Table, Td, StatusBadge, PageHeader } from '../components/ui'
 
 const STATUS_OPTIONS = ['activa', 'pausada', 'en_negociacion', 'baja']
+const EMPTY_FORM = { stage_name: '', status: 'en_negociacion', commission_percent: '', contact_info: '', notes: '' }
 
 export default function Models() {
   const { role } = useAuth()
@@ -11,7 +12,8 @@ export default function Models() {
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ stage_name: '', status: 'en_negociacion', commission_percent: '', notes: '' })
+  const [editingId, setEditingId] = useState(null)
+  const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
 
   async function load() {
@@ -23,21 +25,45 @@ export default function Models() {
 
   useEffect(() => { load() }, [])
 
-  async function handleCreate(e) {
+  function startCreate() {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setShowForm(true)
+  }
+
+  function startEdit(m) {
+    setEditingId(m.id)
+    setForm({
+      stage_name: m.stage_name || '',
+      status: m.status || 'en_negociacion',
+      commission_percent: m.commission_percent ?? '',
+      contact_info: m.contact_info || '',
+      notes: m.notes || '',
+    })
+    setShowForm(true)
+  }
+
+  async function handleSubmit(e) {
     e.preventDefault()
     setError(null)
-    const { error } = await supabase.from('models').insert([{
+    const payload = {
       stage_name: form.stage_name,
       status: form.status,
       commission_percent: form.commission_percent || null,
+      contact_info: form.contact_info || null,
       notes: form.notes || null,
-    }])
+    }
+    const { error } = editingId
+      ? await supabase.from('models').update(payload).eq('id', editingId)
+      : await supabase.from('models').insert([payload])
+
     if (error) {
       setError('No se pudo guardar. Revisa los datos e inténtalo de nuevo.')
       return
     }
-    setForm({ stage_name: '', status: 'en_negociacion', commission_percent: '', notes: '' })
     setShowForm(false)
+    setEditingId(null)
+    setForm(EMPTY_FORM)
     load()
   }
 
@@ -47,15 +73,16 @@ export default function Models() {
         title="Modelos"
         subtitle="Ficha de creadoras activas, en negociación o de baja."
         action={canEdit && (
-          <Button onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancelar' : 'Añadir modelo'}
+          <Button onClick={showForm && !editingId ? () => setShowForm(false) : startCreate}>
+            {showForm && !editingId ? 'Cancelar' : 'Añadir modelo'}
           </Button>
         )}
       />
 
       {showForm && (
         <Panel className="p-5 mb-6">
-          <form onSubmit={handleCreate} className="grid grid-cols-2 gap-3">
+          <p className="text-sm mb-4 font-medium">{editingId ? 'Editar modelo' : 'Nuevo modelo'}</p>
+          <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3">
             <Input
               placeholder="Nombre artístico"
               value={form.stage_name}
@@ -73,12 +100,25 @@ export default function Models() {
               onChange={(e) => setForm({ ...form, commission_percent: e.target.value })}
             />
             <Input
+              placeholder="Contacto (teléfono, email...)"
+              value={form.contact_info}
+              onChange={(e) => setForm({ ...form, contact_info: e.target.value })}
+            />
+            <Input
               placeholder="Notas"
+              className="col-span-2"
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
             />
             {error && <p className="col-span-2 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-            <Button type="submit" className="col-span-2">Guardar modelo</Button>
+            <div className="col-span-2 flex gap-2">
+              <Button type="submit">{editingId ? 'Guardar cambios' : 'Guardar modelo'}</Button>
+              {editingId && (
+                <Button type="button" variant="ghost" onClick={() => { setShowForm(false); setEditingId(null) }}>
+                  Cancelar
+                </Button>
+              )}
+            </div>
           </form>
         </Panel>
       )}
@@ -88,14 +128,22 @@ export default function Models() {
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
         ) : (
           <Table
-            columns={['Nombre', 'Estado', 'Comisión', 'Notas']}
+            columns={['Nombre', 'Estado', 'Comisión', 'Contacto', 'Notas', '']}
             rows={models}
             renderRow={(m) => (
               <>
                 <Td>{m.stage_name}</Td>
                 <Td><StatusBadge status={m.status} /></Td>
                 <Td>{m.commission_percent ? `${m.commission_percent}%` : '—'}</Td>
+                <Td style={{ color: 'var(--text-muted)' }}>{m.contact_info || '—'}</Td>
                 <Td style={{ color: 'var(--text-muted)' }}>{m.notes || '—'}</Td>
+                <Td>
+                  {canEdit && (
+                    <button onClick={() => startEdit(m)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
+                      Editar
+                    </button>
+                  )}
+                </Td>
               </>
             )}
           />
