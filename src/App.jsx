@@ -13,6 +13,10 @@ import ShiftReports from './pages/ShiftReports'
 import Schedules from './pages/Schedules'
 import Payments from './pages/Payments'
 import Sanctions from './pages/Sanctions'
+import Packs from './pages/Packs'
+import Scripts from './pages/Scripts'
+import Prices from './pages/Prices'
+import Activation from './pages/Activation'
 
 function Protected({ children }) {
   const { session, loading } = useAuth()
@@ -51,6 +55,10 @@ function AppRoutes() {
         <Route path="horarios" element={<Schedules />} />
         <Route path="pagos" element={<Payments />} />
         <Route path="sanciones" element={<Sanctions />} />
+        <Route path="packs" element={<Packs />} />
+        <Route path="scripts" element={<Scripts />} />
+        <Route path="precios" element={<Prices />} />
+        <Route path="activacion" element={<Activation />} />
       </Route>
     </Routes>
   )

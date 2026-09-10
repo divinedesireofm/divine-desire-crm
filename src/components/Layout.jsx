@@ -21,6 +21,10 @@ const SECTIONS = [
       { to: '/horarios', label: '📅 Horarios', roles: ['admin', 'manager', 'chatter'] },
       { to: '/pagos', label: '💰 Pagos', roles: ['admin', 'manager', 'chatter'] },
       { to: '/sanciones', label: '⚠️ Sanciones', roles: ['admin', 'manager'] },
+      { to: '/packs', label: '🎁 Packs', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/scripts', label: '💭 Scripts', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/activacion', label: '⚡ Activación', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/precios', label: '🏷️ Precios', roles: ['admin', 'manager', 'chatter'] },
     ],
   },
   {
