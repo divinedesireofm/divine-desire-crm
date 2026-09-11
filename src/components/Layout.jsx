@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import logo from '../assets/logo.png'
 import Icon from './Icon'
@@ -22,8 +22,6 @@ const SECTIONS = [
     items: [
       { to: '/asistencia', label: 'Entradas y salidas', icon: 'clock', roles: ['admin', 'manager', 'chatter'] },
       { to: '/reportes-turno', label: 'Reportes de turno', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/solicitudes', label: 'Solicitudes', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/masivos', label: 'Masivos PPV', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/chatters', label: 'Chatters', icon: 'users', roles: ['admin', 'manager'] },
       { to: '/horarios', label: 'Horarios', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/pagos', label: 'Pagos', icon: 'dollar', roles: ['admin', 'manager', 'chatter'] },
@@ -84,6 +82,12 @@ const SIEMPRE_ABIERTA = {
 export default function Layout() {
   const { profile, role, signOut } = useAuth()
   const [collapsed, setCollapsed] = useState({})
+  const mainRef = useRef(null)
+  const location = useLocation()
+
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0)
+  }, [location.pathname])
 
   const visibleSections = SECTIONS
     .map((s) => ({ ...s, items: s.items.filter((item) => item.roles.includes(role)) }))
@@ -163,7 +167,7 @@ export default function Layout() {
           </button>
         </div>
       </aside>
-      <main className="flex-1 p-8 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 p-8 overflow-y-auto">
         <AnnouncementGate>
           <PildoraGate>
             <Outlet />
