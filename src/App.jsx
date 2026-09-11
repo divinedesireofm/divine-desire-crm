@@ -17,6 +17,8 @@ import Packs from './pages/Packs'
 import Scripts from './pages/Scripts'
 import Prices from './pages/Prices'
 import Activation from './pages/Activation'
+import Team from './pages/Team'
+import Activity from './pages/Activity'
 
 function Protected({ children }) {
   const { session, loading } = useAuth()
@@ -59,6 +61,8 @@ function AppRoutes() {
         <Route path="scripts" element={<Scripts />} />
         <Route path="precios" element={<Prices />} />
         <Route path="activacion" element={<Activation />} />
+        <Route path="equipo" element={<Team />} />
+        <Route path="historial" element={<Activity />} />
       </Route>
     </Routes>
   )

@@ -7,6 +7,7 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [deactivatedMsg, setDeactivatedMsg] = useState('')
 
   async function loadProfile(userId) {
     const { data, error } = await supabase
@@ -14,7 +15,15 @@ export function AuthProvider({ children }) {
       .select('*')
       .eq('id', userId)
       .single()
-    if (!error) setProfile(data)
+    if (!error) {
+      if (data.active === false) {
+        setDeactivatedMsg('Tu cuenta ha sido desactivada. Contacta con tu administrador.')
+        await supabase.auth.signOut()
+        setProfile(null)
+        return
+      }
+      setProfile(data)
+    }
   }
 
   useEffect(() => {
@@ -41,6 +50,7 @@ export function AuthProvider({ children }) {
     profile,
     role: profile?.role ?? null,
     loading,
+    deactivatedMsg,
     signOut: () => supabase.auth.signOut(),
   }
 

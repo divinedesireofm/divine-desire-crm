@@ -27,6 +27,8 @@ const SECTIONS = [
       { to: '/scripts', label: 'Scripts', icon: 'chat', roles: ['admin', 'manager', 'chatter'] },
       { to: '/activacion', label: 'Activación', icon: 'zap', roles: ['admin', 'manager', 'chatter'] },
       { to: '/precios', label: 'Precios', icon: 'tag', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/equipo', label: 'Equipo', icon: 'users', roles: ['admin', 'manager'] },
+      { to: '/historial', label: 'Historial', icon: 'clock', roles: ['admin', 'manager'] },
     ],
   },
   {

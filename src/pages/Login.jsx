@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
 import { Panel, Input, Button } from '../components/ui'
 import logo from '../assets/logo.png'
 
 export default function Login() {
+  const { deactivatedMsg } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
@@ -27,6 +29,7 @@ export default function Login() {
           Entra con tu cuenta para acceder al panel.
         </p>
         <form onSubmit={handleSubmit} className="space-y-3">
+          {deactivatedMsg && <p className="text-sm" style={{ color: 'var(--danger)' }}>{deactivatedMsg}</p>}
           <Input
             type="email"
             placeholder="Email"
