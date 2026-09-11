@@ -3,20 +3,42 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, StatusBadge, PageHeader } from '../components/ui'
 
-const ROLE_LABEL = { admin: 'Admin', manager: 'Manager', chatter: 'Chatter', ig_assistant: 'Asistente IG' }
+const ROLE_LABEL = { admin: 'Admin', manager: 'Manager', chatter: 'Chatter', ig_assistant: 'Asistente IG', ig_manager: 'Manager IG' }
+
+// Qué roles puede VER cada tipo de manager en su listado de equipo
+function rolesVisibles(role) {
+  if (role === 'admin') return ['manager', 'chatter', 'ig_manager', 'ig_assistant']
+  if (role === 'manager') return ['manager', 'chatter']
+  if (role === 'ig_manager') return ['ig_manager', 'ig_assistant']
+  return []
+}
+// Qué rol puede CREAR cada tipo de manager, y con qué rol se sugiere por defecto
+function rolesCreables(role) {
+  if (role === 'admin') return [['manager', 'Manager'], ['ig_manager', 'Manager de Instagram'], ['chatter', 'Chatter'], ['ig_assistant', 'Asistente de Instagram']]
+  if (role === 'manager') return [['chatter', 'Chatter']]
+  if (role === 'ig_manager') return [['ig_assistant', 'Asistente de Instagram']]
+  return []
+}
+// Qué rol de "subordinado directo" puede este manager activar/desactivar
+function puedeTogglear(role, targetRole) {
+  if (role === 'admin') return true
+  if (role === 'manager') return targetRole === 'chatter'
+  if (role === 'ig_manager') return targetRole === 'ig_assistant'
+  return false
+}
 
 export default function Team() {
   const { profile, role } = useAuth()
-  const esAdmin = role === 'admin'
+  const visibles = rolesVisibles(role)
+  const creables = rolesCreables(role)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState(null)
   const [resetU, setResetU] = useState(null)
-  const [error, setError] = useState('')
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('profiles').select('*').neq('role', 'admin').order('role').order('full_name')
+    const { data } = await supabase.from('profiles').select('*').in('role', visibles).order('role').order('full_name')
     setRows(data || [])
     setLoading(false)
   }
@@ -32,8 +54,10 @@ export default function Team() {
     <div>
       <PageHeader
         title="Equipo"
-        subtitle={esAdmin ? 'Crea managers y chatters, y gestiona accesos.' : 'Crea y gestiona chatters del equipo.'}
-        action={<Button onClick={() => setEdit({ email: '', full_name: '', role: esAdmin ? 'manager' : 'chatter', password: '' })}>+ Nuevo usuario</Button>}
+        subtitle={role === 'admin' ? 'Crea managers y chatters, y gestiona accesos.' : 'Crea y gestiona a tu equipo.'}
+        action={creables.length > 0 && (
+          <Button onClick={() => setEdit({ email: '', full_name: '', role: creables[0][0], password: '' })}>+ Nuevo usuario</Button>
+        )}
       />
 
       <Panel>
@@ -58,7 +82,7 @@ export default function Team() {
                   <td className="px-4 py-3"><StatusBadge status={u.active ? 'activa' : 'baja'} /></td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     <button onClick={() => setResetU(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Resetear contraseña</button>
-                    {(esAdmin || u.role === 'chatter') && u.id !== profile.id && (
+                    {puedeTogglear(role, u.role) && u.id !== profile.id && (
                       <button onClick={() => toggleActivo(u)} className="text-xs hover:underline" style={{ color: u.active ? 'var(--danger)' : 'var(--success)' }}>
                         {u.active ? 'Desactivar' : 'Activar'}
                       </button>
@@ -73,7 +97,7 @@ export default function Team() {
 
       {edit && (
         <NuevoUsuarioModal
-          esAdmin={esAdmin}
+          opciones={creables}
           onClose={() => setEdit(null)}
           onSaved={() => { setEdit(null); load() }}
         />
@@ -83,8 +107,8 @@ export default function Team() {
   )
 }
 
-function NuevoUsuarioModal({ esAdmin, onClose, onSaved }) {
-  const [f, setF] = useState({ email: '', full_name: '', role: esAdmin ? 'manager' : 'chatter', password: '' })
+function NuevoUsuarioModal({ opciones, onClose, onSaved }) {
+  const [f, setF] = useState({ email: '', full_name: '', role: opciones[0]?.[0] || '', password: '' })
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [ok, setOk] = useState(null)
@@ -117,8 +141,7 @@ function NuevoUsuarioModal({ esAdmin, onClose, onSaved }) {
             <Input placeholder="Nombre" value={f.full_name} onChange={(e) => setF({ ...f, full_name: e.target.value })} />
             <Input placeholder="Email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
             <Select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>
-              {esAdmin && <option value="manager">Manager</option>}
-              <option value="chatter">Chatter</option>
+              {opciones.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
             </Select>
             <Input placeholder="Contraseña (opcional)" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} />
           </div>

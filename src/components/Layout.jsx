@@ -3,13 +3,14 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import logo from '../assets/logo.png'
 import Icon from './Icon'
+import AnnouncementGate from './AnnouncementGate'
 
 const SECTIONS = [
   {
     id: 'general',
     label: null, // sin cabecera, siempre visible arriba del todo
     items: [
-      { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_assistant'], end: true },
+      { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'], end: true },
     ],
   },
   {
@@ -27,8 +28,6 @@ const SECTIONS = [
       { to: '/scripts', label: 'Scripts', icon: 'chat', roles: ['admin', 'manager', 'chatter'] },
       { to: '/activacion', label: 'Activación', icon: 'zap', roles: ['admin', 'manager', 'chatter'] },
       { to: '/precios', label: 'Precios', icon: 'tag', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/equipo', label: 'Equipo', icon: 'users', roles: ['admin', 'manager'] },
-      { to: '/historial', label: 'Historial', icon: 'clock', roles: ['admin', 'manager'] },
     ],
   },
   {
@@ -36,8 +35,17 @@ const SECTIONS = [
     label: 'Instagram',
     icon: 'camera',
     items: [
-      { to: '/instagram', label: 'Cuentas de Instagram', icon: 'camera', roles: ['admin', 'ig_assistant'] },
-      { to: '/leads', label: 'Reclutamiento', icon: 'target', roles: ['admin'] },
+      { to: '/instagram', label: 'Cuentas de Instagram', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
+      { to: '/leads', label: 'Reclutamiento', icon: 'target', roles: ['admin', 'ig_manager'] },
+    ],
+  },
+  {
+    id: 'gestion',
+    label: 'Gestión',
+    icon: 'users',
+    items: [
+      { to: '/equipo', label: 'Equipo', icon: 'users', roles: ['admin', 'manager', 'ig_manager'] },
+      { to: '/historial', label: 'Historial', icon: 'clock', roles: ['admin', 'manager', 'ig_manager'] },
     ],
   },
   {
@@ -45,8 +53,9 @@ const SECTIONS = [
     label: 'Recursos compartidos',
     icon: 'file',
     items: [
-      { to: '/modelos', label: 'Modelos', icon: 'diamond', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
-      { to: '/metricas', label: 'Métricas semanales', icon: 'chart', roles: ['admin', 'manager', 'chatter', 'ig_assistant'] },
+      { to: '/modelos', label: 'Modelos', icon: 'diamond', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
+      { to: '/metricas', label: 'Métricas semanales', icon: 'chart', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
+      { to: '/anuncios', label: 'Anuncios', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
     ],
   },
 ]
@@ -55,6 +64,7 @@ const ROLE_LABELS = {
   admin: 'Administrador',
   manager: 'Manager',
   chatter: 'Chatter',
+  ig_manager: 'Manager de Instagram',
   ig_assistant: 'Asistente de Instagram',
 }
 
@@ -63,6 +73,7 @@ const SIEMPRE_ABIERTA = {
   admin: [],
   manager: ['chatting'],
   chatter: ['chatting'],
+  ig_manager: ['instagram'],
   ig_assistant: ['instagram'],
 }
 
@@ -149,7 +160,9 @@ export default function Layout() {
         </div>
       </aside>
       <main className="flex-1 p-8 overflow-y-auto">
-        <Outlet />
+        <AnnouncementGate>
+          <Outlet />
+        </AnnouncementGate>
       </main>
     </div>
   )

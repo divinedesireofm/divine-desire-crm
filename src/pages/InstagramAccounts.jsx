@@ -29,7 +29,7 @@ function diasTranscurridos(fecha) {
 
 export default function InstagramAccounts() {
   const { role } = useAuth()
-  const canEdit = role === 'admin' || role === 'ig_assistant'
+  const canEdit = role === 'admin' || role === 'ig_manager' || role === 'ig_assistant'
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
   const [assistants, setAssistants] = useState([])
