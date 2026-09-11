@@ -86,7 +86,7 @@ export default function Attendance() {
     <div>
       <PageHeader
         title="Entradas y salidas"
-        subtitle="Marca tu jornada y tus breaks. Turnos: Mañana 8:00–16:00 · Tarde 16:00–24:00 · Madrugada 0:00–8:00 (hora COL)"
+        subtitle="Marca tu jornada y tus breaks. Turnos: Madrugada 2:00–10:00 · Mañana 10:00–18:00 · Tarde 18:00–2:00 (hora Venezuela)"
       />
 
       <Panel className="p-5 mb-6">

@@ -13,13 +13,18 @@ function fechaHoyISO() {
   const d = new Date()
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 }
+function fmtTS(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+}
 
 export default function Sanctions() {
   const { profile } = useAuth()
   const [rows, setRows] = useState([])
   const [users, setUsers] = useState([])
   const [fChatter, setFChatter] = useState('todos')
-  const [form, setForm] = useState({ chatter_id: '', motivo: '', monto: '', fecha: fechaHoyISO() })
+  const [form, setForm] = useState({ chatter_id: '', motivo: '', monto: '' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -50,7 +55,7 @@ export default function Sanctions() {
       chatter_id: form.chatter_id,
       motivo: form.motivo.trim(),
       monto: parseFloat(form.monto) || 0,
-      fecha: form.fecha,
+      fecha: fechaHoyISO(),
       creado_por: profile.id,
     }])
     if (error) { setError('No se pudo registrar.'); setBusy(false); return }
@@ -74,15 +79,18 @@ export default function Sanctions() {
 
       <Panel className="p-5 mb-6">
         <p className="text-sm font-medium mb-4">Nueva sanción</p>
-        <div className="grid grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <Select value={form.chatter_id} onChange={(e) => setForm({ ...form, chatter_id: e.target.value })}>
             {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
           </Select>
-          <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
-          <Input
-            type="number" step="0.01" placeholder="Monto (opcional)"
-            value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })}
-          />
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
+            <Input
+              type="number" step="0.01" placeholder="Monto (opcional)"
+              value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })}
+              style={{ paddingLeft: 22 }}
+            />
+          </div>
         </div>
         <textarea
           value={form.motivo}
@@ -121,7 +129,7 @@ export default function Sanctions() {
               <tbody>
                 {vis.map((s) => (
                   <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td className="px-3 py-2 whitespace-nowrap">{fmtFecha(s.fecha)}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{fmtTS(s.created_at)}</td>
                     <td className="px-3 py-2"><strong>{s.profiles?.full_name}</strong></td>
                     <td className="px-3 py-2 whitespace-nowrap">{s.monto ? fmtMoney(s.monto) : '—'}</td>
                     <td className="px-3 py-2" style={{ maxWidth: 340, whiteSpace: 'pre-wrap', color: 'var(--text-muted)' }}>{s.motivo}</td>

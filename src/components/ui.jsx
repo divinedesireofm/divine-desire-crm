@@ -1,8 +1,8 @@
-export function Panel({ children, className = '' }) {
+export function Panel({ children, className = '', style = {} }) {
   return (
     <div
       className={`rounded-lg border ${className}`}
-      style={{ background: 'var(--panel)', borderColor: 'var(--border)' }}
+      style={{ background: 'var(--panel)', borderColor: 'var(--border)', ...style }}
     >
       {children}
     </div>
@@ -56,7 +56,7 @@ export function StatusBadge({ status }) {
   )
 }
 
-export function Input(props) {
+export function Input({ style, ...props }) {
   return (
     <input
       className="w-full px-3 py-2 rounded-md text-sm outline-none focus:ring-1"
@@ -64,6 +64,7 @@ export function Input(props) {
         background: 'var(--panel-alt)',
         border: '1px solid var(--border)',
         color: 'var(--text)',
+        ...style,
       }}
       {...props}
     />

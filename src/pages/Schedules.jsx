@@ -4,9 +4,9 @@ import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 
 const TURNOS = [
-  { id: 'mañana', n: 'Mañana', h: '8:00–16:00' },
-  { id: 'tarde', n: 'Tarde', h: '16:00–24:00' },
-  { id: 'madrugada', n: 'Madrugada', h: '0:00–8:00' },
+  { id: 'madrugada', n: 'Madrugada', h: '2:00–10:00' },
+  { id: 'mañana', n: 'Mañana', h: '10:00–18:00' },
+  { id: 'tarde', n: 'Tarde', h: '18:00–2:00' },
 ]
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 

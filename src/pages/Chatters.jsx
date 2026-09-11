@@ -15,7 +15,7 @@ export default function Chatters() {
     setLoading(true)
     const [{ data: existing }, { data: allChatterProfiles }] = await Promise.all([
       supabase.from('chatters').select('*, profiles(full_name)'),
-      supabase.from('profiles').select('id, full_name').eq('role', 'chatter'),
+      supabase.from('profiles').select('id, full_name').in('role', ['chatter', 'manager']),
     ])
     setChatters(existing || [])
     const existingIds = new Set((existing || []).map((c) => c.id))
@@ -60,14 +60,14 @@ export default function Chatters() {
       {canEdit && unlinkedProfiles.length > 0 && (
         <Panel className="p-5">
           <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>
-            Estas personas ya tienen cuenta creada con rol "chatter" pero aún no están activadas en el equipo:
+            Estas personas ya tienen cuenta creada (chatter o manager) pero aún no están activadas en el equipo:
           </p>
           <div className="space-y-2">
             {unlinkedProfiles.map((p) => (
               <div key={p.id} className="flex items-center gap-3">
                 <span className="flex-1 text-sm">{p.full_name}</span>
                 <Input
-                  placeholder="Turno (mañana/tarde/noche)"
+                  placeholder="Turno (madrugada/mañana/tarde)"
                   className="max-w-xs"
                   value={shiftDrafts[p.id] || ''}
                   onChange={(e) => setShiftDrafts({ ...shiftDrafts, [p.id]: e.target.value })}

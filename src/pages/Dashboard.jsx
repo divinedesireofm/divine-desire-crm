@@ -13,8 +13,10 @@ function Kpi({ label, value }) {
 }
 
 export default function Dashboard() {
-  const { profile } = useAuth()
+  const { profile, role } = useAuth()
   const [stats, setStats] = useState(null)
+  const [sanciones, setSanciones] = useState(null)
+  const esChatTeam = ['admin', 'manager', 'chatter'].includes(role)
 
   useEffect(() => {
     async function load() {
@@ -30,18 +32,51 @@ export default function Dashboard() {
     load()
   }, [])
 
+  useEffect(() => {
+    async function loadSanciones() {
+      if (!esChatTeam) return
+      const { data } = await supabase.from('sanctions').select('*, profiles(full_name)').order('created_at', { ascending: false }).limit(5)
+      setSanciones(data || [])
+    }
+    loadSanciones()
+  }, [esChatTeam])
+
   return (
     <div>
       <PageHeader
         title={`Hola, ${profile?.full_name?.split(' ')[0] || ''}`}
         subtitle="Resumen general de la agencia."
       />
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-4 mb-6">
         <Kpi label="Modelos activas" value={stats?.modelsCount ?? '—'} />
         <Kpi label="Cuentas de Instagram" value={stats?.accountsCount ?? '—'} />
         <Kpi label="Leads en proceso" value={stats?.leadsCount ?? '—'} />
         <Kpi label="Ventas OF (últimas semanas)" value={stats ? `${stats.totalLastPeriod.toFixed(0)} €` : '—'} />
       </div>
+
+      {esChatTeam && (
+        <Panel className="p-5">
+          <p className="text-sm font-medium mb-3">⚠️ Sanciones recientes del equipo</p>
+          {sanciones === null ? (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
+          ) : sanciones.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin sanciones registradas.</p>
+          ) : (
+            <div className="space-y-2">
+              {sanciones.map((s) => (
+                <div key={s.id} className="flex items-center gap-3 text-sm py-1.5" style={{ borderBottom: '1px solid var(--border)' }}>
+                  <strong className="w-28 truncate">{s.profiles?.full_name}</strong>
+                  <span className="flex-1 truncate" style={{ color: 'var(--text-muted)' }}>{s.motivo}</span>
+                  {s.monto > 0 && <span style={{ color: 'var(--danger)' }}>${Number(s.monto).toFixed(2)}</span>}
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {new Date(s.created_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
     </div>
   )
 }

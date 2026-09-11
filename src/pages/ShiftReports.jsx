@@ -4,17 +4,22 @@ import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 
 const TURNOS = [
-  { id: 'mañana', n: 'Mañana', h: '8:00 – 16:00 COL' },
-  { id: 'tarde', n: 'Tarde', h: '16:00 – 24:00 COL' },
-  { id: 'madrugada', n: 'Madrugada', h: '0:00 – 8:00 COL' },
+  { id: 'madrugada', n: 'Madrugada', h: '2:00 – 10:00 VE' },
+  { id: 'mañana', n: 'Mañana', h: '10:00 – 18:00 VE' },
+  { id: 'tarde', n: 'Tarde', h: '18:00 – 2:00 VE' },
 ]
 const T_NAME = (id) => TURNOS.find((t) => t.id === id)?.n || id
+const TRAFICO = [
+  { id: 'bajo', n: 'Bajo', color: 'var(--danger)' },
+  { id: 'medio', n: 'Medio', color: 'var(--gold)' },
+  { id: 'alto', n: 'Alto', color: 'var(--success)' },
+]
 
-function turnoActualCOL() {
-  const h = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Bogota', hour: 'numeric', hour12: false }).format(new Date()), 10)
-  if (h >= 8 && h < 16) return 'mañana'
-  if (h >= 16) return 'tarde'
-  return 'madrugada'
+function turnoActualVE() {
+  const h = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Caracas', hour: 'numeric', hour12: false }).format(new Date()), 10)
+  if (h >= 2 && h < 10) return 'madrugada'
+  if (h >= 10 && h < 18) return 'mañana'
+  return 'tarde'
 }
 function fechaHoyISO() {
   const d = new Date()
@@ -42,9 +47,9 @@ export default function ShiftReports() {
   const [busy, setBusy] = useState(false)
 
   const [fecha, setFecha] = useState(fechaHoyISO())
-  const [turno, setTurno] = useState(turnoActualCOL())
+  const [turno, setTurno] = useState(turnoActualVE())
   const [sel, setSel] = useState([])
-  const [textos, setTextos] = useState({})
+  const [campos, setCampos] = useState({}) // { [modelId]: { texto, trafico, observaciones, facturacion } }
 
   async function load() {
     const [{ data: m }, { data: r }] = await Promise.all([
@@ -54,19 +59,22 @@ export default function ShiftReports() {
     setModelos(m || [])
     setReportes(r || [])
   }
-
   useEffect(() => { load() }, [])
 
   function toggleModelo(id) {
     setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.concat([id])))
+    setCampos((c) => c[id] ? c : { ...c, [id]: { texto: '', trafico: 'medio', observaciones: '', facturacion: '' } })
+  }
+  function setCampo(id, key, value) {
+    setCampos((c) => ({ ...c, [id]: { ...c[id], [key]: value } }))
   }
 
   async function enviar() {
     setError(null)
     setOk(null)
     if (!sel.length) { setError('Selecciona al menos una modelo.'); return }
-    const vacios = sel.filter((id) => !(textos[id] || '').trim())
-    if (vacios.length) { setError('Falta el texto del reporte de alguna modelo seleccionada.'); return }
+    const vacios = sel.filter((id) => !(campos[id]?.texto || '').trim())
+    if (vacios.length) { setError('Falta el reporte de alguna modelo seleccionada.'); return }
     setBusy(true)
     const { data: rep, error: e1 } = await supabase
       .from('shift_reports')
@@ -74,11 +82,18 @@ export default function ShiftReports() {
       .select()
       .single()
     if (e1) { setError('No se pudo guardar el reporte.'); setBusy(false); return }
-    const detalle = sel.map((model_id) => ({ report_id: rep.id, model_id, texto: textos[model_id].trim() }))
+    const detalle = sel.map((model_id) => ({
+      report_id: rep.id,
+      model_id,
+      texto: campos[model_id].texto.trim(),
+      trafico: campos[model_id].trafico || null,
+      observaciones: campos[model_id].observaciones?.trim() || null,
+      facturacion: campos[model_id].facturacion ? parseFloat(campos[model_id].facturacion) : null,
+    }))
     const { error: e2 } = await supabase.from('shift_report_details').insert(detalle)
     if (e2) { setError('El reporte se creó pero falló el detalle.'); setBusy(false); return }
     setSel([])
-    setTextos({})
+    setCampos({})
     setOk('Reporte enviado ✓')
     await load()
     setBusy(false)
@@ -135,18 +150,61 @@ export default function ShiftReports() {
 
         {sel.map((id) => {
           const modelo = modelos.find((m) => m.id === id)
+          const c = campos[id] || {}
           return (
-            <div key={id} className="mb-3">
-              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Reporte de {modelo?.stage_name}</label>
+            <Panel key={id} className="p-4 mb-3">
+              <p className="text-sm font-medium mb-3">Reporte de {modelo?.stage_name}</p>
               <textarea
-                value={textos[id] || ''}
-                onChange={(e) => setTextos((t) => ({ ...t, [id]: e.target.value }))}
+                value={c.texto || ''}
+                onChange={(e) => setCampo(id, 'texto', e.target.value)}
                 placeholder={`¿Cómo fue el turno con ${modelo?.stage_name}? Ventas, fans importantes, pendientes, incidencias...`}
                 rows={3}
+                className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none mb-3"
+                style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              />
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tráfico del turno</label>
+                  <div className="flex gap-2">
+                    {TRAFICO.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => setCampo(id, 'trafico', t.id)}
+                        className="flex-1 px-2 py-1.5 rounded-md text-xs"
+                        style={{
+                          background: c.trafico === t.id ? `${t.color}22` : 'var(--panel-alt)',
+                          border: `1px solid ${c.trafico === t.id ? t.color : 'var(--border)'}`,
+                          color: c.trafico === t.id ? t.color : 'var(--text)',
+                        }}
+                      >
+                        {t.n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Facturado en el turno</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
+                    <Input
+                      type="number" step="0.01" placeholder="0.00"
+                      value={c.facturacion || ''}
+                      onChange={(e) => setCampo(id, 'facturacion', e.target.value)}
+                      style={{ paddingLeft: 22 }}
+                    />
+                  </div>
+                </div>
+              </div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Observaciones generales</label>
+              <textarea
+                value={c.observaciones || ''}
+                onChange={(e) => setCampo(id, 'observaciones', e.target.value)}
+                placeholder="Cualquier otra observación del turno con esta modelo..."
+                rows={2}
                 className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none"
                 style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
               />
-            </div>
+            </Panel>
           )
         })}
 
@@ -172,7 +230,7 @@ export default function ShiftReports() {
               <tbody>
                 {reportes.map((r) => (
                   <Fragment key={r.id}>
-                    <tr key={r.id} onClick={() => verDetalle(r)} className="cursor-pointer hover:opacity-80" style={{ borderBottom: '1px solid var(--border)' }}>
+                    <tr onClick={() => verDetalle(r)} className="cursor-pointer hover:opacity-80" style={{ borderBottom: '1px solid var(--border)' }}>
                       <td className="px-3 py-2">{fmtFecha(r.fecha)}</td>
                       <td className="px-3 py-2">
                         <span className="px-2 py-0.5 rounded-full text-xs" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
@@ -184,15 +242,32 @@ export default function ShiftReports() {
                       <td className="px-3 py-2 text-right" style={{ color: 'var(--text-muted)' }}>{abierto === r.id ? '▲' : '▼'}</td>
                     </tr>
                     {abierto === r.id && (
-                      <tr key={`${r.id}-detail`}>
+                      <tr>
                         <td colSpan={5} className="px-3 py-3" style={{ background: 'var(--panel-alt)' }}>
                           {(detalles[r.id] || []).length === 0 ? (
                             <p style={{ color: 'var(--text-muted)' }}>Cargando…</p>
                           ) : (
                             (detalles[r.id] || []).map((d) => (
-                              <div key={d.id} className="mb-2">
-                                <strong style={{ color: 'var(--accent)' }}>{d.models?.stage_name}</strong>
+                              <div key={d.id} className="mb-3">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  <strong style={{ color: 'var(--accent)' }}>{d.models?.stage_name}</strong>
+                                  {d.trafico && (
+                                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: `${TRAFICO.find((t) => t.id === d.trafico)?.color}22`, color: TRAFICO.find((t) => t.id === d.trafico)?.color }}>
+                                      Tráfico {TRAFICO.find((t) => t.id === d.trafico)?.n}
+                                    </span>
+                                  )}
+                                  {d.facturacion != null && (
+                                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--success)22', color: 'var(--success)' }}>
+                                      ${Number(d.facturacion).toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="whitespace-pre-wrap">{d.texto}</div>
+                                {d.observaciones && (
+                                  <div className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+                                    <strong>Obs.:</strong> {d.observaciones}
+                                  </div>
+                                )}
                               </div>
                             ))
                           )}
