@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import logo from '../assets/logo.png'
 import Icon from './Icon'
 import AnnouncementGate from './AnnouncementGate'
+import PildoraGate from './PildoraGate'
 
 const SECTIONS = [
   {
@@ -29,6 +30,7 @@ const SECTIONS = [
       { to: '/scripts', label: 'Scripts', icon: 'chat', roles: ['admin', 'manager', 'chatter'] },
       { to: '/activacion', label: 'Activación', icon: 'zap', roles: ['admin', 'manager', 'chatter'] },
       { to: '/precios', label: 'Precios', icon: 'tag', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/formacion', label: 'Formación', icon: 'book', roles: ['admin', 'manager'] },
     ],
   },
   {
@@ -161,7 +163,9 @@ export default function Layout() {
       </aside>
       <main className="flex-1 p-8 overflow-y-auto">
         <AnnouncementGate>
-          <Outlet />
+          <PildoraGate>
+            <Outlet />
+          </PildoraGate>
         </AnnouncementGate>
       </main>
     </div>

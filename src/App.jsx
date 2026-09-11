@@ -20,6 +20,7 @@ import Activation from './pages/Activation'
 import Team from './pages/Team'
 import Activity from './pages/Activity'
 import Announcements from './pages/Announcements'
+import Training from './pages/Training'
 
 function Protected({ children }) {
   const { session, loading } = useAuth()
@@ -65,6 +66,7 @@ function AppRoutes() {
         <Route path="equipo" element={<Team />} />
         <Route path="historial" element={<Activity />} />
         <Route path="anuncios" element={<Announcements />} />
+        <Route path="formacion" element={<Training />} />
       </Route>
     </Routes>
   )
