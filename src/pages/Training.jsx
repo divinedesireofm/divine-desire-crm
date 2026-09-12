@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
+import { iaCall, iaJson } from '../lib/ai'
 
 function fechaHoyISO() {
   const d = new Date()
@@ -22,6 +23,8 @@ export default function Training() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
   const [error, setError] = useState('')
+  const [iaBusy, setIaBusy] = useState(false)
+  const [iaErr, setIaErr] = useState('')
 
   async function load() {
     const [{ data: ps }, us] = await Promise.all([
@@ -49,6 +52,26 @@ export default function Training() {
     if (prev && prev.id !== p.id) await supabase.from('training_pills').update({ activa: false }).eq('id', prev.id)
     await supabase.from('training_pills').update({ activa: true }).eq('id', p.id)
     load()
+  }
+
+  async function generarConIA() {
+    setIaBusy(true); setIaErr('')
+    try {
+      const anteriores = pils.slice(0, 8).map((p) => `#${p.numero} [${p.concepto}] ${p.titulo}: ${p.pregunta}`).join('\n')
+      const system = `Eres experto en formación de equipos de chat/ventas para OnlyFans en la agencia Divine Desire. Genera UNA "píldora de valor" diaria: un concepto breve y práctico (técnica de venta, psicología del fan, gestión de objeciones, etc.) seguido de una pregunta tipo test de una sola respuesta correcta para comprobar que se ha entendido.\n\nPíldoras anteriores ya usadas (no repitas el mismo concepto):\n${anteriores}\n\nDevuelve SOLO un JSON válido (sin markdown) con esta forma exacta: {"concepto":"nombre corto del concepto","titulo":"título llamativo","contenido":"explicación práctica de 3-5 frases","pregunta":"la pregunta del test","opcion_a":"...","opcion_b":"...","opcion_c":"...","opcion_d":"...","respuesta_correcta":"A|B|C|D","explicacion_correcta":"por qué es la correcta, 1-2 frases"}`
+      const txt = await iaCall(system, [{ role: 'user', content: 'Genera la píldora de hoy.' }], 900)
+      const obj = iaJson(txt)
+      setForm({
+        ...EMPTY,
+        numero: Math.max(0, ...pils.map((p) => p.numero || 0)) + 1,
+        concepto: obj.concepto || '', titulo: obj.titulo || '', contenido: obj.contenido || '',
+        pregunta: obj.pregunta || '', opcion_a: obj.opcion_a || '', opcion_b: obj.opcion_b || '',
+        opcion_c: obj.opcion_c || '', opcion_d: obj.opcion_d || '',
+        respuesta_correcta: obj.respuesta_correcta || 'A', explicacion_correcta: obj.explicacion_correcta || '',
+      })
+      setShowForm(true)
+    } catch (e) { setIaErr(e.message) }
+    setIaBusy(false)
   }
 
   async function crear() {
@@ -82,7 +105,13 @@ export default function Training() {
       <PageHeader
         title="Formación · Píldoras de valor"
         subtitle="Seguimiento de la píldora diaria del equipo. Cada miembro debe completarla al entrar al CRM."
-        action={<Button onClick={() => { setForm({ ...EMPTY, numero: Math.max(0, ...pils.map((p) => p.numero || 0)) + 1 }); setShowForm(!showForm) }}>{showForm ? 'Cancelar' : '+ Nueva píldora'}</Button>}
+        action={
+          <div className="flex gap-2 items-center">
+            {iaErr && <span className="text-xs" style={{ color: 'var(--danger)' }}>{iaErr}</span>}
+            <Button variant="ghost" onClick={generarConIA} disabled={iaBusy}>{iaBusy ? 'Generando…' : '✨ Generar con IA'}</Button>
+            <Button onClick={() => { setForm({ ...EMPTY, numero: Math.max(0, ...pils.map((p) => p.numero || 0)) + 1 }); setShowForm(!showForm) }}>{showForm ? 'Cancelar' : '+ Nueva píldora'}</Button>
+          </div>
+        }
       />
 
       <div className="grid grid-cols-4 gap-4 mb-6">

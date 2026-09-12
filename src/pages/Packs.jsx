@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
+import { iaCall, iaJson } from '../lib/ai'
 
 const CAT_PACKS = ['Ticket bajo', 'Medium-Spender', 'Premium', 'Lanzamiento', 'Upsell', 'Estratégico 🐀']
 
@@ -11,6 +12,11 @@ export default function Packs() {
   const esMgr = hasAnyRole(['admin', 'manager'])
   const [rows, setRows] = useState([])
   const [edit, setEdit] = useState(null)
+  const [iaPrompt, setIaPrompt] = useState('')
+  const [iaCat, setIaCat] = useState('Medium-Spender')
+  const [iaBusy, setIaBusy] = useState(false)
+  const [iaOut, setIaOut] = useState(null)
+  const [iaErr, setIaErr] = useState('')
 
   async function load() {
     const { data } = await supabase.from('sales_packs').select('*').order('es_referencia', { ascending: false }).order('categoria')
@@ -22,6 +28,28 @@ export default function Packs() {
     if (!confirm(`¿Eliminar el pack "${p.titulo}"?`)) return
     await supabase.from('sales_packs').delete().eq('id', p.id)
     load()
+  }
+
+  async function generar() {
+    if (!iaPrompt.trim()) { setIaErr('Describe qué pack quieres generar (modelo, tipo de fan, objetivo...)'); return }
+    setIaBusy(true); setIaErr(''); setIaOut(null)
+    try {
+      const refs = rows.filter((r) => r.es_referencia).slice(0, 14)
+        .map((r) => `[${r.categoria}] ${r.titulo}${r.precio ? ` (${r.precio})` : ''}\nContenido: ${r.contenido || ''}\nCopy: ${r.copy || ''}`).join('\n---\n')
+      const system = `Eres un copywriter experto en venta de packs para OnlyFans dentro de la agencia Divine Desire. Escribes en español, tono coqueto, natural y creíble, nunca explícito ni vulgar. Los packs son ESTRATÉGICOS: deben parecer mucho contenido y dejar al fan con ganas de más. Sigues el estilo de estas referencias del equipo:\n\n${refs}\n\nDevuelve SOLO un JSON válido (sin markdown) con esta forma exacta: {"titulo":"...","precio":"$..","contenido":"lista breve de lo que incluye","copy":"el mensaje listo para enviar al fan","notas":"nota estratégica corta para el chatter"}`
+      const txt = await iaCall(system, [{ role: 'user', content: `Categoría: ${iaCat}\nPetición: ${iaPrompt}` }], 1300)
+      setIaOut(iaJson(txt))
+    } catch (e) { setIaErr(e.message) }
+    setIaBusy(false)
+  }
+
+  async function guardarGenerado() {
+    await supabase.from('sales_packs').insert([{
+      titulo: iaOut.titulo || 'Pack generado', categoria: iaCat, contenido: iaOut.contenido || '',
+      copy: iaOut.copy || '', precio: iaOut.precio || '', notas: iaOut.notas || '',
+      es_referencia: false, generado_ia: true, creado_por: profile.id,
+    }])
+    setIaOut(null); setIaPrompt(''); load()
   }
 
   const porCat = useMemo(() => {
@@ -38,6 +66,37 @@ export default function Packs() {
         subtitle="Packs generales del equipo (ajustables a cada modelo). Copia el mensaje listo."
         action={esMgr && <Button onClick={() => setEdit({ titulo: '', categoria: CAT_PACKS[1], contenido: '', copy: '', precio: '', notas: '' })}>+ Nuevo pack</Button>}
       />
+
+      <Panel className="p-5 mb-6" style={{ borderColor: 'var(--accent)' }}>
+        <p className="font-medium mb-3">✨ Generador de packs con IA</p>
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <Select value={iaCat} onChange={(e) => setIaCat(e.target.value)}>
+            {CAT_PACKS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </Select>
+          <Input
+            className="col-span-2"
+            placeholder="Ej: pack para fan medium-spender de Valen, que ya compró previews"
+            value={iaPrompt}
+            onChange={(e) => setIaPrompt(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') generar() }}
+          />
+        </div>
+        {iaErr && <p className="text-sm mb-2" style={{ color: 'var(--danger)' }}>{iaErr}</p>}
+        <Button onClick={generar} disabled={iaBusy}>{iaBusy ? 'Generando…' : 'Generar pack'}</Button>
+        {iaOut && (
+          <Panel className="p-4 mt-4">
+            <p className="font-medium mb-1">{iaOut.titulo} {iaOut.precio && <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{iaOut.precio}</span>}</p>
+            {iaOut.contenido && <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}><strong>Incluye:</strong> {iaOut.contenido}</p>}
+            <p className="text-sm whitespace-pre-wrap mb-2 p-2 rounded" style={{ background: 'var(--panel-alt)' }}>{iaOut.copy}</p>
+            {iaOut.notas && <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>{iaOut.notas}</p>}
+            <div className="flex gap-2 flex-wrap">
+              <CopyButton text={iaOut.copy} />
+              {esMgr && <Button onClick={guardarGenerado}>Guardar en la biblioteca</Button>}
+              <Button variant="ghost" onClick={() => setIaOut(null)}>Descartar</Button>
+            </div>
+          </Panel>
+        )}
+      </Panel>
 
       {cats.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin packs todavía</p>
