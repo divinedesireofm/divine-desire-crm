@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { readFunctionError } from '../lib/functions'
 import { Panel, Button, Input, StatusBadge, PageHeader } from '../components/ui'
 
 const ROLE_LABEL = { admin: 'Admin', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente IG' }
@@ -186,7 +187,7 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
       body: { action: 'create', email: f.email.trim(), full_name: f.full_name.trim(), roles: f.roles, password: f.password || undefined },
     })
     setBusy(false)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(await readFunctionError(error)); return }
     if (data?.error) { setErr(data.error); return }
     setOk(data.tempPassword)
   }
@@ -240,7 +241,7 @@ function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
       body: { action: 'update_roles', user_id: usuario.id, full_name: nombre.trim(), roles: rolesSel },
     })
     setBusy(false)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(await readFunctionError(error)); return }
     if (data?.error) { setErr(data.error); return }
     onSaved()
   }
@@ -275,7 +276,7 @@ function ResetModal({ u, onClose }) {
       body: { action: 'reset', user_id: u.id, password: pass },
     })
     setBusy(false)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(await readFunctionError(error)); return }
     if (data?.error) { setErr(data.error); return }
     setOk(true)
   }
