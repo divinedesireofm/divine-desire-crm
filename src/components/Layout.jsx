@@ -33,6 +33,7 @@ const SECTIONS = [
       { to: '/activacion', label: 'Activación', icon: 'zap', roles: ['admin', 'manager', 'chatter'] },
       { to: '/precios', label: 'Precios', icon: 'tag', roles: ['admin', 'manager', 'chatter'] },
       { to: '/formacion', label: 'Formación', icon: 'book', roles: ['admin', 'manager'] },
+      { to: '/voz-marca', label: 'Voz de marca (IA)', icon: 'chat', roles: ['admin', 'manager'] },
     ],
   },
   {

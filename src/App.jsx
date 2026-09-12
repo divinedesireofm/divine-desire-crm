@@ -21,6 +21,7 @@ import Team from './pages/Team'
 import Activity from './pages/Activity'
 import Announcements from './pages/Announcements'
 import Training from './pages/Training'
+import AiSettings from './pages/AiSettings'
 import Requests from './pages/Requests'
 import Massives from './pages/Massives'
 
@@ -69,6 +70,7 @@ function AppRoutes() {
         <Route path="historial" element={<Activity />} />
         <Route path="anuncios" element={<Announcements />} />
         <Route path="formacion" element={<Training />} />
+        <Route path="voz-marca" element={<AiSettings />} />
         <Route path="solicitudes" element={<Requests />} />
         <Route path="masivos" element={<Massives />} />
       </Route>

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
-import { iaCall, iaJson } from '../lib/ai'
+import { iaCall, iaJson, getVoiceGuide, withVoiceGuide } from '../lib/ai'
 
 function fechaHoyISO() {
   const d = new Date()
@@ -58,7 +58,8 @@ export default function Training() {
     setIaBusy(true); setIaErr('')
     try {
       const anteriores = pils.slice(0, 8).map((p) => `#${p.numero} [${p.concepto}] ${p.titulo}: ${p.pregunta}`).join('\n')
-      const system = `Eres experto en formación de equipos de chat/ventas para OnlyFans en la agencia Divine Desire. Genera UNA "píldora de valor" diaria: un concepto breve y práctico (técnica de venta, psicología del fan, gestión de objeciones, etc.) seguido de una pregunta tipo test de una sola respuesta correcta para comprobar que se ha entendido.\n\nPíldoras anteriores ya usadas (no repitas el mismo concepto):\n${anteriores}\n\nDevuelve SOLO un JSON válido (sin markdown) con esta forma exacta: {"concepto":"nombre corto del concepto","titulo":"título llamativo","contenido":"explicación práctica de 3-5 frases","pregunta":"la pregunta del test","opcion_a":"...","opcion_b":"...","opcion_c":"...","opcion_d":"...","respuesta_correcta":"A|B|C|D","explicacion_correcta":"por qué es la correcta, 1-2 frases"}`
+      const guia = await getVoiceGuide()
+      const system = withVoiceGuide(`Eres experto en formación de equipos de chat/ventas para OnlyFans en la agencia Divine Desire. Genera UNA "píldora de valor" diaria: un concepto breve y práctico (técnica de venta, psicología del fan, gestión de objeciones, etc.) seguido de una pregunta tipo test de una sola respuesta correcta para comprobar que se ha entendido.\n\nPíldoras anteriores ya usadas (no repitas el mismo concepto):\n${anteriores}\n\nDevuelve SOLO un JSON válido (sin markdown) con esta forma exacta: {"concepto":"nombre corto del concepto","titulo":"título llamativo","contenido":"explicación práctica de 3-5 frases","pregunta":"la pregunta del test","opcion_a":"...","opcion_b":"...","opcion_c":"...","opcion_d":"...","respuesta_correcta":"A|B|C|D","explicacion_correcta":"por qué es la correcta, 1-2 frases"}`, guia)
       const txt = await iaCall(system, [{ role: 'user', content: 'Genera la píldora de hoy.' }], 900)
       const obj = iaJson(txt)
       setForm({

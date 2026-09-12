@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
-import { iaCall, iaJson } from '../lib/ai'
+import { iaCall, iaJson, getVoiceGuide, withVoiceGuide } from '../lib/ai'
 
 const CAT_PACKS = ['Ticket bajo', 'Medium-Spender', 'Premium', 'Lanzamiento', 'Upsell', 'Estratégico 🐀']
 
@@ -36,7 +36,8 @@ export default function Packs() {
     try {
       const refs = rows.filter((r) => r.es_referencia).slice(0, 14)
         .map((r) => `[${r.categoria}] ${r.titulo}${r.precio ? ` (${r.precio})` : ''}\nContenido: ${r.contenido || ''}\nCopy: ${r.copy || ''}`).join('\n---\n')
-      const system = `Eres un copywriter experto en venta de packs para OnlyFans dentro de la agencia Divine Desire. Escribes en español, tono coqueto, natural y creíble, nunca explícito ni vulgar. Los packs son ESTRATÉGICOS: deben parecer mucho contenido y dejar al fan con ganas de más. Sigues el estilo de estas referencias del equipo:\n\n${refs}\n\nDevuelve SOLO un JSON válido (sin markdown) con esta forma exacta: {"titulo":"...","precio":"$..","contenido":"lista breve de lo que incluye","copy":"el mensaje listo para enviar al fan","notas":"nota estratégica corta para el chatter"}`
+      const guia = await getVoiceGuide()
+      const system = withVoiceGuide(`Eres un copywriter experto en venta de packs para OnlyFans dentro de la agencia Divine Desire. Escribes en español, tono coqueto, natural y creíble, nunca explícito ni vulgar. Los packs son ESTRATÉGICOS: deben parecer mucho contenido y dejar al fan con ganas de más. Sigues el estilo de estas referencias del equipo:\n\n${refs}\n\nDevuelve SOLO un JSON válido (sin markdown) con esta forma exacta: {"titulo":"...","precio":"$..","contenido":"lista breve de lo que incluye","copy":"el mensaje listo para enviar al fan","notas":"nota estratégica corta para el chatter"}`, guia)
       const txt = await iaCall(system, [{ role: 'user', content: `Categoría: ${iaCat}\nPetición: ${iaPrompt}` }], 1300)
       setIaOut(iaJson(txt))
     } catch (e) { setIaErr(e.message) }

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
-import { iaCall, iaJson } from '../lib/ai'
+import { iaCall, iaJson, getVoiceGuide, withVoiceGuide } from '../lib/ai'
 
 const CAT_ACT = ['Urgencia', 'Curiosidad', 'Fecha especial', 'Festivo / día mundial']
 
@@ -45,7 +45,8 @@ export default function Activation() {
       const buenos = rows.filter((r) => (r.funciono || 0) > (r.no_funciono || 0)).map((r) => r.texto)
       const refs = rows.filter((r) => r.categoria === iaCat).slice(0, 10).map((r) => r.texto)
       const pool = buenos.length ? buenos.slice(0, 12) : refs
-      const system = `Eres experto en mensajes masivos de activación para OnlyFans en la agencia Divine Desire. Objetivo: reactivar fans inactivos y abrir conversación. Reglas: combinar curiosidad, sorpresa o urgencia; NUNCA empezar con 'hola qué tal'; mensajes creíbles y NO sexuales; en español, tono natural y femenino, con algún emoji. Categoría pedida: ${iaCat}.\n\nMensajes que han funcionado bien al equipo (úsalos como referencia de estilo, NO los copies literal):\n${pool.map((t) => `• ${t}`).join('\n')}\n\nDevuelve SOLO un array JSON de 4 strings (sin markdown), cada string un mensaje listo para enviar.`
+      const guia = await getVoiceGuide()
+      const system = withVoiceGuide(`Eres experto en mensajes masivos de activación para OnlyFans en la agencia Divine Desire. Objetivo: reactivar fans inactivos y abrir conversación. Reglas: combinar curiosidad, sorpresa o urgencia; NUNCA empezar con 'hola qué tal'; mensajes creíbles y NO sexuales; en español, tono natural y femenino, con algún emoji. Categoría pedida: ${iaCat}.\n\nMensajes que han funcionado bien al equipo (úsalos como referencia de estilo, NO los copies literal):\n${pool.map((t) => `• ${t}`).join('\n')}\n\nDevuelve SOLO un array JSON de 4 strings (sin markdown), cada string un mensaje listo para enviar.`, guia)
       const txt = await iaCall(system, [{ role: 'user', content: iaPrompt.trim() || `Genera 4 mensajes nuevos de la categoría ${iaCat}` }], 900)
       const arr = iaJson(txt)
       setIaOut(Array.isArray(arr) ? arr : [])

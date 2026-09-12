@@ -1,5 +1,17 @@
 import { supabase } from './supabase'
 
+// Trae la guía de voz de marca que el equipo haya escrito en "Voz de marca"
+export async function getVoiceGuide() {
+  const { data } = await supabase.from('ai_settings').select('guia').eq('id', 1).single()
+  return data?.guia?.trim() || ''
+}
+
+// Junta el system prompt propio del generador con la guía de voz del equipo, si existe
+export function withVoiceGuide(system, guia) {
+  if (!guia) return system
+  return `${system}\n\nGUÍA DE VOZ DEL EQUIPO (sigue esto por encima de cualquier otra indicación de estilo):\n${guia}`
+}
+
 // Llama a la Edge Function "generate-ai", que a su vez llama a la API de Claude de forma segura.
 export async function iaCall(system, messages, max_tokens) {
   const { data, error } = await supabase.functions.invoke('generate-ai', {
