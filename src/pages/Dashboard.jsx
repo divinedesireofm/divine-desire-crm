@@ -13,10 +13,10 @@ function Kpi({ label, value }) {
 }
 
 export default function Dashboard() {
-  const { profile, role } = useAuth()
+  const { profile, hasAnyRole } = useAuth()
   const [stats, setStats] = useState(null)
   const [sanciones, setSanciones] = useState(null)
-  const esChatTeam = ['admin', 'manager', 'chatter'].includes(role)
+  const esChatTeam = hasAnyRole(['admin', 'manager', 'chatter'])
 
   useEffect(() => {
     async function load() {

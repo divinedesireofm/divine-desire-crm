@@ -22,6 +22,8 @@ const SECTIONS = [
     items: [
       { to: '/asistencia', label: 'Entradas y salidas', icon: 'clock', roles: ['admin', 'manager', 'chatter'] },
       { to: '/reportes-turno', label: 'Reportes de turno', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/solicitudes', label: 'Solicitudes', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/masivos', label: 'Masivos PPV', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/chatters', label: 'Chatters', icon: 'users', roles: ['admin', 'manager'] },
       { to: '/horarios', label: 'Horarios', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/pagos', label: 'Pagos', icon: 'dollar', roles: ['admin', 'manager', 'chatter'] },
@@ -64,23 +66,23 @@ const SECTIONS = [
 
 const ROLE_LABELS = {
   admin: 'Administrador',
-  manager: 'Manager',
+  manager: 'Manager de Chatting',
   chatter: 'Chatter',
   ig_manager: 'Manager de Instagram',
   ig_assistant: 'Asistente de Instagram',
 }
 
-// La sección "de casa" de cada rol no se puede plegar, para que siempre esté a la vista
-const SIEMPRE_ABIERTA = {
-  admin: [],
-  manager: ['chatting'],
-  chatter: ['chatting'],
-  ig_manager: ['instagram'],
-  ig_assistant: ['instagram'],
+// La sección "de casa" de cada rol no se puede plegar, para que siempre esté a la vista.
+// Si tiene varios roles, se le fijan todas las secciones de casa que correspondan.
+const SECCION_FIJA_POR_ROL = {
+  manager: 'chatting',
+  chatter: 'chatting',
+  ig_manager: 'instagram',
+  ig_assistant: 'instagram',
 }
 
 export default function Layout() {
-  const { profile, role, signOut } = useAuth()
+  const { profile, roles, hasAnyRole, signOut } = useAuth()
   const [collapsed, setCollapsed] = useState({})
   const mainRef = useRef(null)
   const location = useLocation()
@@ -90,13 +92,16 @@ export default function Layout() {
   }, [location.pathname])
 
   const visibleSections = SECTIONS
-    .map((s) => ({ ...s, items: s.items.filter((item) => item.roles.includes(role)) }))
+    .map((s) => ({ ...s, items: s.items.filter((item) => hasAnyRole(item.roles)) }))
     .filter((s) => s.items.length > 0)
 
+  const seccionesFijas = new Set(roles.map((r) => SECCION_FIJA_POR_ROL[r]).filter(Boolean))
+  const etiquetaRoles = roles.map((r) => ROLE_LABELS[r] || r).join(' · ')
+
   return (
-    <div className="min-h-screen flex">
+    <div className="h-screen flex overflow-hidden">
       <aside
-        className="w-64 shrink-0 flex flex-col p-4"
+        className="w-64 shrink-0 flex flex-col p-4 h-screen overflow-hidden"
         style={{ background: 'var(--panel-alt)', borderRight: '1px solid var(--border)' }}
       >
         <div className="mb-8 px-2 text-center">
@@ -107,7 +112,7 @@ export default function Layout() {
 
         <nav className="flex-1 space-y-4 overflow-y-auto">
           {visibleSections.map((section) => {
-            const fija = SIEMPRE_ABIERTA[role]?.includes(section.id)
+            const fija = seccionesFijas.has(section.id)
             const abierta = fija || !collapsed[section.id]
             return (
               <div key={section.id}>
@@ -156,7 +161,7 @@ export default function Layout() {
         <div className="pt-4 mt-4" style={{ borderTop: '1px solid var(--border)' }}>
           <p className="px-2 text-sm font-medium">{profile?.full_name}</p>
           <p className="px-2 text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-            {ROLE_LABELS[role] || role}
+            {etiquetaRoles}
           </p>
           <button
             onClick={signOut}

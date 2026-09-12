@@ -5,8 +5,8 @@ import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, Table, Td, PageHeader } from '../components/ui'
 
 export default function WeeklyMetrics() {
-  const { role } = useAuth()
-  const canEdit = role === 'admin'
+  const { hasRole } = useAuth()
+  const canEdit = hasRole('admin')
   const [models, setModels] = useState([])
   const [selectedModel, setSelectedModel] = useState('')
   const [metrics, setMetrics] = useState([])

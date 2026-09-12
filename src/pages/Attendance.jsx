@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { Panel, Select, Input, PageHeader } from '../components/ui'
+import { Panel, Select, Input, Button, PageHeader } from '../components/ui'
+import { exportCSV } from '../lib/csv'
 
 const TIPOS = {
   entrada: { n: 'Entró', color: 'var(--success)' },
@@ -17,7 +18,10 @@ function fmtTS(ts) {
 }
 
 export default function Attendance() {
-  const { profile } = useAuth()
+  const { profile, hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
+  const [borrarAntes, setBorrarAntes] = useState('')
+  const [borrando, setBorrando] = useState(false)
   const [feed, setFeed] = useState([])
   const [miUltimo, setMiUltimo] = useState(null)
   const [fUser, setFUser] = useState('todos')
@@ -82,6 +86,24 @@ export default function Attendance() {
     { tipo: 'salida', label: 'Salgo', sub: 'fin de jornada', variant: 'danger' },
   ]
 
+  function exportar() {
+    exportCSV('entradas_y_salidas', feed, [
+      { label: 'Chatter', get: (r) => r.profiles?.full_name || '' },
+      { label: 'Tipo', get: (r) => TIPOS[r.tipo]?.n || r.tipo },
+      { label: 'Fecha y hora', get: (r) => fmtTS(r.created_at) },
+    ])
+  }
+
+  async function borrarAntiguos() {
+    if (!borrarAntes) return
+    if (!confirm(`¿Borrar TODOS los fichajes anteriores al ${borrarAntes}? Esta acción no se puede deshacer.`)) return
+    setBorrando(true)
+    await supabase.from('attendance_events').delete().lt('created_at', `${borrarAntes}T00:00:00`)
+    setBorrando(false)
+    setBorrarAntes('')
+    load()
+  }
+
   return (
     <div>
       <PageHeader
@@ -124,8 +146,18 @@ export default function Attendance() {
               {usuariosVistos.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
             </Select>
             <Input type="date" value={fFecha} onChange={(e) => setFFecha(e.target.value)} className="max-w-[160px]" />
+            <Button variant="ghost" onClick={exportar}>Exportar a Excel</Button>
           </div>
         </div>
+        {esMgr && (
+          <div className="flex items-center gap-2 mb-4 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Borrar fichajes anteriores a:</span>
+            <Input type="date" value={borrarAntes} onChange={(e) => setBorrarAntes(e.target.value)} className="max-w-[160px]" />
+            <Button variant="danger" onClick={borrarAntiguos} disabled={!borrarAntes || borrando}>
+              {borrando ? 'Borrando…' : 'Borrar'}
+            </Button>
+          </div>
+        )}
         {feed.length === 0 ? (
           <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>Sin registros</p>
         ) : (

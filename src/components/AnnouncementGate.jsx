@@ -3,11 +3,11 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button } from './ui'
 
-function scopesFor(role) {
-  if (role === 'admin') return ['general', 'chatting', 'instagram']
-  if (role === 'manager' || role === 'chatter') return ['general', 'chatting']
-  if (role === 'ig_manager' || role === 'ig_assistant') return ['general', 'instagram']
-  return ['general']
+function scopesFor(roles) {
+  const s = new Set(['general'])
+  if (roles.includes('admin') || roles.includes('manager') || roles.includes('chatter')) s.add('chatting')
+  if (roles.includes('admin') || roles.includes('ig_manager') || roles.includes('ig_assistant')) s.add('instagram')
+  return Array.from(s)
 }
 
 const AMBITO_LABEL = { general: 'General', chatting: 'Chatting', instagram: 'Instagram' }
@@ -18,14 +18,14 @@ function fmtFecha(ts) {
 }
 
 export default function AnnouncementGate({ children }) {
-  const { profile, role } = useAuth()
+  const { profile, roles } = useAuth()
   const [checking, setChecking] = useState(true)
   const [pendientes, setPendientes] = useState([])
   const [busy, setBusy] = useState(false)
 
   async function check() {
     setChecking(true)
-    const scopes = scopesFor(role)
+    const scopes = scopesFor(roles)
     const [{ data: anuncios }, { data: leidos }] = await Promise.all([
       supabase.from('announcements').select('*').in('ambito', scopes).order('fijado', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('announcement_reads').select('announcement_id').eq('usuario_id', profile.id),

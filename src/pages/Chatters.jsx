@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Table, Td, PageHeader } from '../components/ui'
 
 export default function Chatters() {
-  const { role } = useAuth()
-  const canEdit = role === 'admin'
+  const { hasRole } = useAuth()
+  const canEdit = hasRole('admin')
   const [chatters, setChatters] = useState([])
   const [unlinkedProfiles, setUnlinkedProfiles] = useState([])
   const [loading, setLoading] = useState(true)
@@ -13,13 +14,13 @@ export default function Chatters() {
 
   async function load() {
     setLoading(true)
-    const [{ data: existing }, { data: allChatterProfiles }] = await Promise.all([
+    const [{ data: existing }, allChatterProfiles] = await Promise.all([
       supabase.from('chatters').select('*, profiles(full_name)'),
-      supabase.from('profiles').select('id, full_name').in('role', ['chatter', 'manager']),
+      getProfilesByRoles(['chatter', 'manager']),
     ])
     setChatters(existing || [])
     const existingIds = new Set((existing || []).map((c) => c.id))
-    setUnlinkedProfiles((allChatterProfiles || []).filter((p) => !existingIds.has(p.id)))
+    setUnlinkedProfiles(allChatterProfiles.filter((p) => !existingIds.has(p.id)))
     setLoading(false)
   }
 

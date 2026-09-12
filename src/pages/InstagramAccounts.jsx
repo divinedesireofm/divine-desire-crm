@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
 
 const STATUS_OPTIONS = ['calentando', 'activa', 'en_revision', 'suspendida', 'baneada']
@@ -28,8 +29,8 @@ function diasTranscurridos(fecha) {
 }
 
 export default function InstagramAccounts() {
-  const { role } = useAuth()
-  const canEdit = role === 'admin' || role === 'ig_manager' || role === 'ig_assistant'
+  const { hasAnyRole } = useAuth()
+  const canEdit = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
   const [assistants, setAssistants] = useState([])
@@ -41,14 +42,14 @@ export default function InstagramAccounts() {
 
   async function load() {
     setLoading(true)
-    const [{ data: acc }, { data: mods }, { data: profs }] = await Promise.all([
+    const [{ data: acc }, { data: mods }, profs] = await Promise.all([
       supabase.from('instagram_accounts').select('*, models(stage_name), profiles(full_name)').order('created_at', { ascending: false }),
       supabase.from('models').select('id, stage_name'),
-      supabase.from('profiles').select('id, full_name').eq('role', 'ig_assistant'),
+      getProfilesByRoles(['ig_assistant']),
     ])
     setAccounts(acc || [])
     setModels(mods || [])
-    setAssistants(profs || [])
+    setAssistants(profs)
     setLoading(false)
   }
 

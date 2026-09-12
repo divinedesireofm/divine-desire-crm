@@ -4,8 +4,8 @@ import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, PageHeader } from '../components/ui'
 
 export default function Prices() {
-  const { profile, role } = useAuth()
-  const esMgr = role === 'admin' || role === 'manager'
+  const { profile, hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
   const [rows, setRows] = useState([])
   const [edit, setEdit] = useState(null)
 

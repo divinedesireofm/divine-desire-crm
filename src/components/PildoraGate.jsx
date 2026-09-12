@@ -11,8 +11,8 @@ function fechaHoyISO() {
 const LETRAS = ['A', 'B', 'C', 'D']
 
 export default function PildoraGate({ children }) {
-  const { profile, role } = useAuth()
-  const aplica = ['admin', 'manager', 'chatter'].includes(role)
+  const { profile, hasAnyRole } = useAuth()
+  const aplica = hasAnyRole(['admin', 'manager', 'chatter'])
   const [checking, setChecking] = useState(true)
   const [pil, setPil] = useState(null)
   const [sel, setSel] = useState('')

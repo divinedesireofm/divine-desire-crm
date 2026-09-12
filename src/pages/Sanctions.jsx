@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { fmtMoney } from '../lib/pagos'
 
@@ -31,13 +32,13 @@ export default function Sanctions() {
   const [nameMap, setNameMap] = useState({})
 
   async function load() {
-    const [{ data: s }, { data: u }, { data: all }] = await Promise.all([
+    const [{ data: s }, u, { data: all }] = await Promise.all([
       supabase.from('sanctions').select('*, profiles(full_name)').order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(400),
-      supabase.from('profiles').select('id, full_name, role').in('role', ['manager', 'chatter']).order('full_name'),
+      getProfilesByRoles(['manager', 'chatter']),
       supabase.from('profiles').select('id, full_name'),
     ])
     setRows(s || [])
-    setUsers(u || [])
+    setUsers(u)
     const map = {}
     ;(all || []).forEach((p) => { map[p.id] = p.full_name })
     setNameMap(map)

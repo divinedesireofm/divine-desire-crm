@@ -16,8 +16,8 @@ function fmtFecha(iso) {
 }
 
 export default function Payments() {
-  const { role } = useAuth()
-  return role === 'admin' ? <PagosAdmin /> : <MisPagos />
+  const { hasRole } = useAuth()
+  return hasRole('admin') ? <PagosAdmin /> : <MisPagos />
 }
 
 function PagosAdmin() {

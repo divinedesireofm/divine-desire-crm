@@ -7,8 +7,8 @@ import CopyButton from '../components/CopyButton'
 const CAT_SCRIPTS = ['Situaciones', 'Objeciones', 'Ratas 🐀', 'Ventas', 'Suscripciones']
 
 export default function Scripts() {
-  const { profile, role } = useAuth()
-  const esMgr = role === 'admin' || role === 'manager'
+  const { profile, hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
   const [rows, setRows] = useState([])
   const [q, setQ] = useState('')
   const [edit, setEdit] = useState(null)

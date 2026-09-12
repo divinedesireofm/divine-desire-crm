@@ -10,16 +10,18 @@ const SCOPE_ROLES = {
   instagram: ['admin', 'ig_manager', 'ig_assistant'],
 }
 
-function canCreate(role) {
-  if (role === 'admin') return ['general', 'chatting', 'instagram']
-  if (role === 'manager') return ['chatting']
-  if (role === 'ig_manager' || role === 'ig_assistant') return ['instagram']
-  return []
+function canCreate(roles) {
+  const s = new Set()
+  if (roles.includes('admin')) { s.add('general'); s.add('chatting'); s.add('instagram') }
+  if (roles.includes('manager')) s.add('chatting')
+  if (roles.includes('ig_manager') || roles.includes('ig_assistant')) s.add('instagram')
+  return Array.from(s)
 }
-function canSee(role) {
-  if (role === 'admin') return ['general', 'chatting', 'instagram']
-  if (role === 'manager' || role === 'chatter') return ['general', 'chatting']
-  return ['general', 'instagram']
+function canSee(roles) {
+  const s = new Set(['general'])
+  if (roles.includes('admin') || roles.includes('manager') || roles.includes('chatter')) s.add('chatting')
+  if (roles.includes('admin') || roles.includes('ig_manager') || roles.includes('ig_assistant')) s.add('instagram')
+  return Array.from(s)
 }
 function fmtFecha(ts) {
   const d = new Date(ts)
@@ -27,9 +29,9 @@ function fmtFecha(ts) {
 }
 
 export default function Announcements() {
-  const { profile, role } = useAuth()
-  const scopesCrear = canCreate(role)
-  const scopesVer = canSee(role)
+  const { profile, roles, hasAnyRole } = useAuth()
+  const scopesCrear = canCreate(roles)
+  const scopesVer = canSee(roles)
   const [rows, setRows] = useState([])
   const [reads, setReads] = useState({})
   const [totalUsers, setTotalUsers] = useState({})
@@ -38,15 +40,16 @@ export default function Announcements() {
   async function load() {
     const { data } = await supabase.from('announcements').select('*').in('ambito', scopesVer).order('fijado', { ascending: false }).order('created_at', { ascending: false })
     setRows(data || [])
-    if (data?.length && (role === 'admin' || role === 'manager' || role === 'ig_manager')) {
+    if (data?.length && hasAnyRole(['admin', 'manager', 'ig_manager'])) {
       const { data: r } = await supabase.from('announcement_reads').select('announcement_id').in('announcement_id', data.map((a) => a.id))
       const counts = {}
       ;(r || []).forEach((x) => { counts[x.announcement_id] = (counts[x.announcement_id] || 0) + 1 })
       setReads(counts)
-      const { data: profs } = await supabase.from('profiles').select('id, role')
+      const { data: urows } = await supabase.from('user_roles').select('user_id, role')
       const tot = {}
       for (const scope of ['general', 'chatting', 'instagram']) {
-        tot[scope] = (profs || []).filter((p) => SCOPE_ROLES[scope].includes(p.role)).length
+        const ids = new Set((urows || []).filter((p) => SCOPE_ROLES[scope].includes(p.role)).map((p) => p.user_id))
+        tot[scope] = ids.size
       }
       setTotalUsers(tot)
     }
@@ -127,12 +130,12 @@ export default function Announcements() {
                   </div>
                   <p className="text-sm whitespace-pre-wrap mb-3" style={{ color: 'var(--text-muted)' }}>{a.texto}</p>
                   <div className="flex items-center gap-3 flex-wrap">
-                    {(role === 'admin' || role === 'manager' || role === 'ig_manager') && (
+                    {hasAnyRole(['admin', 'manager', 'ig_manager']) && (
                       <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                         Visto por {reads[a.id] || 0}/{totalUsers[scope] || '—'}
                       </span>
                     )}
-                    {(a.creado_por === profile.id || role === 'admin') && (
+                    {(a.creado_por === profile.id || hasAnyRole(['admin'])) && (
                       <>
                         <button onClick={() => togglePin(a)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
                           {a.fijado ? 'Desfijar' : 'Fijar'}

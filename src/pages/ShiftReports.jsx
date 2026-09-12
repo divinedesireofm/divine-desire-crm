@@ -1,6 +1,8 @@
 import { useEffect, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { getProfilesByRoles } from '../lib/roles'
+import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 
 const TURNOS = [
@@ -37,7 +39,8 @@ function fmtTS(ts) {
 }
 
 export default function ShiftReports() {
-  const { profile } = useAuth()
+  const { profile, hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
   const [modelos, setModelos] = useState([])
   const [reportes, setReportes] = useState([])
   const [detalles, setDetalles] = useState({})
@@ -51,15 +54,26 @@ export default function ShiftReports() {
   const [sel, setSel] = useState([])
   const [campos, setCampos] = useState({}) // { [modelId]: { texto, trafico, observaciones, facturacion } }
 
+  const [fChatter, setFChatter] = useState('todos')
+  const [fFecha, setFFecha] = useState('')
+  const [chatters, setChatters] = useState([])
+  const [borrarAntes, setBorrarAntes] = useState('')
+  const [borrando, setBorrando] = useState(false)
+
   async function load() {
-    const [{ data: m }, { data: r }] = await Promise.all([
+    let q = supabase.from('shift_reports').select('*, profiles(full_name)').order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(300)
+    if (fChatter !== 'todos') q = q.eq('chatter_id', fChatter)
+    if (fFecha) q = q.eq('fecha', fFecha)
+    const [{ data: m }, { data: r }, cs] = await Promise.all([
       supabase.from('models').select('id, stage_name').eq('status', 'activa').order('stage_name'),
-      supabase.from('shift_reports').select('*, profiles(full_name)').order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(120),
+      q,
+      getProfilesByRoles(['manager', 'chatter']),
     ])
     setModelos(m || [])
     setReportes(r || [])
+    setChatters(cs)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [fChatter, fFecha])
 
   function toggleModelo(id) {
     setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.concat([id])))
@@ -106,6 +120,46 @@ export default function ShiftReports() {
       const { data } = await supabase.from('shift_report_details').select('*, models(stage_name)').eq('report_id', rep.id)
       setDetalles((prev) => ({ ...prev, [rep.id]: data || [] }))
     }
+  }
+
+  async function borrarReporte(rep) {
+    if (!confirm('¿Eliminar este reporte de turno?')) return
+    await supabase.from('shift_reports').delete().eq('id', rep.id)
+    load()
+  }
+
+  async function borrarAntiguos() {
+    if (!borrarAntes) return
+    if (!confirm(`¿Borrar TODOS los reportes anteriores al ${borrarAntes}? Esta acción no se puede deshacer.`)) return
+    setBorrando(true)
+    await supabase.from('shift_reports').delete().lt('fecha', borrarAntes)
+    setBorrando(false)
+    setBorrarAntes('')
+    load()
+  }
+
+  async function exportar() {
+    // Exportamos a nivel de detalle (una fila por modelo dentro de cada reporte)
+    const filas = []
+    for (const r of reportes) {
+      let det = detalles[r.id]
+      if (!det) {
+        const { data } = await supabase.from('shift_report_details').select('*, models(stage_name)').eq('report_id', r.id)
+        det = data || []
+      }
+      det.forEach((d) => filas.push({ ...r, modelo: d.models?.stage_name, texto: d.texto, trafico: d.trafico, facturacion: d.facturacion, observaciones: d.observaciones }))
+    }
+    exportCSV('reportes_de_turno', filas, [
+      { label: 'Fecha', get: (r) => fmtFecha(r.fecha) },
+      { label: 'Turno', get: (r) => T_NAME(r.turno) },
+      { label: 'Chatter', get: (r) => r.profiles?.full_name || '' },
+      { label: 'Modelo', key: 'modelo' },
+      { label: 'Tráfico', get: (r) => TRAFICO.find((t) => t.id === r.trafico)?.n || '' },
+      { label: 'Facturación', key: 'facturacion' },
+      { label: 'Reporte', key: 'texto' },
+      { label: 'Observaciones', key: 'observaciones' },
+      { label: 'Enviado', get: (r) => fmtTS(r.created_at) },
+    ])
   }
 
   return (
@@ -214,7 +268,26 @@ export default function ShiftReports() {
       </Panel>
 
       <Panel className="p-5">
-        <p className="text-sm font-medium mb-4">Reportes del equipo</p>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+          <p className="text-sm font-medium">Reportes del equipo</p>
+          <div className="flex gap-2">
+            <Select value={fChatter} onChange={(e) => setFChatter(e.target.value)} className="max-w-[180px]">
+              <option value="todos">Todos</option>
+              {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+            </Select>
+            <Input type="date" value={fFecha} onChange={(e) => setFFecha(e.target.value)} className="max-w-[160px]" />
+            <Button variant="ghost" onClick={exportar}>Exportar a Excel</Button>
+          </div>
+        </div>
+        {esMgr && (
+          <div className="flex items-center gap-2 mb-4 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Borrar reportes anteriores a:</span>
+            <Input type="date" value={borrarAntes} onChange={(e) => setBorrarAntes(e.target.value)} className="max-w-[160px]" />
+            <Button variant="danger" onClick={borrarAntiguos} disabled={!borrarAntes || borrando}>
+              {borrando ? 'Borrando…' : 'Borrar'}
+            </Button>
+          </div>
+        )}
         {reportes.length === 0 ? (
           <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>Sin reportes todavía</p>
         ) : (
@@ -239,7 +312,14 @@ export default function ShiftReports() {
                       </td>
                       <td className="px-3 py-2"><strong>{r.profiles?.full_name}</strong></td>
                       <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{fmtTS(r.created_at)}</td>
-                      <td className="px-3 py-2 text-right" style={{ color: 'var(--text-muted)' }}>{abierto === r.id ? '▲' : '▼'}</td>
+                      <td className="px-3 py-2 text-right" style={{ color: 'var(--text-muted)' }}>
+                        {esMgr && (
+                          <button onClick={(e) => { e.stopPropagation(); borrarReporte(r) }} className="mr-3 hover:underline" style={{ color: 'var(--danger)' }}>
+                            Borrar
+                          </button>
+                        )}
+                        {abierto === r.id ? '▲' : '▼'}
+                      </td>
                     </tr>
                     {abierto === r.id && (
                       <tr>

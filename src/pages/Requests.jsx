@@ -63,8 +63,8 @@ function genTexto(r) {
 const EMPTY_FORM = { tipo: 'personalizado', modelo: '', fan: '', user_of: '', precio: '', duracion: '', idioma: 'español', uso: 'masivo', descripcion: '', imagenesTxt: '' }
 
 export default function Requests() {
-  const { profile, role } = useAuth()
-  const esMgr = role === 'admin' || role === 'manager'
+  const { profile, hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
   const [rows, setRows] = useState([])
   const [modelos, setModelos] = useState([])
   const [form, setForm] = useState(EMPTY_FORM)

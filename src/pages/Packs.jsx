@@ -7,8 +7,8 @@ import CopyButton from '../components/CopyButton'
 const CAT_PACKS = ['Ticket bajo', 'Medium-Spender', 'Premium', 'Lanzamiento', 'Upsell', 'Estratégico 🐀']
 
 export default function Packs() {
-  const { profile, role } = useAuth()
-  const esMgr = role === 'admin' || role === 'manager'
+  const { profile, hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
   const [rows, setRows] = useState([])
   const [edit, setEdit] = useState(null)
 

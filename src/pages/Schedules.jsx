@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 
 const TURNOS = [
@@ -23,8 +24,8 @@ function fmtFecha(iso) { if (!iso) return ''; const [y, m, d] = iso.split('-'); 
 function fechaHoyISO() { return isoDate(new Date()) }
 
 export default function Schedules() {
-  const { role } = useAuth()
-  const esMgr = role === 'admin' || role === 'manager'
+  const { hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
   const [tab, setTab] = useState('sem')
 
   return (
@@ -63,12 +64,12 @@ function HorarioSemana({ esMgr }) {
 
   async function load() {
     const desde = isoDate(dias[0]), hasta = isoDate(dias[6])
-    const [{ data: r }, { data: u }, { data: g }] = await Promise.all([
+    const [{ data: r }, u, { data: g }] = await Promise.all([
       supabase.from('schedules').select('*, profiles(full_name)').gte('fecha', desde).lte('fecha', hasta),
-      supabase.from('profiles').select('id, full_name').in('role', ['manager', 'chatter']).order('full_name'),
+      getProfilesByRoles(['manager', 'chatter']),
       supabase.from('shift_groups').select('id, nombre').eq('activo', true).order('nombre'),
     ])
-    setRows(r || []); setChatters(u || []); setGrupos(g || [])
+    setRows(r || []); setChatters(u); setGrupos(g || [])
   }
   useEffect(() => { load() }, [lunes])
 

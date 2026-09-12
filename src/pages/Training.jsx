@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 
 function fechaHoyISO() {
@@ -23,12 +24,12 @@ export default function Training() {
   const [error, setError] = useState('')
 
   async function load() {
-    const [{ data: ps }, { data: us }] = await Promise.all([
+    const [{ data: ps }, us] = await Promise.all([
       supabase.from('training_pills').select('*').order('numero', { ascending: false }).limit(120),
-      supabase.from('profiles').select('id, full_name, role').in('role', ['admin', 'manager', 'chatter']).eq('active', true),
+      getProfilesByRoles(['admin', 'manager', 'chatter'], { onlyActive: true }),
     ])
     setPils(ps || [])
-    setEquipo(us || [])
+    setEquipo(us)
     const activa = (ps || []).find((p) => p.activa) || ps?.[0]
     setSel(activa || null)
   }
@@ -185,7 +186,7 @@ export default function Training() {
                     return (
                       <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td className="px-2 py-2">{u.full_name}</td>
-                        <td className="px-2 py-2">{u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager' : 'Chatter'}</td>
+                        <td className="px-2 py-2">{u.role === 'admin' ? 'Admin' : u.role === 'manager' ? 'Manager de Chatting' : 'Chatter'}</td>
                         <td className="px-2 py-2">
                           {!r ? (
                             <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--gold)22', color: 'var(--gold)' }}>Pendiente</span>

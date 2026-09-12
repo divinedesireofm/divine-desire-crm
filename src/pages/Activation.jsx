@@ -7,8 +7,8 @@ import CopyButton from '../components/CopyButton'
 const CAT_ACT = ['Urgencia', 'Curiosidad', 'Fecha especial', 'Festivo / día mundial']
 
 export default function Activation() {
-  const { profile, role } = useAuth()
-  const esMgr = role === 'admin' || role === 'manager'
+  const { profile, hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
   const [rows, setRows] = useState([])
   const [busyId, setBusyId] = useState(null)
   const [edit, setEdit] = useState(null)

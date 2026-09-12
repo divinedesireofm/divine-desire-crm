@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 
@@ -37,8 +38,8 @@ export default function Massives() {
 }
 
 function MasivosCal() {
-  const { profile, role } = useAuth()
-  const esMgr = role === 'admin' || role === 'manager'
+  const { profile, hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
   const [ref, setRef] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [rows, setRows] = useState([])
   const [modelos, setModelos] = useState([])
@@ -50,12 +51,12 @@ function MasivosCal() {
 
   async function load() {
     const desde = isoDate(first), hasta = isoDate(last)
-    const [{ data: r }, { data: m }, { data: u }] = await Promise.all([
+    const [{ data: r }, { data: m }, u] = await Promise.all([
       supabase.from('massive_calendar').select('*, profiles(full_name), models(stage_name)').gte('fecha', desde).lte('fecha', hasta),
       supabase.from('models').select('id, stage_name').eq('status', 'activa').order('stage_name'),
-      supabase.from('profiles').select('id, full_name').in('role', ['manager', 'chatter']).order('full_name'),
+      getProfilesByRoles(['manager', 'chatter']),
     ])
-    setRows(r || []); setModelos(m || []); setChatters(u || [])
+    setRows(r || []); setModelos(m || []); setChatters(u)
   }
   useEffect(() => { load() }, [y, mo])
 
@@ -193,8 +194,8 @@ function MasivoModal({ add, modelos, chatters, profile, onClose, onSaved }) {
 }
 
 function Formatos() {
-  const { profile, role } = useAuth()
-  const esMgr = role === 'admin' || role === 'manager'
+  const { profile, hasAnyRole } = useAuth()
+  const esMgr = hasAnyRole(['admin', 'manager'])
   const [rows, setRows] = useState([])
   const [edit, setEdit] = useState(null)
 

@@ -31,6 +31,7 @@ const STATUS_COLORS = {
   firmado: 'var(--success)',
   pausada: 'var(--gold)',
   en_negociacion: 'var(--gold)',
+  en_preparacion: 'var(--accent)',
   negociando: 'var(--gold)',
   contactado: 'var(--gold)',
   en_conversacion: 'var(--gold)',
@@ -43,6 +44,11 @@ const STATUS_COLORS = {
   descartado: 'var(--text-muted)',
 }
 
+function capitalizar(s) {
+  if (!s) return ''
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
 export function StatusBadge({ status }) {
   const color = STATUS_COLORS[status] || 'var(--text-muted)'
   return (
@@ -51,7 +57,7 @@ export function StatusBadge({ status }) {
       style={{ background: `${color}22`, color }}
     >
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
-      {status?.replaceAll('_', ' ')}
+      {capitalizar(status?.replaceAll('_', ' '))}
     </span>
   )
 }
