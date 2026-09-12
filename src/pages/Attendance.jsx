@@ -18,8 +18,8 @@ function fmtTS(ts) {
 }
 
 export default function Attendance() {
-  const { profile, hasAnyRole } = useAuth()
-  const esMgr = hasAnyRole(['admin', 'manager'])
+  const { profile, hasRole } = useAuth()
+  
   const [borrarAntes, setBorrarAntes] = useState('')
   const [borrando, setBorrando] = useState(false)
   const [feed, setFeed] = useState([])
@@ -149,7 +149,7 @@ export default function Attendance() {
             <Button variant="ghost" onClick={exportar}>Exportar a Excel</Button>
           </div>
         </div>
-        {esMgr && (
+        {hasRole('admin') && (
           <div className="flex items-center gap-2 mb-4 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Borrar fichajes anteriores a:</span>
             <Input type="date" value={borrarAntes} onChange={(e) => setBorrarAntes(e.target.value)} className="max-w-[160px]" />

@@ -39,7 +39,7 @@ function fmtTS(ts) {
 }
 
 export default function ShiftReports() {
-  const { profile, hasAnyRole } = useAuth()
+  const { profile, hasAnyRole, hasRole } = useAuth()
   const esMgr = hasAnyRole(['admin', 'manager'])
   const [modelos, setModelos] = useState([])
   const [reportes, setReportes] = useState([])
@@ -51,8 +51,10 @@ export default function ShiftReports() {
 
   const [fecha, setFecha] = useState(fechaHoyISO())
   const [turno, setTurno] = useState(turnoActualVE())
+  const [turnoAuto, setTurnoAuto] = useState(false)
   const [sel, setSel] = useState([])
-  const [campos, setCampos] = useState({}) // { [modelId]: { texto, trafico, observaciones, facturacion } }
+  const [campos, setCampos] = useState({}) // { [modelId]: { texto, trafico, fans, facturacion } }
+  const [fanInput, setFanInput] = useState({}) // texto en curso del input de fans, por modelo
 
   const [fChatter, setFChatter] = useState('todos')
   const [fFecha, setFFecha] = useState('')
@@ -73,19 +75,42 @@ export default function ShiftReports() {
     setReportes(r || [])
     setChatters(cs)
   }
+
+  // Preselecciona el turno asignado al chatter (si lo tiene) para que no tenga que elegirlo a mano,
+  // pero se puede cambiar libremente por si cubre otro turno ese día.
+  useEffect(() => {
+    async function detectarTurnoAsignado() {
+      if (!profile) return
+      const { data } = await supabase.from('chatters').select('shift').eq('id', profile.id).single()
+      const shift = (data?.shift || '').trim().toLowerCase()
+      const match = TURNOS.find((t) => t.id === shift)
+      if (match) { setTurno(match.id); setTurnoAuto(true) }
+    }
+    detectarTurnoAsignado()
+  }, [profile])
   useEffect(() => { load() }, [fChatter, fFecha])
 
   function toggleModelo(id) {
     setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.concat([id])))
-    setCampos((c) => c[id] ? c : { ...c, [id]: { texto: '', trafico: 'medio', observaciones: '', facturacion: '' } })
+    setCampos((c) => c[id] ? c : { ...c, [id]: { texto: '', trafico: 'medio', fans: [], facturacion: '' } })
   }
   function setCampo(id, key, value) {
     setCampos((c) => ({ ...c, [id]: { ...c[id], [key]: value } }))
+  }
+  function agregarFan(modelId) {
+    const nombre = (fanInput[modelId] || '').trim()
+    if (!nombre) return
+    setCampos((c) => ({ ...c, [modelId]: { ...c[modelId], fans: [...(c[modelId]?.fans || []), nombre] } }))
+    setFanInput((f) => ({ ...f, [modelId]: '' }))
+  }
+  function quitarFan(modelId, i) {
+    setCampos((c) => ({ ...c, [modelId]: { ...c[modelId], fans: c[modelId].fans.filter((_, j) => j !== i) } }))
   }
 
   async function enviar() {
     setError(null)
     setOk(null)
+    if (!turno) { setError('Selecciona el turno antes de enviar el reporte.'); return }
     if (!sel.length) { setError('Selecciona al menos una modelo.'); return }
     const vacios = sel.filter((id) => !(campos[id]?.texto || '').trim())
     if (vacios.length) { setError('Falta el reporte de alguna modelo seleccionada.'); return }
@@ -101,7 +126,7 @@ export default function ShiftReports() {
       model_id,
       texto: campos[model_id].texto.trim(),
       trafico: campos[model_id].trafico || null,
-      observaciones: campos[model_id].observaciones?.trim() || null,
+      fans_compradores: campos[model_id].fans || [],
       facturacion: campos[model_id].facturacion ? parseFloat(campos[model_id].facturacion) : null,
     }))
     const { error: e2 } = await supabase.from('shift_report_details').insert(detalle)
@@ -147,7 +172,7 @@ export default function ShiftReports() {
         const { data } = await supabase.from('shift_report_details').select('*, models(stage_name)').eq('report_id', r.id)
         det = data || []
       }
-      det.forEach((d) => filas.push({ ...r, modelo: d.models?.stage_name, texto: d.texto, trafico: d.trafico, facturacion: d.facturacion, observaciones: d.observaciones }))
+      det.forEach((d) => filas.push({ ...r, modelo: d.models?.stage_name, texto: d.texto, trafico: d.trafico, facturacion: d.facturacion, fans: (d.fans_compradores || []).join(', ') }))
     }
     exportCSV('reportes_de_turno', filas, [
       { label: 'Fecha', get: (r) => fmtFecha(r.fecha) },
@@ -157,7 +182,7 @@ export default function ShiftReports() {
       { label: 'Tráfico', get: (r) => TRAFICO.find((t) => t.id === r.trafico)?.n || '' },
       { label: 'Facturación', key: 'facturacion' },
       { label: 'Reporte', key: 'texto' },
-      { label: 'Observaciones', key: 'observaciones' },
+      { label: 'Fans que compraron', key: 'fans' },
       { label: 'Enviado', get: (r) => fmtTS(r.created_at) },
     ])
   }
@@ -174,8 +199,11 @@ export default function ShiftReports() {
             <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Turno</label>
-            <Select value={turno} onChange={(e) => setTurno(e.target.value)}>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>
+              Turno {turnoAuto && <span style={{ color: 'var(--accent)' }}>· detectado según tu turno asignado, cámbialo si estás cubriendo otro</span>}
+            </label>
+            <Select value={turno} onChange={(e) => { setTurno(e.target.value); setTurnoAuto(false) }}>
+              <option value="">Selecciona turno…</option>
               {TURNOS.map((t) => <option key={t.id} value={t.id}>{t.n} ({t.h})</option>)}
             </Select>
           </div>
@@ -249,15 +277,30 @@ export default function ShiftReports() {
                   </div>
                 </div>
               </div>
-              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Observaciones generales</label>
-              <textarea
-                value={c.observaciones || ''}
-                onChange={(e) => setCampo(id, 'observaciones', e.target.value)}
-                placeholder="Cualquier otra observación del turno con esta modelo..."
-                rows={2}
-                className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none"
-                style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
-              />
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fans que compraron en este turno</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {(c.fans || []).length === 0 && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Ninguno todavía</span>}
+                {(c.fans || []).map((f, i) => (
+                  <span
+                    key={i}
+                    onClick={() => quitarFan(id, i)}
+                    title="Clic para quitar"
+                    className="px-2 py-1 rounded-full text-xs cursor-pointer"
+                    style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                  >
+                    {f} ✕
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Nombre o usuario del fan"
+                  value={fanInput[id] || ''}
+                  onChange={(e) => setFanInput((f) => ({ ...f, [id]: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregarFan(id) } }}
+                />
+                <Button variant="ghost" onClick={() => agregarFan(id)}>Añadir</Button>
+              </div>
             </Panel>
           )
         })}
@@ -279,7 +322,7 @@ export default function ShiftReports() {
             <Button variant="ghost" onClick={exportar}>Exportar a Excel</Button>
           </div>
         </div>
-        {esMgr && (
+        {hasRole('admin') && (
           <div className="flex items-center gap-2 mb-4 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Borrar reportes anteriores a:</span>
             <Input type="date" value={borrarAntes} onChange={(e) => setBorrarAntes(e.target.value)} className="max-w-[160px]" />
@@ -313,7 +356,7 @@ export default function ShiftReports() {
                       <td className="px-3 py-2"><strong>{r.profiles?.full_name}</strong></td>
                       <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{fmtTS(r.created_at)}</td>
                       <td className="px-3 py-2 text-right" style={{ color: 'var(--text-muted)' }}>
-                        {esMgr && (
+                        {hasRole('admin') && (
                           <button onClick={(e) => { e.stopPropagation(); borrarReporte(r) }} className="mr-3 hover:underline" style={{ color: 'var(--danger)' }}>
                             Borrar
                           </button>
@@ -343,9 +386,9 @@ export default function ShiftReports() {
                                   )}
                                 </div>
                                 <div className="whitespace-pre-wrap">{d.texto}</div>
-                                {d.observaciones && (
+                                {d.fans_compradores?.length > 0 && (
                                   <div className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-                                    <strong>Obs.:</strong> {d.observaciones}
+                                    <strong>Fans que compraron:</strong> {d.fans_compradores.join(', ')}
                                   </div>
                                 )}
                               </div>
