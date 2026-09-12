@@ -82,9 +82,11 @@ export default function ShiftReports() {
     async function detectarTurnoAsignado() {
       if (!profile) return
       const { data } = await supabase.from('chatters').select('shift').eq('id', profile.id).single()
-      const shift = (data?.shift || '').trim().toLowerCase()
-      const match = TURNOS.find((t) => t.id === shift)
-      if (match) { setTurno(match.id); setTurnoAuto(true) }
+      const asignados = (data?.shift || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+      if (!asignados.length) return
+      const actual = turnoActualVE()
+      const elegido = asignados.includes(actual) ? actual : asignados[0]
+      if (TURNOS.find((t) => t.id === elegido)) { setTurno(elegido); setTurnoAuto(true) }
     }
     detectarTurnoAsignado()
   }, [profile])
