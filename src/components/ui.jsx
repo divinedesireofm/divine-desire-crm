@@ -1,7 +1,7 @@
 export function Panel({ children, className = '', style = {} }) {
   return (
     <div
-      className={`rounded-lg border ${className}`}
+      className={`rounded-lg border animate-in ${className}`}
       style={{ background: 'var(--panel)', borderColor: 'var(--border)', ...style }}
     >
       {children}

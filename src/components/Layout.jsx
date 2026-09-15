@@ -136,7 +136,7 @@ export default function Layout() {
                   )
                 )}
                 {abierta && (
-                  <div className="space-y-1">
+                  <div className="space-y-1 animate-in">
                     {section.items.map((item) => (
                       <NavLink
                         key={item.to}
