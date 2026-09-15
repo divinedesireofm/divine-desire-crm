@@ -12,7 +12,7 @@ const SECTIONS = [
     label: null, // sin cabecera, siempre visible arriba del todo
     items: [
       { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'], end: true },
-      { to: '/asistente', label: 'Asistente IA', icon: 'sparkle', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
+      { to: '/asistente', label: 'Asistente IA', icon: 'sparkle', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/anuncios', label: 'Anuncios', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
     ],
   },
