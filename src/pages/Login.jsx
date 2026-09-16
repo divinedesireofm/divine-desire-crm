@@ -8,6 +8,7 @@ export default function Login() {
   const { deactivatedMsg } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [recordar, setRecordar] = useState(true)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
 
@@ -15,6 +16,7 @@ export default function Login() {
     e.preventDefault()
     setError(null)
     setLoading(true)
+    localStorage.setItem('dd-remember', recordar ? 'true' : 'false')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) setError('Email o contraseña incorrectos.')
     setLoading(false)
@@ -44,6 +46,10 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+          <label className="flex items-center gap-2 text-sm justify-start" style={{ color: 'var(--text-muted)' }}>
+            <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} />
+            Recordarme en este navegador
+          </label>
           {error && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Entrando…' : 'Entrar'}

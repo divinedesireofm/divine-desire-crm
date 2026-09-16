@@ -10,4 +10,24 @@ if (!supabaseUrl || !supabaseKey) {
   )
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+// Si "Recordarme" está marcado (por defecto), la sesión se guarda en localStorage
+// y sobrevive a cerrar el navegador. Si se desmarca, se guarda solo en sessionStorage
+// y desaparece al cerrar la pestaña — pensado para ordenadores compartidos.
+const remindStorage = {
+  getItem: (key) => {
+    const useLocal = localStorage.getItem('dd-remember') !== 'false'
+    return (useLocal ? localStorage : sessionStorage).getItem(key)
+  },
+  setItem: (key, value) => {
+    const useLocal = localStorage.getItem('dd-remember') !== 'false'
+    ;(useLocal ? localStorage : sessionStorage).setItem(key, value)
+  },
+  removeItem: (key) => {
+    localStorage.removeItem(key)
+    sessionStorage.removeItem(key)
+  },
+}
+
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: true, autoRefreshToken: true, storage: remindStorage },
+})

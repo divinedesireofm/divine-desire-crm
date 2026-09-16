@@ -94,7 +94,7 @@ export default function ShiftReports() {
 
   function toggleModelo(id) {
     setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.concat([id])))
-    setCampos((c) => c[id] ? c : { ...c, [id]: { texto: '', trafico: 'medio', fans: [], facturacion: '' } })
+    setCampos((c) => c[id] ? c : { ...c, [id]: { texto: '', trafico: 'medio', fans: [], facturacion: '', tips: '' } })
   }
   function setCampo(id, key, value) {
     setCampos((c) => ({ ...c, [id]: { ...c[id], [key]: value } }))
@@ -130,6 +130,7 @@ export default function ShiftReports() {
       trafico: campos[model_id].trafico || null,
       fans_compradores: campos[model_id].fans || [],
       facturacion: campos[model_id].facturacion ? parseFloat(campos[model_id].facturacion) : null,
+      tips: campos[model_id].tips ? parseFloat(campos[model_id].tips) : null,
     }))
     const { error: e2 } = await supabase.from('shift_report_details').insert(detalle)
     if (e2) { setError('El reporte se creó pero falló el detalle.'); setBusy(false); return }
@@ -174,7 +175,7 @@ export default function ShiftReports() {
         const { data } = await supabase.from('shift_report_details').select('*, models(stage_name)').eq('report_id', r.id)
         det = data || []
       }
-      det.forEach((d) => filas.push({ ...r, modelo: d.models?.stage_name, texto: d.texto, trafico: d.trafico, facturacion: d.facturacion, fans: (d.fans_compradores || []).join(', ') }))
+      det.forEach((d) => filas.push({ ...r, modelo: d.models?.stage_name, texto: d.texto, trafico: d.trafico, facturacion: d.facturacion, tips: d.tips, fans: (d.fans_compradores || []).join(', ') }))
     }
     exportCSV('reportes_de_turno', filas, [
       { label: 'Fecha', get: (r) => fmtFecha(r.fecha) },
@@ -183,6 +184,7 @@ export default function ShiftReports() {
       { label: 'Modelo', key: 'modelo' },
       { label: 'Tráfico', get: (r) => TRAFICO.find((t) => t.id === r.trafico)?.n || '' },
       { label: 'Facturación', key: 'facturacion' },
+      { label: 'Tips', key: 'tips' },
       { label: 'Reporte', key: 'texto' },
       { label: 'Fans que compraron', key: 'fans' },
       { label: 'Enviado', get: (r) => fmtTS(r.created_at) },
@@ -274,6 +276,18 @@ export default function ShiftReports() {
                       type="number" step="0.01" placeholder="0.00"
                       value={c.facturacion || ''}
                       onChange={(e) => setCampo(id, 'facturacion', e.target.value)}
+                      style={{ paddingLeft: 22 }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tips (propinas) en el turno</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
+                    <Input
+                      type="number" step="0.01" placeholder="0.00"
+                      value={c.tips || ''}
+                      onChange={(e) => setCampo(id, 'tips', e.target.value)}
                       style={{ paddingLeft: 22 }}
                     />
                   </div>
@@ -384,6 +398,11 @@ export default function ShiftReports() {
                                   {d.facturacion != null && (
                                     <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--success)22', color: 'var(--success)' }}>
                                       ${Number(d.facturacion).toFixed(2)}
+                                    </span>
+                                  )}
+                                  {d.tips != null && (
+                                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--gold)22', color: 'var(--gold)' }}>
+                                      💰 ${Number(d.tips).toFixed(2)} tips
                                     </span>
                                   )}
                                 </div>
