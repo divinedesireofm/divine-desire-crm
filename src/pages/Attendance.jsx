@@ -162,19 +162,32 @@ export default function Attendance() {
           <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>Sin registros</p>
         ) : (
           <div className="space-y-2">
-            {feed.map((f) => (
-              <div key={f.id} className="flex items-center gap-3 text-sm py-1.5">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: TIPOS[f.tipo]?.color }} />
-                <strong className="w-32 truncate">{f.profiles?.full_name}</strong>
-                <span
-                  className="px-2 py-0.5 rounded-full text-xs"
-                  style={{ background: `${TIPOS[f.tipo]?.color}22`, color: TIPOS[f.tipo]?.color }}
-                >
-                  {TIPOS[f.tipo]?.n}
-                </span>
-                <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>{fmtTS(f.created_at)}</span>
-              </div>
-            ))}
+            {feed.map((f, i) => {
+              let duracionBreak = null
+              if (f.tipo === 'fin_break') {
+                const inicio = feed.slice(i + 1).find((e) => e.chatter_id === f.chatter_id && e.tipo === 'break')
+                if (inicio) {
+                  const mins = Math.round((new Date(f.created_at) - new Date(inicio.created_at)) / 60000)
+                  duracionBreak = mins
+                }
+              }
+              return (
+                <div key={f.id} className="flex items-center gap-3 text-sm py-1.5">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: TIPOS[f.tipo]?.color }} />
+                  <strong className="w-32 truncate">{f.profiles?.full_name}</strong>
+                  <span
+                    className="px-2 py-0.5 rounded-full text-xs"
+                    style={{ background: `${TIPOS[f.tipo]?.color}22`, color: TIPOS[f.tipo]?.color }}
+                  >
+                    {TIPOS[f.tipo]?.n}
+                  </span>
+                  {duracionBreak !== null && (
+                    <span className="text-xs" style={{ color: 'var(--gold)' }}>({duracionBreak} min de break)</span>
+                  )}
+                  <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>{fmtTS(f.created_at)}</span>
+                </div>
+              )
+            })}
           </div>
         )}
       </Panel>

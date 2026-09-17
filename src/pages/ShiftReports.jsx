@@ -269,7 +269,7 @@ export default function ShiftReports() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Facturado en el turno</label>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Facturado por ventas de PPV</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
                     <Input

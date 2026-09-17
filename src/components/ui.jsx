@@ -1,8 +1,9 @@
-export function Panel({ children, className = '', style = {} }) {
+export function Panel({ children, className = '', style = {}, ...rest }) {
   return (
     <div
       className={`rounded-lg border animate-in ${className}`}
       style={{ background: 'var(--panel)', borderColor: 'var(--border)', ...style }}
+      {...rest}
     >
       {children}
     </div>

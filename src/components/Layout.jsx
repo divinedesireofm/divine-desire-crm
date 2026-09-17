@@ -5,6 +5,7 @@ import logo from '../assets/logo.png'
 import Icon from './Icon'
 import AnnouncementGate from './AnnouncementGate'
 import PildoraGate from './PildoraGate'
+import ShiftTimer from './ShiftTimer'
 
 const SECTIONS = [
   {
@@ -102,7 +103,9 @@ export default function Layout() {
   const etiquetaRoles = roles.map((r) => ROLE_LABELS[r] || r).join(' · ')
 
   return (
-    <div className="h-screen flex overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden">
+      <ShiftTimer />
+      <div className="flex-1 flex overflow-hidden">
       <aside
         className="w-64 shrink-0 flex flex-col p-4 h-screen overflow-hidden"
         style={{ background: 'var(--panel-alt)', borderRight: '1px solid var(--border)' }}
@@ -182,6 +185,7 @@ export default function Layout() {
           </PildoraGate>
         </AnnouncementGate>
       </main>
+      </div>
     </div>
   )
 }

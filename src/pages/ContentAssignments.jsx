@@ -10,6 +10,54 @@ function diasDesde(fechaISO) {
   const hoy = new Date()
   return Math.floor((hoy - d) / (1000 * 60 * 60 * 24))
 }
+function hoyISO() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function Tarjeta({ r, alerta, desde, onRecordar, onBorrar }) {
+  return (
+    <div
+      draggable
+      onDragStart={(e) => e.dataTransfer.setData('text/plain', r.id)}
+      className="p-3 rounded-md cursor-grab active:cursor-grabbing select-none"
+      style={{ background: alerta ? 'var(--danger)11' : 'var(--panel-alt)', border: `1px solid ${alerta ? 'var(--danger)' : 'var(--border)'}` }}
+    >
+      <p className="text-sm font-medium mb-1">{r.titulo}</p>
+      <p className="text-xs mb-2" style={{ color: r.hecho_en ? 'var(--success)' : 'var(--text-muted)' }}>
+        {r.hecho_en ? `Hecho el ${r.hecho_en}` : r.enviado_en ? `Enviado ${r.enviado_en}` : 'Sin enviar todavía'}
+        {!r.hecho_en && r.recordado_en && <> · recordado {r.recordado_en}</>}
+      </p>
+      {alerta && (
+        <p className="text-xs mb-2 font-medium" style={{ color: 'var(--danger)' }}>⚠️ {desde} días sin hacerse</p>
+      )}
+      <div className="flex gap-3 flex-wrap">
+        {alerta && (
+          <button onClick={() => onRecordar(r)} className="text-xs hover:underline" style={{ color: 'var(--gold)' }}>
+            Ya se lo he recordado
+          </button>
+        )}
+        <button onClick={() => onBorrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>
+          Borrar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function Columna({ id, titulo, contador, vacio, children, dragOver, setDragOver, onSoltar, colorBorde }) {
+  return (
+    <Panel
+      className="p-5"
+      style={{ outline: dragOver === id ? `2px dashed ${colorBorde}` : 'none', outlineOffset: -2 }}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(id) }}
+      onDragLeave={() => setDragOver((d) => (d === id ? null : d))}
+      onDrop={(e) => { e.preventDefault(); setDragOver(null); onSoltar(id, e) }}
+    >
+      <p className="text-sm font-medium mb-4">{titulo} ({contador})</p>
+      {contador === 0 ? <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{vacio}</p> : <div className="space-y-3">{children}</div>}
+    </Panel>
+  )
+}
 
 export default function ContentAssignments() {
   const { profile } = useAuth()
@@ -19,6 +67,7 @@ export default function ContentAssignments() {
   const [loading, setLoading] = useState(true)
   const [nuevoTitulo, setNuevoTitulo] = useState('')
   const [error, setError] = useState('')
+  const [dragOver, setDragOver] = useState(null)
 
   async function loadModelos() {
     const { data } = await supabase.from('models').select('id, stage_name').order('stage_name')
@@ -52,16 +101,8 @@ export default function ContentAssignments() {
     loadRows(selectedModel)
   }
 
-  async function moverAHecho(row) {
-    await supabase.from('content_assignments').update({ hecho_en: new Date().toISOString().slice(0, 10) }).eq('id', row.id)
-    loadRows(selectedModel)
-  }
-  async function devolverAEnviado(row) {
-    await supabase.from('content_assignments').update({ hecho_en: null }).eq('id', row.id)
-    loadRows(selectedModel)
-  }
   async function recordar(row) {
-    await supabase.from('content_assignments').update({ recordado_en: new Date().toISOString().slice(0, 10) }).eq('id', row.id)
+    await supabase.from('content_assignments').update({ recordado_en: hoyISO() }).eq('id', row.id)
     loadRows(selectedModel)
   }
   async function borrar(row) {
@@ -70,14 +111,28 @@ export default function ContentAssignments() {
     loadRows(selectedModel)
   }
 
-  const pendientes = rows.filter((r) => !r.hecho_en)
+  async function soltarEn(columna, e) {
+    const id = e.dataTransfer.getData('text/plain')
+    const row = rows.find((r) => r.id === id)
+    if (!row) return
+    let update = null
+    if (columna === 'pendiente') update = { enviado_en: null, hecho_en: null, recordado_en: null }
+    if (columna === 'enviado') update = { enviado_en: row.enviado_en || hoyISO(), hecho_en: null }
+    if (columna === 'hecho') update = { enviado_en: row.enviado_en || hoyISO(), hecho_en: hoyISO() }
+    if (!update) return
+    await supabase.from('content_assignments').update(update).eq('id', id)
+    loadRows(selectedModel)
+  }
+
+  const pendientesDeEnviar = rows.filter((r) => !r.enviado_en && !r.hecho_en)
+  const enviados = rows.filter((r) => r.enviado_en && !r.hecho_en)
   const hechos = rows.filter((r) => r.hecho_en)
 
   return (
     <div>
       <PageHeader
         title="Contenido pedido a las modelos"
-        subtitle="Elige la modelo y verás todo su contenido: lo pendiente y lo ya entregado."
+        subtitle="Elige la modelo y arrastra las tarjetas entre columnas para moverlas."
       />
 
       <div className="mb-6 max-w-xs">
@@ -95,7 +150,7 @@ export default function ContentAssignments() {
             value={nuevoTitulo}
             onChange={(e) => setNuevoTitulo(e.target.value)}
           />
-          <Button type="submit">Añadir (enviado hoy)</Button>
+          <Button type="submit">Añadir a pendientes</Button>
         </form>
         {error && <p className="text-sm mt-2" style={{ color: 'var(--danger)' }}>{error}</p>}
       </Panel>
@@ -103,75 +158,31 @@ export default function ContentAssignments() {
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
       ) : (
-        <div className="grid grid-cols-2 gap-6">
-          <Panel className="p-5">
-            <p className="text-sm font-medium mb-4">📤 Enviado ({pendientes.length})</p>
-            {pendientes.length === 0 ? (
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Nada pendiente.</p>
-            ) : (
-              <div className="space-y-3">
-                {pendientes.map((r) => {
-                  const desde = diasDesde(r.recordado_en || r.enviado_en)
-                  const alerta = desde >= DIAS_ALERTA
-                  return (
-                    <div
-                      key={r.id}
-                      className="p-3 rounded-md"
-                      style={{ background: alerta ? 'var(--danger)11' : 'var(--panel-alt)', border: `1px solid ${alerta ? 'var(--danger)' : 'var(--border)'}` }}
-                    >
-                      <p className="text-sm font-medium mb-1">{r.titulo}</p>
-                      <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
-                        Enviado {r.enviado_en}
-                        {r.recordado_en && <> · recordado {r.recordado_en}</>}
-                      </p>
-                      {alerta && (
-                        <p className="text-xs mb-2 font-medium" style={{ color: 'var(--danger)' }}>
-                          ⚠️ {desde} días sin hacerse
-                        </p>
-                      )}
-                      <div className="flex gap-3 flex-wrap">
-                        {alerta && (
-                          <button onClick={() => recordar(r)} className="text-xs hover:underline" style={{ color: 'var(--gold)' }}>
-                            Ya se lo he recordado
-                          </button>
-                        )}
-                        <button onClick={() => moverAHecho(r)} className="text-xs hover:underline" style={{ color: 'var(--success)' }}>
-                          Mover a hecho →
-                        </button>
-                        <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>
-                          Borrar
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </Panel>
+        <div className="grid grid-cols-3 gap-6">
+          <Columna id="pendiente" titulo="🕒 Pendiente" contador={pendientesDeEnviar.length}
+            vacio="Nada pendiente de enviar. Aquí caen los contenidos recién añadidos." colorBorde="var(--text-muted)"
+            dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
+            {pendientesDeEnviar.map((r) => (
+              <Tarjeta key={r.id} r={r} alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} />
+            ))}
+          </Columna>
 
-          <Panel className="p-5">
-            <p className="text-sm font-medium mb-4">✅ Hecho ({hechos.length})</p>
-            {hechos.length === 0 ? (
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Todavía nada entregado.</p>
-            ) : (
-              <div className="space-y-3">
-                {hechos.map((r) => (
-                  <div key={r.id} className="p-3 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-                    <p className="text-sm font-medium mb-1">{r.titulo}</p>
-                    <p className="text-xs mb-2" style={{ color: 'var(--success)' }}>Hecho el {r.hecho_en}</p>
-                    <div className="flex gap-3">
-                      <button onClick={() => devolverAEnviado(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
-                        ← Devolver a enviado
-                      </button>
-                      <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>
-                        Borrar
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Panel>
+          <Columna id="enviado" titulo="📤 Enviado" contador={enviados.length}
+            vacio="Arrastra aquí un pendiente cuando se lo mandes a la modelo." colorBorde="var(--accent)"
+            dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
+            {enviados.map((r) => {
+              const desde = diasDesde(r.recordado_en || r.enviado_en)
+              return <Tarjeta key={r.id} r={r} alerta={desde >= DIAS_ALERTA} desde={desde} onRecordar={recordar} onBorrar={borrar} />
+            })}
+          </Columna>
+
+          <Columna id="hecho" titulo="✅ Hecho" contador={hechos.length}
+            vacio="Arrastra aquí cuando la modelo entregue el contenido." colorBorde="var(--success)"
+            dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
+            {hechos.map((r) => (
+              <Tarjeta key={r.id} r={r} alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} />
+            ))}
+          </Columna>
         </div>
       )}
     </div>
