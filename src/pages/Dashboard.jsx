@@ -27,6 +27,7 @@ export default function Dashboard() {
   const [sanciones, setSanciones] = useState(null)
   const [enTurno, setEnTurno] = useState(null)
   const [chatStats, setChatStats] = useState(null)
+  const [ultimosReportes, setUltimosReportes] = useState(null)
   const esChatTeam = hasAnyRole(['admin', 'manager', 'chatter'])
 
   useEffect(() => {
@@ -48,15 +49,17 @@ export default function Dashboard() {
       if (!esChatTeam) return
       const hoy = fechaHoyISO()
 
-      const [{ data: sancionesData }, { data: eventos }, { data: repDetails }, { count: reportesHoy }, { data: pillActiva }, equipo] = await Promise.all([
+      const [{ data: sancionesData }, { data: eventos }, { data: repDetails }, { count: reportesHoy }, { data: pillActiva }, equipo, { data: ultimosRep }] = await Promise.all([
         supabase.from('sanctions').select('*, profiles(full_name)').order('created_at', { ascending: false }).limit(5),
         supabase.from('attendance_events').select('chatter_id, tipo, created_at, profiles(full_name)').order('created_at', { ascending: false }).limit(200),
         supabase.from('shift_report_details').select('facturacion, shift_reports!inner(fecha)').eq('shift_reports.fecha', hoy),
         supabase.from('shift_reports').select('*', { count: 'exact', head: true }).eq('fecha', hoy),
         supabase.from('training_pills').select('id, numero').eq('activa', true).eq('fecha_publicacion', hoy).limit(1),
         getProfilesByRoles(['admin', 'manager', 'chatter'], { onlyActive: true }),
+        supabase.from('shift_report_details').select('texto, trafico, models(stage_name), shift_reports!inner(fecha, turno, profiles(full_name))').order('created_at', { foreignTable: 'shift_reports', ascending: false }).limit(8),
       ])
       setSanciones(sancionesData || [])
+      setUltimosReportes(ultimosRep || [])
 
       // último evento por chatter → quién está trabajando / en break ahora mismo
       const ultimos = {}
@@ -109,6 +112,24 @@ export default function Dashboard() {
               sub={chatStats?.formacion ? `#${chatStats.formacion.numero} · han respondido` : ''}
             />
           </div>
+
+          {ultimosReportes && ultimosReportes.length > 0 && (
+            <Panel className="p-5 mb-6">
+              <p className="text-sm font-medium mb-3">📋 Últimos reportes de turno</p>
+              <div className="space-y-3">
+                {ultimosReportes.map((r, i) => (
+                  <div key={i} className="pb-3" style={{ borderBottom: i < ultimosReportes.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <div className="flex items-center gap-2 mb-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                      <strong style={{ color: 'var(--text)' }}>{r.shift_reports?.profiles?.full_name}</strong>
+                      <span>· {r.models?.stage_name}</span>
+                      <span>· {r.shift_reports?.fecha}</span>
+                    </div>
+                    <p className="text-sm whitespace-pre-wrap">{r.texto}</p>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )}
 
           {enTurno && enTurno.length > 0 && (
             <Panel className="p-5 mb-6">

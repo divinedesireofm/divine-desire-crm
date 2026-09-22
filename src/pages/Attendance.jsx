@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Select, Input, Button, PageHeader } from '../components/ui'
@@ -22,6 +23,7 @@ export default function Attendance() {
   
   const [borrarAntes, setBorrarAntes] = useState('')
   const [borrando, setBorrando] = useState(false)
+  const [mostrarRecordatorioReporte, setMostrarRecordatorioReporte] = useState(false)
   const [feed, setFeed] = useState([])
   const [miUltimo, setMiUltimo] = useState(null)
   const [fUser, setFUser] = useState('todos')
@@ -67,6 +69,10 @@ export default function Attendance() {
     setError(null)
     const { error } = await supabase.from('attendance_events').insert([{ chatter_id: profile.id, tipo }])
     if (error) setError('No se pudo registrar.')
+    else {
+      window.dispatchEvent(new Event('attendance-changed'))
+      if (tipo === 'salida') setMostrarRecordatorioReporte(true)
+    }
     await load()
     await loadMio()
     setBusy('')
@@ -110,6 +116,20 @@ export default function Attendance() {
         title="Entradas y salidas"
         subtitle="Marca tu jornada y tus breaks. Turnos: Madrugada 2:00–10:00 · Mañana 10:00–18:00 · Tarde 18:00–2:00 (hora Venezuela)"
       />
+
+      {mostrarRecordatorioReporte && (
+        <Panel className="p-4 mb-6 flex items-center justify-between" style={{ borderColor: 'var(--gold)' }}>
+          <p className="text-sm">📝 No olvides mandar tu <strong>reporte de turno</strong> antes de desconectar.</p>
+          <div className="flex gap-2 items-center">
+            <Link to="/reportes-turno">
+              <Button>Ir a reportes de turno</Button>
+            </Link>
+            <button onClick={() => setMostrarRecordatorioReporte(false)} className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}>
+              Ya lo mandé
+            </button>
+          </div>
+        </Panel>
+      )}
 
       <Panel className="p-5 mb-6">
         <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>
@@ -164,11 +184,16 @@ export default function Attendance() {
           <div className="space-y-2">
             {feed.map((f, i) => {
               let duracionBreak = null
+              let duracionTurno = null
               if (f.tipo === 'fin_break') {
                 const inicio = feed.slice(i + 1).find((e) => e.chatter_id === f.chatter_id && e.tipo === 'break')
+                if (inicio) duracionBreak = Math.round((new Date(f.created_at) - new Date(inicio.created_at)) / 60000)
+              }
+              if (f.tipo === 'salida') {
+                const inicio = feed.slice(i + 1).find((e) => e.chatter_id === f.chatter_id && e.tipo === 'entrada')
                 if (inicio) {
                   const mins = Math.round((new Date(f.created_at) - new Date(inicio.created_at)) / 60000)
-                  duracionBreak = mins
+                  duracionTurno = `${Math.floor(mins / 60)}h ${mins % 60}min`
                 }
               }
               return (
@@ -183,6 +208,9 @@ export default function Attendance() {
                   </span>
                   {duracionBreak !== null && (
                     <span className="text-xs" style={{ color: 'var(--gold)' }}>({duracionBreak} min de break)</span>
+                  )}
+                  {duracionTurno !== null && (
+                    <span className="text-xs" style={{ color: 'var(--success)' }}>(turno de {duracionTurno})</span>
                   )}
                   <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>{fmtTS(f.created_at)}</span>
                 </div>

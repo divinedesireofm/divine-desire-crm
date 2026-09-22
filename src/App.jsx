@@ -24,8 +24,10 @@ import Training from './pages/Training'
 import AiSettings from './pages/AiSettings'
 import Assistant from './pages/Assistant'
 import ContentAssignments from './pages/ContentAssignments'
+import ChatterMetrics from './pages/ChatterMetrics'
 import Requests from './pages/Requests'
 import Massives from './pages/Massives'
+import SetPassword from './pages/SetPassword'
 
 function Protected({ children }) {
   const { session, loading } = useAuth()
@@ -45,6 +47,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={session ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/restablecer-contrasena" element={<SetPassword />} />
       <Route
         path="/"
         element={
@@ -75,6 +78,7 @@ function AppRoutes() {
         <Route path="voz-marca" element={<AiSettings />} />
         <Route path="asistente" element={<Assistant />} />
         <Route path="contenido" element={<ContentAssignments />} />
+        <Route path="metricas-chatters" element={<ChatterMetrics />} />
         <Route path="solicitudes" element={<Requests />} />
         <Route path="masivos" element={<Massives />} />
       </Route>

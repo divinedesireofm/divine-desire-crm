@@ -42,7 +42,11 @@ export default function ShiftTimer() {
     refrescarEstado()
     const poll = setInterval(refrescarEstado, 20000)
     const tick = setInterval(() => setAhora(Date.now()), 1000)
-    return () => { clearInterval(poll); clearInterval(tick) }
+    window.addEventListener('attendance-changed', refrescarEstado)
+    return () => {
+      clearInterval(poll); clearInterval(tick)
+      window.removeEventListener('attendance-changed', refrescarEstado)
+    }
   }, [profile])
 
   if (!estado) return null

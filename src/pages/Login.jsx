@@ -11,6 +11,8 @@ export default function Login() {
   const [recordar, setRecordar] = useState(true)
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [olvidada, setOlvidada] = useState(false)
+  const [enviado, setEnviado] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -20,6 +22,19 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) setError('Email o contraseña incorrectos.')
     setLoading(false)
+  }
+
+  async function handleOlvidada(e) {
+    e.preventDefault()
+    setError(null)
+    if (!email) { setError('Escribe primero tu email arriba.'); return }
+    setLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/restablecer-contrasena`,
+    })
+    setLoading(false)
+    if (error) { setError('No se pudo enviar el email.'); return }
+    setEnviado(true)
   }
 
   return (
@@ -51,9 +66,13 @@ export default function Login() {
             Recordarme en este navegador
           </label>
           {error && <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+          {enviado && <p className="text-sm" style={{ color: 'var(--success)' }}>Te hemos enviado un email para restablecerla.</p>}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Entrando…' : 'Entrar'}
           </Button>
+          <button type="button" onClick={handleOlvidada} className="text-xs hover:underline block mx-auto" style={{ color: 'var(--text-muted)' }}>
+            ¿Olvidaste tu contraseña?
+          </button>
         </form>
       </Panel>
     </div>

@@ -70,6 +70,15 @@ export default function Team() {
     load()
   }
 
+  async function enviarEmailReset(u) {
+    const { data, error } = await supabase.functions.invoke('team-admin', {
+      body: { action: 'send_reset_email', user_id: u.id, redirect_to: `${window.location.origin}/restablecer-contrasena` },
+    })
+    if (error) { alert('No se pudo enviar: ' + (await readFunctionError(error))); return }
+    if (data?.error) { alert('No se pudo enviar: ' + data.error); return }
+    alert(`Email de restablecimiento enviado a ${data.email}.`)
+  }
+
   return (
     <div>
       <PageHeader
@@ -112,7 +121,8 @@ export default function Team() {
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={u.active ? 'activa' : 'baja'} /></td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => setResetU(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Contraseña</button>
+                      <button onClick={() => setResetU(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Contraseña manual</button>
+                      <button onClick={() => enviarEmailReset(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Enviar email de reset</button>
                       {puede && (
                         <>
                           <button onClick={() => setEditar({ ...u, roles: rs })} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Editar</button>
@@ -177,29 +187,39 @@ function RoleCheckboxes({ asignables, selected, onChange }) {
 function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [ok, setOk] = useState(null)
+  const [resultado, setResultado] = useState(null) // { modo, tempPassword, email }
 
   async function guardar() {
     if (!f.email.trim() || !f.full_name.trim()) { setErr('Completa nombre y email.'); return }
     if (!f.roles.length) { setErr('Selecciona al menos un rol.'); return }
     setBusy(true); setErr('')
     const { data, error } = await supabase.functions.invoke('team-admin', {
-      body: { action: 'create', email: f.email.trim(), full_name: f.full_name.trim(), roles: f.roles, password: f.password || undefined },
+      body: {
+        action: 'create', email: f.email.trim(), full_name: f.full_name.trim(), roles: f.roles,
+        password: f.password || undefined,
+        redirect_to: `${window.location.origin}/restablecer-contrasena`,
+      },
     })
     setBusy(false)
     if (error) { setErr(await readFunctionError(error)); return }
     if (data?.error) { setErr(data.error); return }
-    setOk(data.tempPassword)
+    setResultado({ modo: data.modo, tempPassword: data.tempPassword, email: f.email.trim() })
   }
 
   return (
     <Panel className="p-5 mt-4">
       <p className="text-sm font-medium mb-3">Nuevo usuario</p>
-      {ok ? (
+      {resultado ? (
         <div>
-          <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>
-            Cuenta creada ✓. Comunícale a <strong>{f.full_name}</strong> su email y esta contraseña: <strong>{ok}</strong>
-          </p>
+          {resultado.modo === 'invitacion' ? (
+            <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>
+              Cuenta creada ✓. Le hemos enviado un email a <strong>{resultado.email}</strong> para que cree su propia contraseña y entre.
+            </p>
+          ) : (
+            <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>
+              Cuenta creada ✓. Comunícale a <strong>{f.full_name}</strong> su email y esta contraseña: <strong>{resultado.tempPassword}</strong>
+            </p>
+          )}
           <Button onClick={onSaved}>Listo</Button>
         </div>
       ) : (
@@ -214,7 +234,8 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
           </div>
           <Input placeholder="Contraseña (opcional)" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} className="mb-3" />
           <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-            Si dejas la contraseña vacía, se asignará una por defecto que verás al guardar.
+            Si dejas la contraseña vacía, le llegará un email para que se cree su propia contraseña él mismo.
+            Si escribes una aquí, se la asignas tú directamente.
           </p>
           {err && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{err}</p>}
           <div className="flex gap-2">
