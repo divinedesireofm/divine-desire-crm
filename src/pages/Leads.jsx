@@ -48,7 +48,7 @@ export default function Leads() {
 
       {showForm && (
         <Panel className="p-5 mb-6">
-          <form onSubmit={handleCreate} className="grid grid-cols-2 gap-3">
+          <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               placeholder="Nombre"
               value={form.name}

@@ -15,7 +15,7 @@ function TurnoChips({ selected, onChange }) {
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : selected.concat([id]))
   }
   return (
-    <div className="flex gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
       {TURNOS.map((t) => {
         const on = selected.includes(t.id)
         return (
@@ -142,7 +142,7 @@ export default function Chatters() {
           </p>
           <div className="space-y-3">
             {unlinkedProfiles.map((p) => (
-              <div key={p.id} className="flex items-center gap-3">
+              <div key={p.id} className="flex flex-wrap items-center gap-3">
                 <span className="flex-1 text-sm">{p.full_name}</span>
                 <TurnoChips
                   selected={shiftDrafts[p.id] || []}

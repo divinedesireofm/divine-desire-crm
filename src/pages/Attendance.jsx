@@ -136,7 +136,7 @@ export default function Attendance() {
           Tu último registro:{' '}
           {miEstado ? <strong style={{ color: 'var(--text)' }}>{TIPOS[miEstado].n} · {fmtTS(miUltimo.created_at)}</strong> : 'sin registros recientes'}
         </p>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {BOTONES.map((b) => (
             <button
               key={b.tipo}

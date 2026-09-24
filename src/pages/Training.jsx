@@ -115,7 +115,7 @@ export default function Training() {
         }
       />
 
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <Panel className="p-4">
           <p className="text-2xl font-display font-semibold gold-text">{sel ? `#${sel.numero}` : '—'}</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Píldora · {sel?.fecha_publicacion}</p>
@@ -137,7 +137,7 @@ export default function Training() {
       {showForm && (
         <Panel className="p-5 mb-6">
           <p className="text-sm font-medium mb-3">Nueva píldora</p>
-          <div className="grid grid-cols-4 gap-3 mb-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
             <Input type="number" placeholder="Número" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} />
             <Input type="date" value={form.fecha_publicacion} onChange={(e) => setForm({ ...form, fecha_publicacion: e.target.value })} />
             <Input placeholder="Concepto (ej: Activación)" className="col-span-2" value={form.concepto} onChange={(e) => setForm({ ...form, concepto: e.target.value })} />
@@ -152,12 +152,12 @@ export default function Training() {
             style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
           />
           <Input placeholder="Pregunta del test" className="mb-3" value={form.pregunta} onChange={(e) => setForm({ ...form, pregunta: e.target.value })} />
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             {['a', 'b', 'c', 'd'].map((l) => (
               <Input key={l} placeholder={`Opción ${l.toUpperCase()}`} value={form[`opcion_${l}`]} onChange={(e) => setForm({ ...form, [`opcion_${l}`]: e.target.value })} />
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Select value={form.respuesta_correcta} onChange={(e) => setForm({ ...form, respuesta_correcta: e.target.value })}>
               {['A', 'B', 'C', 'D'].map((l) => <option key={l} value={l}>Correcta: {l}</option>)}
             </Select>
@@ -168,7 +168,7 @@ export default function Training() {
         </Panel>
       )}
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Panel className="p-4">
           <p className="text-sm font-medium mb-3">Píldoras</p>
           <div className="space-y-1 max-h-[60vh] overflow-y-auto">
@@ -202,6 +202,7 @@ export default function Training() {
                   <strong>Correcta ({sel.respuesta_correcta}):</strong> {[sel.opcion_a, sel.opcion_b, sel.opcion_c, sel.opcion_d][['A', 'B', 'C', 'D'].indexOf(sel.respuesta_correcta)]}
                 </p>
               </div>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -232,6 +233,7 @@ export default function Training() {
                   })}
                 </tbody>
               </table>
+              </div>
             </>
           )}
         </Panel>

@@ -131,7 +131,7 @@ export default function Requests() {
 
       <Panel className="p-5 mb-6">
         <p className="text-sm font-medium mb-4">Nueva solicitud</p>
-        <div className="grid grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
           <div>
             <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tipo</label>
             <Select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>

@@ -80,7 +80,7 @@ export default function Activation() {
 
       <Panel className="p-5 mb-6">
         <p className="font-medium mb-3">✨ Generar masivos con IA</p>
-        <div className="grid grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
           <Select value={iaCat} onChange={(e) => setIaCat(e.target.value)}>
             {CAT_ACT.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
@@ -113,7 +113,7 @@ export default function Activation() {
       ) : cats.map((cat) => (
         <div key={cat} className="mb-6">
           <p className="text-sm font-medium mb-2">{cat} <span style={{ color: 'var(--text-muted)' }}>({porCat[cat].length})</span></p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {porCat[cat].map((m) => (
               <Panel key={m.id} className="p-4">
                 <p className="text-sm whitespace-pre-wrap mb-3 p-2 rounded" style={{ background: 'var(--panel-alt)' }}>{m.texto}</p>

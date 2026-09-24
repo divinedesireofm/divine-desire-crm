@@ -197,7 +197,7 @@ export default function ShiftReports() {
 
       <Panel className="p-5 mb-6">
         <p className="text-sm font-medium mb-4">Nuevo reporte</p>
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <div>
             <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fecha</label>
             <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
@@ -248,7 +248,7 @@ export default function ShiftReports() {
                 className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none mb-3"
                 style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
               />
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tráfico del turno</label>
                   <div className="flex gap-2">

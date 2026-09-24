@@ -216,7 +216,7 @@ function PeriodoEditor({ pid, onBack }) {
               <strong>{nombre(r.chatter_id)}</strong>
               <span>A pagar: <strong className="gold-text">{fmtMoney(c.aPagar)}</strong></span>
             </div>
-            <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
               <div>
                 <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Facturación neta (sin 20% OF)</label>
                 <Input type="number" step="0.01" value={r.facturacion} onChange={(e) => setRow(r.chatter_id, { facturacion: e.target.value })} />
@@ -234,7 +234,7 @@ function PeriodoEditor({ pid, onBack }) {
                 <Input value={(c.E >= 0 ? '+' : '−') + fmtMoney(Math.abs(c.E))} disabled />
               </div>
             </div>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
                 <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Ventas faltantes (bruto, −20% OF)</label>
                 <MultiMonto items={r.ventas_faltantes} montoKey="bruto" onChange={(v) => setRow(r.chatter_id, { ventas_faltantes: v })} />

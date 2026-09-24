@@ -131,7 +131,7 @@ export default function InstagramAccounts() {
       {showForm && (
         <Panel className="p-5 mb-6">
           <p className="text-sm mb-4 font-medium">{editingId ? 'Editar cuenta' : 'Nueva cuenta'}</p>
-          <form onSubmit={handleSubmit} className="grid grid-cols-3 gap-3">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input
               placeholder="Instagram original (si la cuenta fue comprada)"
               value={form.original_username}

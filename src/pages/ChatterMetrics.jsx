@@ -109,7 +109,7 @@ export default function ChatterMetrics() {
 
       {showForm && (
         <Panel className="p-5 mb-6">
-          <form onSubmit={handleCreate} className="grid grid-cols-3 gap-3">
+          <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Select value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })}>
               {models.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
             </Select>

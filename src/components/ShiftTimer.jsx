@@ -53,7 +53,7 @@ export default function ShiftTimer() {
 
   return (
     <div
-      className="flex items-center justify-center gap-6 py-1.5 text-sm shrink-0"
+      className="flex items-center justify-center flex-wrap gap-2 sm:gap-6 py-1.5 px-2 text-xs sm:text-sm shrink-0"
       style={{ background: 'var(--panel-alt)', borderBottom: '1px solid var(--border)' }}
     >
       <span style={{ color: 'var(--success)' }}>

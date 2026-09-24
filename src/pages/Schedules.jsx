@@ -145,7 +145,7 @@ function HorarioSemana({ esMgr }) {
       {add && (
         <Panel className="p-5 mb-6">
           <p className="text-sm font-medium mb-3">Asignar turno</p>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Input type="date" value={add.fecha} onChange={(e) => setAdd({ ...add, fecha: e.target.value })} />
             <Select value={add.turno} onChange={(e) => setAdd({ ...add, turno: e.target.value })}>
               {TURNOS.map((t) => <option key={t.id} value={t.id}>{t.n} ({t.h})</option>)}
@@ -218,7 +218,7 @@ function Grupos({ esMgr }) {
         }).map((esq) => (
           <div key={esq} className="mb-6">
             <p className="text-sm font-medium mb-2">{esq} <span style={{ color: 'var(--text-muted)' }}>({porEsq[esq].length})</span></p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {porEsq[esq].map((g) => (
                 <Panel key={g.id} className="p-4">
                   <p className="font-medium mb-1">{g.nombre}</p>
@@ -239,7 +239,7 @@ function Grupos({ esMgr }) {
       {edit && (
         <Panel className="p-5 mt-4">
           <p className="text-sm font-medium mb-3">{edit.id ? 'Editar grupo' : 'Nuevo grupo'}</p>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Input placeholder="Nombre del grupo" value={edit.nombre} onChange={(e) => setEdit({ ...edit, nombre: e.target.value })} />
             <Input type="number" min="2" max="20" placeholder="¿Para cuántos chatters?" value={edit.nchatters} onChange={(e) => setEdit({ ...edit, nchatters: e.target.value })} />
           </div>

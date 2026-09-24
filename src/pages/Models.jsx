@@ -85,7 +85,7 @@ export default function Models() {
       {showForm && (
         <Panel className="p-5 mb-6">
           <p className="text-sm mb-4 font-medium">{editingId ? 'Editar modelo' : 'Nuevo modelo'}</p>
-          <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               placeholder="Nombre artístico"
               value={form.stage_name}

@@ -53,7 +53,7 @@ export default function Scripts() {
       ) : cats.map((cat) => (
         <div key={cat} className="mb-6">
           <p className="text-sm font-medium mb-2">{cat} <span style={{ color: 'var(--text-muted)' }}>({porCat[cat].length})</span></p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {porCat[cat].map((s) => (
               <Panel key={s.id} className="p-4">
                 <p className="font-medium mb-2">{s.titulo}</p>
@@ -72,7 +72,7 @@ export default function Scripts() {
       {edit && (
         <Panel className="p-5 mt-4">
           <p className="text-sm font-medium mb-3">{edit.id ? 'Editar script' : 'Nuevo script'}</p>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Input placeholder="Título / situación" value={edit.titulo} onChange={(e) => setEdit({ ...edit, titulo: e.target.value })} />
             <Select value={edit.categoria} onChange={(e) => setEdit({ ...edit, categoria: e.target.value })}>
               {CAT_SCRIPTS.map((c) => <option key={c} value={c}>{c}</option>)}

@@ -85,7 +85,7 @@ export default function Announcements() {
       {edit && (
         <Panel className="p-5 mb-6">
           <p className="text-sm font-medium mb-3">Nuevo anuncio</p>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Input placeholder="Título" value={edit.titulo} onChange={(e) => setEdit({ ...edit, titulo: e.target.value })} />
             <Select value={edit.ambito} onChange={(e) => setEdit({ ...edit, ambito: e.target.value })}>
               {scopesCrear.map((s) => <option key={s} value={s}>{AMBITO_LABEL[s]}</option>)}

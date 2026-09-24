@@ -70,7 +70,7 @@ export default function Packs() {
 
       <Panel className="p-5 mb-6" style={{ borderColor: 'var(--accent)' }}>
         <p className="font-medium mb-3">✨ Generador de packs con IA</p>
-        <div className="grid grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
           <Select value={iaCat} onChange={(e) => setIaCat(e.target.value)}>
             {CAT_PACKS.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
@@ -104,7 +104,7 @@ export default function Packs() {
       ) : cats.map((cat) => (
         <div key={cat} className="mb-6">
           <p className="text-sm font-medium mb-2">{cat} <span style={{ color: 'var(--text-muted)' }}>({porCat[cat].length})</span></p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {porCat[cat].map((p) => (
               <Panel key={p.id} className="p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -128,7 +128,7 @@ export default function Packs() {
       {edit && (
         <Panel className="p-5 mt-4">
           <p className="text-sm font-medium mb-3">{edit.id ? 'Editar pack' : 'Nuevo pack'}</p>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Input placeholder="Título" value={edit.titulo} onChange={(e) => setEdit({ ...edit, titulo: e.target.value })} />
             <Input placeholder="Precio ($45)" value={edit.precio} onChange={(e) => setEdit({ ...edit, precio: e.target.value })} />
             <Select value={edit.categoria} onChange={(e) => setEdit({ ...edit, categoria: e.target.value })} className="col-span-2">

@@ -29,10 +29,15 @@ export default function SetPassword() {
     if (password !== confirmar) { setError('Las dos contraseñas no coinciden.'); return }
     setBusy(true)
     const { error } = await supabase.auth.updateUser({ password })
-    setBusy(false)
-    if (error) { setError('No se pudo guardar: ' + error.message); return }
+    if (error) { setError('No se pudo guardar: ' + error.message); setBusy(false); return }
+    // Marca en el perfil que ya se ha configurado la contraseña (para que deje de verse "Pendiente")
+    await supabase.functions.invoke('team-admin', { body: { action: 'mark_password_set' } })
     setOk(true)
-    setTimeout(() => navigate('/'), 1500)
+    // Cierra esta sesión temporal del enlace y manda a la pantalla normal de login,
+    // para que entre ya con su contraseña recién creada como haría cualquier otra vez.
+    await supabase.auth.signOut()
+    setBusy(false)
+    setTimeout(() => navigate('/login'), 1500)
   }
 
   return (
@@ -42,7 +47,7 @@ export default function SetPassword() {
         {!ready ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Comprobando el enlace…</p>
         ) : ok ? (
-          <p className="text-sm" style={{ color: 'var(--success)' }}>Contraseña guardada ✓ Entrando…</p>
+          <p className="text-sm" style={{ color: 'var(--success)' }}>Contraseña guardada ✓ Ya puedes iniciar sesión…</p>
         ) : (
           <form onSubmit={guardar} className="space-y-3 text-left">
             <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Crea tu contraseña para entrar al CRM.</p>

@@ -44,6 +44,21 @@ function Protected({ children }) {
 
 function AppRoutes() {
   const { session } = useAuth()
+
+  // Si el enlace del email trae un token de invitación o recuperación (Supabase lo añade
+  // siempre en el "hash" de la URL), forzamos la pantalla de crear/restablecer contraseña
+  // sin importar a qué página haya caído — así funciona aunque la lista de "Redirect URLs"
+  // de Supabase no tenga registrada exactamente esta ruta y haya caído en la raíz del sitio.
+  const hash = window.location.hash
+  const esEnlaceDeContrasena = hash.includes('type=invite') || hash.includes('type=recovery')
+  if (esEnlaceDeContrasena) {
+    return (
+      <Routes>
+        <Route path="*" element={<SetPassword />} />
+      </Routes>
+    )
+  }
+
   return (
     <Routes>
       <Route path="/login" element={session ? <Navigate to="/" replace /> : <Login />} />

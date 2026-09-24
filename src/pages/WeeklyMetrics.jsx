@@ -166,7 +166,7 @@ export default function WeeklyMetrics() {
             {CAMPOS.map((grupo) => (
               <div key={grupo.titulo} className="mb-4">
                 <p className="text-xs font-medium mb-2" style={{ color: 'var(--gold)' }}>{grupo.titulo}</p>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {grupo.campos.map(([key, label]) => (
                     <Input
                       key={key} type="number" step="0.01" placeholder={label}

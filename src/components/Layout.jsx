@@ -89,11 +89,13 @@ const SECCION_FIJA_POR_ROL = {
 export default function Layout() {
   const { profile, roles, hasAnyRole, signOut } = useAuth()
   const [collapsed, setCollapsed] = useState({})
+  const [mobileOpen, setMobileOpen] = useState(false)
   const mainRef = useRef(null)
   const location = useLocation()
 
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0)
+    setMobileOpen(false)
   }, [location.pathname])
 
   const visibleSections = SECTIONS
@@ -105,17 +107,47 @@ export default function Layout() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <ShiftTimer />
-      <div className="flex-1 flex overflow-hidden">
-      <aside
-        className="w-64 shrink-0 flex flex-col p-4 h-screen overflow-hidden"
-        style={{ background: 'var(--panel-alt)', borderRight: '1px solid var(--border)' }}
+      {/* Barra superior, solo en móvil: logo + botón de menú */}
+      <div
+        className="md:hidden flex items-center justify-between px-4 py-3 shrink-0"
+        style={{ background: 'var(--panel-alt)', borderBottom: '1px solid var(--border)' }}
       >
-        <div className="mb-8 px-2 text-center">
-          <img src={logo} alt="Divine Desire" className="h-28 object-contain mx-auto mb-2" />
-          <p className="text-xs italic" style={{ color: 'var(--text-muted)' }}>Disciplina · Dedicación · Distinción</p>
-          <div className="h-px w-full mt-4" style={{ background: 'linear-gradient(90deg, transparent, var(--gold), transparent)' }} />
-        </div>
+        <img src={logo} alt="Divine Desire" className="h-9 object-contain" />
+        <button onClick={() => setMobileOpen(true)} aria-label="Abrir menú" className="p-1">
+          <Icon name="menu" size={24} />
+        </button>
+      </div>
+
+      <ShiftTimer />
+
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Fondo oscuro al abrir el menú en móvil */}
+        {mobileOpen && (
+          <div
+            className="md:hidden fixed inset-0 z-30"
+            style={{ background: 'rgba(0,0,0,0.5)' }}
+            onClick={() => setMobileOpen(false)}
+          />
+        )}
+
+        <aside
+          className={`fixed md:static inset-y-0 left-0 z-40 w-64 shrink-0 flex flex-col p-4 h-full md:h-auto overflow-hidden transform transition-transform duration-300 md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
+          style={{ background: 'var(--panel-alt)', borderRight: '1px solid var(--border)' }}
+        >
+          <button
+            onClick={() => setMobileOpen(false)}
+            aria-label="Cerrar menú"
+            className="md:hidden absolute top-3 right-3 p-1"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <Icon name="x" size={20} />
+          </button>
+
+          <div className="mb-8 px-2 text-center">
+            <img src={logo} alt="Divine Desire" className="h-28 object-contain mx-auto mb-2" />
+            <p className="text-xs italic" style={{ color: 'var(--text-muted)' }}>Disciplina · Dedicación · Distinción</p>
+            <div className="h-px w-full mt-4" style={{ background: 'linear-gradient(90deg, transparent, var(--gold), transparent)' }} />
+          </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto">
           {visibleSections.map((section) => {
@@ -179,7 +211,7 @@ export default function Layout() {
           </button>
         </div>
       </aside>
-      <main ref={mainRef} className="flex-1 p-8 overflow-y-auto">
+      <main ref={mainRef} className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden">
         <AnnouncementGate>
           <PildoraGate>
             <Outlet />

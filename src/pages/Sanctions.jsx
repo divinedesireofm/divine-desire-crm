@@ -80,7 +80,7 @@ export default function Sanctions() {
 
       <Panel className="p-5 mb-6">
         <p className="text-sm font-medium mb-4">Nueva sanción</p>
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <Select value={form.chatter_id} onChange={(e) => setForm({ ...form, chatter_id: e.target.value })}>
             {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
           </Select>

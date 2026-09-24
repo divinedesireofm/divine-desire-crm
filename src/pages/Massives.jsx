@@ -161,7 +161,7 @@ function MasivoModal({ add, modelos, chatters, profile, onClose, onSaved }) {
   return (
     <Panel className="p-5 mt-4">
       <p className="text-sm font-medium mb-3">Asignar masivo</p>
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
         <Select value={chatterId} onChange={(e) => setChatterId(e.target.value)}>
           {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}

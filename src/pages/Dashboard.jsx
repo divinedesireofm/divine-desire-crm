@@ -86,7 +86,7 @@ export default function Dashboard() {
         title={`Hola, ${profile?.full_name?.split(' ')[0] || ''}`}
         subtitle="Resumen general de la agencia."
       />
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <Kpi label="Modelos activas" value={stats?.modelsCount ?? '—'} />
         <Kpi label="Cuentas de Instagram" value={stats?.accountsCount ?? '—'} />
         <Kpi label="Leads en proceso" value={stats?.leadsCount ?? '—'} />
@@ -95,7 +95,7 @@ export default function Dashboard() {
 
       {esChatTeam && (
         <>
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <Kpi
               label="Facturado hoy (reportes)"
               value={chatStats ? `$${chatStats.facturacionHoy.toFixed(2)}` : '—'}

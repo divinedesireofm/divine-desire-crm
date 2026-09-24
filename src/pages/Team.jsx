@@ -95,6 +95,7 @@ export default function Team() {
         ) : rows.length === 0 ? (
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Sin miembros de equipo todavía.</p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -119,7 +120,9 @@ export default function Team() {
                         ))}
                       </div>
                     </td>
-                    <td className="px-4 py-3"><StatusBadge status={u.active ? 'activa' : 'baja'} /></td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={!u.password_set ? 'pendiente' : (u.active ? 'activa' : 'baja')} />
+                    </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <button onClick={() => setResetU(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Contraseña manual</button>
                       <button onClick={() => enviarEmailReset(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Enviar email de reset</button>
@@ -142,6 +145,7 @@ export default function Team() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Panel>
 
@@ -224,7 +228,7 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Input placeholder="Nombre" value={f.full_name} onChange={(e) => setF({ ...f, full_name: e.target.value })} />
             <Input placeholder="Email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
           </div>

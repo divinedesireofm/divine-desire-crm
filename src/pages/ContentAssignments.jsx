@@ -14,7 +14,10 @@ function hoyISO() {
   return new Date().toISOString().slice(0, 10)
 }
 
-function Tarjeta({ r, alerta, desde, onRecordar, onBorrar }) {
+const SIGUIENTE = { pendiente: { a: 'enviado', label: 'Enviar →' }, enviado: { a: 'hecho', label: 'Marcar hecho →' } }
+const ANTERIOR = { enviado: { a: 'pendiente', label: '← A pendiente' }, hecho: { a: 'enviado', label: '← A enviado' } }
+
+function Tarjeta({ r, columna, alerta, desde, onRecordar, onBorrar, onMover }) {
   return (
     <div
       draggable
@@ -30,7 +33,7 @@ function Tarjeta({ r, alerta, desde, onRecordar, onBorrar }) {
       {alerta && (
         <p className="text-xs mb-2 font-medium" style={{ color: 'var(--danger)' }}>⚠️ {desde} días sin hacerse</p>
       )}
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-3 flex-wrap items-center">
         {alerta && (
           <button onClick={() => onRecordar(r)} className="text-xs hover:underline" style={{ color: 'var(--gold)' }}>
             Ya se lo he recordado
@@ -39,6 +42,19 @@ function Tarjeta({ r, alerta, desde, onRecordar, onBorrar }) {
         <button onClick={() => onBorrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>
           Borrar
         </button>
+        {/* Botones de mover: pensados para móvil (el arrastre con el dedo no funciona), pero también sirven en ordenador */}
+        <span className="flex gap-3 ml-auto md:hidden">
+          {ANTERIOR[columna] && (
+            <button onClick={() => onMover(r.id, ANTERIOR[columna].a)} className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}>
+              {ANTERIOR[columna].label}
+            </button>
+          )}
+          {SIGUIENTE[columna] && (
+            <button onClick={() => onMover(r.id, SIGUIENTE[columna].a)} className="text-xs hover:underline font-medium" style={{ color: 'var(--accent)' }}>
+              {SIGUIENTE[columna].label}
+            </button>
+          )}
+        </span>
       </div>
     </div>
   )
@@ -111,8 +127,7 @@ export default function ContentAssignments() {
     loadRows(selectedModel)
   }
 
-  async function soltarEn(columna, e) {
-    const id = e.dataTransfer.getData('text/plain')
+  async function moverA(id, columna) {
     const row = rows.find((r) => r.id === id)
     if (!row) return
     let update = null
@@ -122,6 +137,11 @@ export default function ContentAssignments() {
     if (!update) return
     await supabase.from('content_assignments').update(update).eq('id', id)
     loadRows(selectedModel)
+  }
+
+  async function soltarEn(columna, e) {
+    const id = e.dataTransfer.getData('text/plain')
+    moverA(id, columna)
   }
 
   const pendientesDeEnviar = rows.filter((r) => !r.enviado_en && !r.hecho_en)
@@ -158,12 +178,12 @@ export default function ContentAssignments() {
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
       ) : (
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           <Columna id="pendiente" titulo="🕒 Pendiente" contador={pendientesDeEnviar.length}
             vacio="Nada pendiente de enviar. Aquí caen los contenidos recién añadidos." colorBorde="var(--text-muted)"
             dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
             {pendientesDeEnviar.map((r) => (
-              <Tarjeta key={r.id} r={r} alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} />
+              <Tarjeta key={r.id} r={r} columna="pendiente" alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} onMover={moverA} />
             ))}
           </Columna>
 
@@ -172,7 +192,7 @@ export default function ContentAssignments() {
             dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
             {enviados.map((r) => {
               const desde = diasDesde(r.recordado_en || r.enviado_en)
-              return <Tarjeta key={r.id} r={r} alerta={desde >= DIAS_ALERTA} desde={desde} onRecordar={recordar} onBorrar={borrar} />
+              return <Tarjeta key={r.id} r={r} columna="enviado" alerta={desde >= DIAS_ALERTA} desde={desde} onRecordar={recordar} onBorrar={borrar} onMover={moverA} />
             })}
           </Columna>
 
@@ -180,7 +200,7 @@ export default function ContentAssignments() {
             vacio="Arrastra aquí cuando la modelo entregue el contenido." colorBorde="var(--success)"
             dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
             {hechos.map((r) => (
-              <Tarjeta key={r.id} r={r} alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} />
+              <Tarjeta key={r.id} r={r} columna="hecho" alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} onMover={moverA} />
             ))}
           </Columna>
         </div>

@@ -41,6 +41,7 @@ export default function Prices() {
       ) : secs.map((sec) => (
         <Panel key={sec} className="p-5 mb-4">
           <p className="font-medium mb-3">{sec}</p>
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -67,13 +68,14 @@ export default function Prices() {
               ))}
             </tbody>
           </table>
+          </div>
         </Panel>
       ))}
 
       {edit && (
         <Panel className="p-5 mt-4">
           <p className="text-sm font-medium mb-3">{edit.id ? 'Editar precio' : 'Nuevo precio'}</p>
-          <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Input
               placeholder="Sección"
               list="secciones"
