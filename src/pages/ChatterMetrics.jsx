@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { supabase } from '../lib/supabase'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, Table, Td, PageHeader } from '../components/ui'
-import { iaCall, iaJson, getVoiceGuide, withVoiceGuide } from '../lib/ai'
+import { iaCallJSON, getVoiceGuide, withVoiceGuide } from '../lib/ai'
 
 const EMPTY_FORM = { model_id: '', week_start: '', sales: '', messages_sent: '', ppv_unlocked: '', notes: '' }
 
@@ -12,7 +12,8 @@ const REGLAS_CHATTER = `Eres el analista de rendimiento del equipo de chat de la
 2. Un chatter con ventas altas pero muy pocos mensajes puede indicar suerte puntual, no una técnica repetible — coméntalo si lo ves.
 3. Una caída de más del 25% respecto a la media de las semanas anteriores merece atención, no solo un dato más.
 4. Si un chatter lleva varias modelos, valora si el rendimiento es consistente entre todas o se concentra en una sola.
-5. Sé directo, breve y accionable — nada de relleno.`
+5. Sé directo, breve y accionable — nada de relleno.
+6. Estás valorando a una persona, no solo un número. Antes de sugerir que algo es culpa del chatter, pregúntate si hay otra explicación (menos tráfico esa semana, un turno peor, una modelo con menos actividad). Si hay dudas razonables, plantéalo como pregunta a revisar con la persona, no como un veredicto.`
 
 function fmtEs(n) { return n === null || n === undefined || n === '' ? '—' : Number(n).toLocaleString('es-ES', { maximumFractionDigits: 2 }) }
 
@@ -80,9 +81,35 @@ export default function ChatterMetrics() {
     try {
       const nombre = chatters.find((c) => c.id === selectedChatter)?.full_name || ''
       const guia = await getVoiceGuide()
-      const system = withVoiceGuide(REGLAS_CHATTER + `\n\nDevuelve SOLO un JSON válido (sin markdown): {"resumen":"2-4 frases","puntos_atencion":[{"titulo":"...","detalle":"...","urgencia":"alta|media|baja"}],"plan_accion":[{"titulo":"...","detalle":"..."}],"conclusion":"1-2 frases"}. Si no hay puntos de atención, devuelve un array vacío.`, guia)
-      const txt = await iaCall(system, [{ role: 'user', content: `Chatter: ${nombre}\n\nHistórico semanal (por modelo):\n${JSON.stringify(rows.map((r) => ({ semana: r.week_start, modelo: r.models?.stage_name, ventas: r.sales, mensajes: r.messages_sent, ppv_desbloqueados: r.ppv_unlocked, notas: r.notes })), null, 0)}` }], 1500)
-      setAnalisis(iaJson(txt))
+      const system = withVoiceGuide(REGLAS_CHATTER, guia)
+      const analisisObj = await iaCallJSON(system, [{ role: 'user', content: `Chatter: ${nombre}\n\nHistórico semanal (por modelo):\n${JSON.stringify(rows.map((r) => ({ semana: r.week_start, modelo: r.models?.stage_name, ventas: r.sales, mensajes: r.messages_sent, ppv_desbloqueados: r.ppv_unlocked, notas: r.notes })), null, 0)}` }], {
+        tool_name: 'entregar_analisis',
+        tool_description: 'Entrega el análisis de rendimiento del chatter.',
+        schema: {
+          type: 'object',
+          properties: {
+            resumen: { type: 'string', description: '2-4 frases' },
+            puntos_atencion: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  titulo: { type: 'string' }, detalle: { type: 'string' },
+                  urgencia: { type: 'string', enum: ['alta', 'media', 'baja'] },
+                },
+                required: ['titulo', 'detalle', 'urgencia'],
+              },
+            },
+            plan_accion: {
+              type: 'array',
+              items: { type: 'object', properties: { titulo: { type: 'string' }, detalle: { type: 'string' } }, required: ['titulo', 'detalle'] },
+            },
+            conclusion: { type: 'string', description: '1-2 frases' },
+          },
+          required: ['resumen', 'puntos_atencion', 'plan_accion', 'conclusion'],
+        },
+      }, 1500)
+      setAnalisis(analisisObj)
     } catch (e) { setIaErr(e.message) }
     setIaBusy(false)
   }

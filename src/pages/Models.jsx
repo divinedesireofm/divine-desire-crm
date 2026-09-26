@@ -7,24 +7,45 @@ const STATUS_OPTIONS = ['en_preparacion', 'activa', 'pausada', 'en_negociacion',
 const STATUS_LABELS = { en_preparacion: 'En preparación', activa: 'Activa', pausada: 'Pausada', en_negociacion: 'En negociación', baja: 'Baja' }
 const EMPTY_FORM = { stage_name: '', status: 'en_preparacion', commission_percent: '', email: '', phone: '', notes: '' }
 
+const PASOS_ONBOARDING = [
+  { key: 'contrato', label: 'Firmar contrato' },
+  { key: 'cuenta_of', label: 'Crear cuenta de OnlyFans' },
+  { key: 'branding', label: 'Definir 4Ps / branding' },
+  { key: 'cuentas_ig', label: 'Crear cuentas de Instagram' },
+  { key: 'primer_contenido', label: 'Recibir primer lote de contenido' },
+  { key: 'primer_reporte', label: 'Primera semana de métricas registrada' },
+]
+
 export default function Models() {
-  const { hasRole } = useAuth()
+  const { hasRole, hasAnyRole } = useAuth()
   const canEdit = hasRole('admin')
+  const canOnboard = hasAnyRole(['admin', 'manager'])
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
+  const [modeloOnboarding, setModeloOnboarding] = useState('')
 
   async function load() {
     setLoading(true)
     const { data, error } = await supabase.from('models').select('*').order('created_at', { ascending: false })
-    if (!error) setModels(data)
+    if (!error) {
+      setModels(data)
+      if (data?.length && !modeloOnboarding) setModeloOnboarding(data[0].id)
+    }
     setLoading(false)
   }
 
   useEffect(() => { load() }, [])
+
+  async function toggleOnboarding(modelo, key) {
+    const actual = modelo.onboarding || {}
+    const nuevo = { ...actual, [key]: actual[key] ? null : new Date().toISOString().slice(0, 10) }
+    await supabase.from('models').update({ onboarding: nuevo }).eq('id', modelo.id)
+    load()
+  }
 
   function startCreate() {
     setEditingId(null)
@@ -159,6 +180,38 @@ export default function Models() {
           />
         )}
       </Panel>
+
+      {canOnboard && models.length > 0 && (
+        <Panel className="p-5 mt-6">
+          <p className="text-sm font-medium mb-3">✅ Onboarding de modelos</p>
+          <div className="max-w-xs mb-4">
+            <Select value={modeloOnboarding} onChange={(e) => setModeloOnboarding(e.target.value)}>
+              {models.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
+            </Select>
+          </div>
+          {(() => {
+            const m = models.find((x) => x.id === modeloOnboarding)
+            if (!m) return null
+            const est = m.onboarding || {}
+            return (
+              <div className="space-y-2">
+                {PASOS_ONBOARDING.map((p) => {
+                  const hecho = !!est[p.key]
+                  return (
+                    <label key={p.key} className="flex items-center gap-3 p-2 rounded-md cursor-pointer" style={{ background: 'var(--panel-alt)' }}>
+                      <input type="checkbox" checked={hecho} onChange={() => toggleOnboarding(m, p.key)} />
+                      <span className="text-sm flex-1" style={{ textDecoration: hecho ? 'line-through' : 'none', color: hecho ? 'var(--text-muted)' : 'var(--text)' }}>
+                        {p.label}
+                      </span>
+                      {hecho && <span className="text-xs" style={{ color: 'var(--success)' }}>{est[p.key]}</span>}
+                    </label>
+                  )
+                })}
+              </div>
+            )
+          })()}
+        </Panel>
+      )}
     </div>
   )
 }

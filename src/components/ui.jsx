@@ -147,3 +147,20 @@ export function PageHeader({ title, subtitle, action }) {
     </div>
   )
 }
+
+// Muestra "▲ 12.4%" / "▼ 8.0%" comparando un valor actual contra el del periodo anterior.
+// Si falta cualquiera de los dos datos, o el anterior es 0, no muestra nada (no se puede
+// calcular un % fiable).
+export function DeltaBadge({ actual, anterior }) {
+  const a = actual == null ? null : Number(actual)
+  const b = anterior == null ? null : Number(anterior)
+  if (a === null || b === null || Number.isNaN(a) || Number.isNaN(b) || b === 0) return null
+  const pct = ((a - b) / Math.abs(b)) * 100
+  const color = pct > 0.05 ? 'var(--success)' : pct < -0.05 ? 'var(--danger)' : 'var(--text-muted)'
+  const flecha = pct > 0.05 ? '▲' : pct < -0.05 ? '▼' : '—'
+  return (
+    <span className="text-xs font-medium" style={{ color }}>
+      {flecha} {Math.abs(pct).toFixed(1)}% vs. anterior
+    </span>
+  )
+}

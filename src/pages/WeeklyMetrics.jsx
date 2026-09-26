@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { Panel, Button, Input, Select, Table, Td, PageHeader } from '../components/ui'
+import { Panel, Button, Input, Select, Table, Td, PageHeader, DeltaBadge } from '../components/ui'
 import { iaCallJSON, getVoiceGuide, withVoiceGuide } from '../lib/ai'
 
 const EMPTY_FORM = {
@@ -376,11 +376,16 @@ export default function WeeklyMetrics() {
         ) : (
           <Table
             columns={['Semana', 'Facturación', 'Subs nuevas', 'Renovaciones', 'Tips', 'Alcance IG']}
-            rows={[...metrics].reverse()}
+            rows={metrics.map((m, i) => ({ ...m, _anterior: metrics[i - 1] })).reverse()}
             renderRow={(m) => (
               <>
                 <Td>{m.week_start}</Td>
-                <Td>{fmtEs(m.billing_total ?? m.of_net_sales)}</Td>
+                <Td>
+                  <div className="flex items-center gap-2">
+                    <span>{fmtEs(m.billing_total ?? m.of_net_sales)}</span>
+                    <DeltaBadge actual={m.billing_total ?? m.of_net_sales} anterior={m._anterior?.billing_total ?? m._anterior?.of_net_sales} />
+                  </div>
+                </Td>
                 <Td>{fmtEs(m.of_subs_new)}</Td>
                 <Td>{fmtEs(m.renewals_count)}</Td>
                 <Td>{fmtEs(m.of_tips)}</Td>

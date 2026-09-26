@@ -7,6 +7,7 @@ function scopesFor(roles) {
   const s = new Set(['general'])
   if (roles.includes('admin') || roles.includes('manager') || roles.includes('chatter')) s.add('chatting')
   if (roles.includes('admin') || roles.includes('ig_manager') || roles.includes('ig_assistant')) s.add('instagram')
+  if (roles.includes('admin') || roles.includes('manager') || roles.includes('modelo')) s.add('modelos')
   return Array.from(s)
 }
 

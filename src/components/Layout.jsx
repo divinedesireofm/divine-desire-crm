@@ -6,15 +6,17 @@ import Icon from './Icon'
 import AnnouncementGate from './AnnouncementGate'
 import PildoraGate from './PildoraGate'
 import ShiftTimer from './ShiftTimer'
+import NotificationBell from './NotificationBell'
 
 const SECTIONS = [
   {
     id: 'general',
     label: null, // sin cabecera, siempre visible arriba del todo
     items: [
-      { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'], end: true },
+      { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'], end: true },
       { to: '/asistente', label: 'Asistente IA', icon: 'sparkle', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/anuncios', label: 'Anuncios', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
+      { to: '/recursos', label: 'Recursos', icon: 'file', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'] },
     ],
   },
   {
@@ -26,6 +28,7 @@ const SECTIONS = [
       { to: '/reportes-turno', label: 'Reportes de turno', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
       { to: '/solicitudes', label: 'Solicitudes', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
       { to: '/contenido', label: 'Contenido pedido', icon: 'package', roles: ['admin', 'manager'] },
+      { to: '/solicitudes-modelos', label: 'Solicitudes de modelos', icon: 'sparkle', roles: ['admin', 'manager'] },
       { to: '/metricas-chatters', label: 'Métricas de chatters', icon: 'chart', roles: ['admin', 'manager'] },
       { to: '/masivos', label: 'Masivos PPV', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/chatters', label: 'Chatters', icon: 'users', roles: ['admin', 'manager'] },
@@ -65,6 +68,7 @@ const SECTIONS = [
     items: [
       { to: '/modelos', label: 'Modelos', icon: 'diamond', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/metricas', label: 'Métricas semanales', icon: 'chart', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
+      { to: '/comparativa', label: 'Comparativa modelos', icon: 'chart', roles: ['admin', 'manager', 'ig_manager'] },
     ],
   },
 ]
@@ -75,6 +79,7 @@ const ROLE_LABELS = {
   chatter: 'Chatter',
   ig_manager: 'Manager de Instagram',
   ig_assistant: 'Asistente de Instagram',
+  modelo: 'Modelo',
 }
 
 // La sección "de casa" de cada rol no se puede plegar, para que siempre esté a la vista.
@@ -113,9 +118,12 @@ export default function Layout() {
         style={{ background: 'var(--panel-alt)', borderBottom: '1px solid var(--border)' }}
       >
         <img src={logo} alt="Divine Desire" className="h-9 object-contain" />
-        <button onClick={() => setMobileOpen(true)} aria-label="Abrir menú" className="p-1">
-          <Icon name="menu" size={24} />
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <button onClick={() => setMobileOpen(true)} aria-label="Abrir menú" className="p-1">
+            <Icon name="menu" size={24} />
+          </button>
+        </div>
       </div>
 
       <ShiftTimer />
@@ -211,7 +219,10 @@ export default function Layout() {
           </button>
         </div>
       </aside>
-      <main ref={mainRef} className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden">
+      <main ref={mainRef} className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden relative">
+        <div className="hidden md:block absolute top-4 right-4 md:top-6 md:right-8 z-10">
+          <NotificationBell />
+        </div>
         <AnnouncementGate>
           <PildoraGate>
             <Outlet />

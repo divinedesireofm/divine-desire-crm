@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { readFunctionError } from '../lib/functions'
-import { Panel, Button, Input, StatusBadge, PageHeader } from '../components/ui'
+import { Panel, Button, Input, Select, StatusBadge, PageHeader } from '../components/ui'
 
-const ROLE_LABEL = { admin: 'Admin', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente IG' }
-const TODOS_LOS_ROLES = ['manager', 'chatter', 'ig_manager', 'ig_assistant']
+const ROLE_LABEL = { admin: 'Admin', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente IG', modelo: 'Modelo' }
+const TODOS_LOS_ROLES = ['manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo']
 
 // Qué roles puede ASIGNAR cada tipo de manager (marcando varias casillas)
 function rolesAsignables(roles) {
@@ -85,7 +85,7 @@ export default function Team() {
         title="Equipo"
         subtitle="Gestiona a tu equipo. Cada persona puede tener uno o varios roles a la vez."
         action={asignables.length > 0 && (
-          <Button onClick={() => setNuevo({ email: '', full_name: '', roles: [asignables[0]], password: '' })}>+ Nuevo usuario</Button>
+          <Button onClick={() => setNuevo({ email: '', full_name: '', roles: [asignables[0]], password: '', model_id: '' })}>+ Nuevo usuario</Button>
         )}
       />
 
@@ -192,15 +192,23 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [resultado, setResultado] = useState(null) // { modo, tempPassword, email }
+  const [modelosSinCuenta, setModelosSinCuenta] = useState([])
+
+  useEffect(() => {
+    if (!asignables.includes('modelo')) return
+    supabase.from('models').select('id, stage_name').is('user_id', null).order('stage_name')
+      .then(({ data }) => setModelosSinCuenta(data || []))
+  }, [asignables])
 
   async function guardar() {
     if (!f.email.trim() || !f.full_name.trim()) { setErr('Completa nombre y email.'); return }
     if (!f.roles.length) { setErr('Selecciona al menos un rol.'); return }
+    if (f.roles.includes('modelo') && !f.model_id) { setErr('Selecciona a qué modelo se enlaza esta cuenta.'); return }
     setBusy(true); setErr('')
     const { data, error } = await supabase.functions.invoke('team-admin', {
       body: {
         action: 'create', email: f.email.trim(), full_name: f.full_name.trim(), roles: f.roles,
-        password: f.password || undefined,
+        password: f.password || undefined, model_id: f.roles.includes('modelo') ? f.model_id : undefined,
         redirect_to: `${window.location.origin}/restablecer-contrasena`,
       },
     })
@@ -236,6 +244,18 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
           <div className="mb-3">
             <RoleCheckboxes asignables={asignables} selected={f.roles} onChange={(r) => setF({ ...f, roles: r })} />
           </div>
+          {f.roles.includes('modelo') && (
+            <div className="mb-3">
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>A qué modelo se enlaza esta cuenta</label>
+              <Select value={f.model_id || ''} onChange={(e) => setF({ ...f, model_id: e.target.value })}>
+                <option value="">Selecciona…</option>
+                {modelosSinCuenta.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
+              </Select>
+              {modelosSinCuenta.length === 0 && (
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>No hay modelos sin cuenta todavía (todas ya tienen una, o no has creado ninguna en "Modelos").</p>
+              )}
+            </div>
+          )}
           <Input placeholder="Contraseña (opcional)" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} className="mb-3" />
           <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
             Si dejas la contraseña vacía, le llegará un email para que se cree su propia contraseña él mismo.

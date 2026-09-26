@@ -3,9 +3,11 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Home from './pages/Home'
 import Models from './pages/Models'
 import InstagramAccounts from './pages/InstagramAccounts'
 import WeeklyMetrics from './pages/WeeklyMetrics'
+import ModelsComparison from './pages/ModelsComparison'
 import Chatters from './pages/Chatters'
 import Leads from './pages/Leads'
 import Attendance from './pages/Attendance'
@@ -24,6 +26,8 @@ import Training from './pages/Training'
 import AiSettings from './pages/AiSettings'
 import Assistant from './pages/Assistant'
 import ContentAssignments from './pages/ContentAssignments'
+import ModelRequests from './pages/ModelRequests'
+import Resources from './pages/Resources'
 import ChatterMetrics from './pages/ChatterMetrics'
 import Requests from './pages/Requests'
 import Massives from './pages/Massives'
@@ -71,9 +75,10 @@ function AppRoutes() {
           </Protected>
         }
       >
-        <Route index element={<Dashboard />} />
+        <Route index element={<Home />} />
         <Route path="modelos" element={<Models />} />
         <Route path="metricas" element={<WeeklyMetrics />} />
+        <Route path="comparativa" element={<ModelsComparison />} />
         <Route path="chatters" element={<Chatters />} />
         <Route path="instagram" element={<InstagramAccounts />} />
         <Route path="leads" element={<Leads />} />
@@ -93,6 +98,8 @@ function AppRoutes() {
         <Route path="voz-marca" element={<AiSettings />} />
         <Route path="asistente" element={<Assistant />} />
         <Route path="contenido" element={<ContentAssignments />} />
+        <Route path="solicitudes-modelos" element={<ModelRequests />} />
+        <Route path="recursos" element={<Resources />} />
         <Route path="metricas-chatters" element={<ChatterMetrics />} />
         <Route path="solicitudes" element={<Requests />} />
         <Route path="masivos" element={<Massives />} />
