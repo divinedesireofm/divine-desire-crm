@@ -7,6 +7,7 @@ import AnnouncementGate from './AnnouncementGate'
 import PildoraGate from './PildoraGate'
 import ShiftTimer from './ShiftTimer'
 import NotificationBell from './NotificationBell'
+import ThemeToggle from './ThemeToggle'
 
 const SECTIONS = [
   {
@@ -15,6 +16,8 @@ const SECTIONS = [
     items: [
       { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'], end: true },
       { to: '/asistente', label: 'Asistente IA', icon: 'sparkle', roles: ['admin', 'manager', 'ig_manager'] },
+      { to: '/tareas', label: 'Tareas pendientes', icon: 'file', roles: ['admin'] },
+      { to: '/fechas', label: 'Fechas importantes', icon: 'calendar', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/anuncios', label: 'Anuncios', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/recursos', label: 'Recursos', icon: 'file', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'] },
     ],
@@ -119,6 +122,7 @@ export default function Layout() {
       >
         <img src={logo} alt="Divine Desire" className="h-9 object-contain" />
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <NotificationBell />
           <button onClick={() => setMobileOpen(true)} aria-label="Abrir menú" className="p-1">
             <Icon name="menu" size={24} />
@@ -220,7 +224,8 @@ export default function Layout() {
         </div>
       </aside>
       <main ref={mainRef} className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden relative">
-        <div className="hidden md:block absolute top-4 right-4 md:top-6 md:right-8 z-10">
+        <div className="hidden md:flex items-center gap-2 absolute top-4 right-4 md:top-6 md:right-8 z-10">
+          <ThemeToggle />
           <NotificationBell />
         </div>
         <AnnouncementGate>

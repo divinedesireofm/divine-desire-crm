@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { fmtMoney, buildCompMap, calcPagoRow } from '../lib/pagos'
+import { getProfilesByRoles } from '../lib/roles'
 import MultiMonto from '../components/MultiMonto'
 
 function fechaHoyISO() {
@@ -26,6 +27,9 @@ function PagosAdmin() {
   const [abierto, setAbierto] = useState(null)
   const [nuevo, setNuevo] = useState(false)
   const [fecha, setFecha] = useState(fechaHoyISO())
+  const [fDesde, setFDesde] = useState('')
+  const [fHasta, setFHasta] = useState('')
+  const [buscarPersona, setBuscarPersona] = useState(false)
 
   async function load() {
     const { data } = await supabase.from('payment_periods').select('*').order('fecha', { ascending: false })
@@ -48,17 +52,40 @@ function PagosAdmin() {
 
   if (abierto) return <PeriodoEditor pid={abierto} onBack={() => { setAbierto(null); load() }} />
 
+  const periodosVisibles = periodos.filter((p) => (!fDesde || p.fecha >= fDesde) && (!fHasta || p.fecha <= fHasta))
+
   return (
     <div>
       <PageHeader
         title="Pagos"
         subtitle="Crea periodos de pago y calcula lo que cobra cada miembro del equipo. Cada miembro ve únicamente sus propios pagos."
-        action={<Button onClick={() => { setFecha(fechaHoyISO()); setNuevo(true) }}>+ Nuevo periodo</Button>}
+        action={
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setBuscarPersona(!buscarPersona)}>{buscarPersona ? 'Cerrar búsqueda' : 'Buscar por persona'}</Button>
+            <Button onClick={() => { setFecha(fechaHoyISO()); setNuevo(true) }}>+ Nuevo periodo</Button>
+          </div>
+        }
       />
+
+      {buscarPersona && <BuscarPagosPorPersona />}
+
+      <div className="flex gap-2 mb-3 max-w-md">
+        <div className="flex-1">
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Desde</label>
+          <Input type="date" value={fDesde} onChange={(e) => setFDesde(e.target.value)} />
+        </div>
+        <div className="flex-1">
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Hasta</label>
+          <Input type="date" value={fHasta} onChange={(e) => setFHasta(e.target.value)} />
+        </div>
+      </div>
+
       <Panel className="p-3">
-        {periodos.length === 0 ? (
-          <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>Aún no has creado periodos de pago.</p>
-        ) : periodos.map((p) => (
+        {periodosVisibles.length === 0 ? (
+          <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
+            {periodos.length === 0 ? 'Aún no has creado periodos de pago.' : 'Ningún periodo en ese rango de fechas.'}
+          </p>
+        ) : periodosVisibles.map((p) => (
           <div
             key={p.id}
             onClick={() => setAbierto(p.id)}
@@ -86,6 +113,68 @@ function PagosAdmin() {
         </Panel>
       )}
     </div>
+  )
+}
+
+function BuscarPagosPorPersona() {
+  const [personas, setPersonas] = useState([])
+  const [personaId, setPersonaId] = useState('')
+  const [desde, setDesde] = useState('')
+  const [hasta, setHasta] = useState('')
+  const [resultados, setResultados] = useState(null)
+  const [buscando, setBuscando] = useState(false)
+
+  useEffect(() => {
+    getProfilesByRoles(['manager', 'chatter']).then((data) => {
+      setPersonas(data)
+      if (data.length) setPersonaId(data[0].id)
+    })
+  }, [])
+
+  async function buscar() {
+    if (!personaId) return
+    setBuscando(true)
+    let q = supabase.from('payments').select('*, payment_periods!inner(fecha)').eq('chatter_id', personaId)
+    if (desde) q = q.gte('payment_periods.fecha', desde)
+    if (hasta) q = q.lte('payment_periods.fecha', hasta)
+    const { data } = await q.order('fecha', { foreignTable: 'payment_periods', ascending: false })
+    setResultados(data || [])
+    setBuscando(false)
+  }
+
+  const total = (resultados || []).reduce((s, r) => s + (Number(r.a_pagar) || 0), 0)
+
+  return (
+    <Panel className="p-5 mb-4">
+      <p className="text-sm font-medium mb-3">Buscar pagos por persona y rango de fechas</p>
+      <div className="flex gap-2 flex-wrap mb-3">
+        <Select value={personaId} onChange={(e) => setPersonaId(e.target.value)} className="max-w-[200px]">
+          {personas.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+        </Select>
+        <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="max-w-[160px]" />
+        <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="max-w-[160px]" />
+        <Button onClick={buscar} disabled={buscando}>{buscando ? 'Buscando…' : 'Buscar'}</Button>
+      </div>
+      {resultados && (
+        resultados.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin pagos en ese rango.</p>
+        ) : (
+          <>
+            <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>
+              {resultados.length} pago(s) · Total: <strong style={{ color: 'var(--text)' }}>${total.toFixed(2)}</strong>
+            </p>
+            <div className="space-y-1">
+              {resultados.map((r) => (
+                <div key={r.id} className="flex justify-between text-sm py-1" style={{ borderBottom: '1px solid var(--border)' }}>
+                  <span>{fmtFecha(r.payment_periods.fecha)}</span>
+                  <span>${Number(r.a_pagar).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )
+      )}
+    </Panel>
   )
 }
 

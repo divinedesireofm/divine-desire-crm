@@ -17,6 +17,22 @@
   --success: #4FBF8B;
 }
 
+:root[data-theme="light"] {
+  --bg: #FAF7F2;
+  --panel: #FFFFFF;
+  --panel-alt: #F3EFE8;
+  --border: #E3DCCB;
+  --text: #1C1917;
+  --text-muted: #6B6255;
+  --accent: #A9790A;
+  --accent-soft: #A9790A22;
+  --gold: #A9790A;
+  --gold-light: #C9A227;
+  --gold-deep: #8A6508;
+  --danger: #C0392B;
+  --success: #2E8B57;
+}
+
 .gold-text {
   background: linear-gradient(180deg, var(--gold-light), var(--gold-deep));
   -webkit-background-clip: text;

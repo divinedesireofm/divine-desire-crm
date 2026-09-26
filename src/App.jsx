@@ -25,6 +25,8 @@ import Announcements from './pages/Announcements'
 import Training from './pages/Training'
 import AiSettings from './pages/AiSettings'
 import Assistant from './pages/Assistant'
+import DirectionTodos from './pages/DirectionTodos'
+import ImportantDates from './pages/ImportantDates'
 import ContentAssignments from './pages/ContentAssignments'
 import ModelRequests from './pages/ModelRequests'
 import Resources from './pages/Resources'
@@ -97,6 +99,8 @@ function AppRoutes() {
         <Route path="formacion" element={<Training />} />
         <Route path="voz-marca" element={<AiSettings />} />
         <Route path="asistente" element={<Assistant />} />
+        <Route path="tareas" element={<DirectionTodos />} />
+        <Route path="fechas" element={<ImportantDates />} />
         <Route path="contenido" element={<ContentAssignments />} />
         <Route path="solicitudes-modelos" element={<ModelRequests />} />
         <Route path="recursos" element={<Resources />} />
