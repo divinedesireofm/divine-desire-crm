@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, Table, Td, PageHeader } from '../components/ui'
-import { iaCall, iaJson, getVoiceGuide, withVoiceGuide } from '../lib/ai'
+import { iaCallJSON, getVoiceGuide, withVoiceGuide } from '../lib/ai'
 
 const EMPTY_FORM = {
   week_start: '', billing_total: '', of_net_sales: '', subscription_income: '',
@@ -21,7 +21,15 @@ const REGLAS_ANALISIS = `Eres el analista de métricas semanales de la agencia D
 4. Si el ARPU (ingreso medio por fan) sube mientras la facturación total baja, es una señal de CONTRACCIÓN (la base de fans se está reduciendo), no de mejora — no lo confundas con una buena noticia.
 5. El modelo de suscripción gratuita desmonta el pipeline de renovaciones con el tiempo — es una palanca de captación puntual, nunca una estrategia permanente. Si lleva varias semanas activa, avisa del riesgo.
 6. Cuando falten datos de una semana o parezcan inconsistentes con las anteriores, dilo explícitamente en vez de inventar una explicación de negocio.
-7. Sé directo y concreto, sin relleno. Estructura pensada para que se lea en 30 segundos y se entienda en detalle si hace falta profundizar.`
+7. Sé directo y concreto, sin relleno. Estructura pensada para que se lea en 30 segundos y se entienda en detalle si hace falta profundizar.
+8. "Fans activos" y "días suscritos" son una FOTO de un momento (stock): no los sumes entre semanas, compáralos semana a semana. "Subs nuevas", "renovaciones" y "facturación" sí son flujo y se pueden sumar en un periodo.`
+
+const CAMPOS_IMPORTABLES = [
+  'billing_total', 'of_net_sales', 'subscription_income', 'of_subs_new', 'of_subs_churned',
+  'renewals_count', 'renewal_income', 'renewal_activated_count', 'conversion_pct', 'income_per_visit',
+  'active_fans', 'arppu', 'arpu', 'avg_days_subscribed', 'chat_ratio', 'of_ppv_sent', 'of_ppv_purchased',
+  'of_tips', 'ig_reach', 'ig_new_followers', 'ig_profile_visits', 'ig_link_clicks',
+]
 
 function fmtEs(n) { return n === null || n === undefined || n === '' ? '—' : Number(n).toLocaleString('es-ES', { maximumFractionDigits: 2 }) }
 
@@ -39,6 +47,12 @@ export default function WeeklyMetrics() {
   const [analisis, setAnalisis] = useState(null)
   const [iaBusy, setIaBusy] = useState(false)
   const [iaErr, setIaErr] = useState('')
+
+  const [showImportador, setShowImportador] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importImage, setImportImage] = useState(null) // { mediaType, base64 }
+  const [importBusy, setImportBusy] = useState(false)
+  const [importErr, setImportErr] = useState('')
 
   async function loadModels() {
     const { data } = await supabase.from('models').select('id, stage_name').order('stage_name')
@@ -81,15 +95,87 @@ export default function WeeklyMetrics() {
     loadMetrics(selectedModel)
   }
 
+  function handlePasteImagen(e) {
+    const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'))
+    if (!item) return
+    const file = item.getAsFile()
+    const reader = new FileReader()
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1]
+      setImportImage({ mediaType: file.type, base64 })
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function extraerConIA() {
+    if (!importText.trim() && !importImage) { setImportErr('Pega el texto o la captura con los datos de la semana.'); return }
+    setImportBusy(true); setImportErr('')
+    try {
+      const contenido = []
+      if (importImage) contenido.push({ type: 'image', source: { type: 'base64', media_type: importImage.mediaType, data: importImage.base64 } })
+      contenido.push({ type: 'text', text: importText.trim() || 'Extrae los datos de la captura.' })
+
+      const system = `Eres experto en leer informes de Infloww (chat de OnlyFans) y OFM PRO (Instagram) de agencias de creadoras. Te van a pasar una captura de pantalla y/o un texto con las métricas de UNA semana. Extrae los valores EXACTOS que veas — nunca inventes ni redondees de más. Si un dato no aparece en absoluto, devuélvelo como null, no como 0. Si ves una fecha de la semana, conviértela a formato YYYY-MM-DD (lunes de esa semana); si no la ves, devuelve week_start como null.`
+
+      const schema = {
+        type: 'object',
+        properties: {
+          week_start: { type: ['string', 'null'], description: 'YYYY-MM-DD, lunes de la semana, o null si no aparece' },
+          ...Object.fromEntries(CAMPOS_IMPORTABLES.map((c) => [c, { type: ['number', 'null'] }])),
+        },
+        required: ['week_start', ...CAMPOS_IMPORTABLES],
+      }
+
+      const extraido = await iaCallJSON(system, [{ role: 'user', content: contenido }], {
+        tool_name: 'entregar_metricas', tool_description: 'Entrega las métricas extraídas.', schema,
+      }, 1200)
+
+      const nuevoForm = { ...EMPTY_FORM }
+      if (extraido.week_start) nuevoForm.week_start = extraido.week_start
+      CAMPOS_IMPORTABLES.forEach((c) => { if (extraido[c] !== null && extraido[c] !== undefined) nuevoForm[c] = String(extraido[c]) })
+      setForm(nuevoForm)
+      setShowImportador(false)
+      setShowForm(true)
+      setImportText(''); setImportImage(null)
+    } catch (e) { setImportErr(e.message) }
+    setImportBusy(false)
+  }
+
   async function generarAnalisis() {
     setIaBusy(true); setIaErr(''); setAnalisis(null)
     try {
       const modeloNombre = models.find((m) => m.id === selectedModel)?.stage_name || ''
       const ultimas = metrics.slice(-10)
       const guia = await getVoiceGuide()
-      const system = withVoiceGuide(REGLAS_ANALISIS + `\n\nDevuelve SOLO un JSON válido (sin markdown) con esta forma exacta: {"resumen":"2-4 frases","fugas":[{"titulo":"...","detalle":"...","urgencia":"alta|media|baja"}],"plan_accion":[{"titulo":"...","detalle":"..."}],"conclusion":"1-2 frases"}. Si no hay fugas relevantes esta semana, devuelve fugas como array vacío.`, guia)
-      const txt = await iaCall(system, [{ role: 'user', content: `Modelo: ${modeloNombre}\n\nHistórico de las últimas semanas (la última fila es la semana a analizar):\n${JSON.stringify(ultimas, null, 0)}` }], 1800)
-      setAnalisis(iaJson(txt))
+      const system = withVoiceGuide(REGLAS_ANALISIS + `\n\nAntes de afirmar que algo es un problema, pregúntate si hay otra explicación posible (un dato roto, una semana atípica, una campaña puntual). Si hay más de una explicación razonable, dilo como pregunta abierta en vez de darla por hecho.`, guia)
+      const analisisObj = await iaCallJSON(system, [{ role: 'user', content: `Modelo: ${modeloNombre}\n\nHistórico de las últimas semanas (la última fila es la semana a analizar):\n${JSON.stringify(ultimas, null, 0)}` }], {
+        tool_name: 'entregar_analisis',
+        tool_description: 'Entrega el análisis de la semana.',
+        schema: {
+          type: 'object',
+          properties: {
+            resumen: { type: 'string', description: '2-4 frases' },
+            fugas: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  titulo: { type: 'string' }, detalle: { type: 'string' },
+                  urgencia: { type: 'string', enum: ['alta', 'media', 'baja'] },
+                },
+                required: ['titulo', 'detalle', 'urgencia'],
+              },
+            },
+            plan_accion: {
+              type: 'array',
+              items: { type: 'object', properties: { titulo: { type: 'string' }, detalle: { type: 'string' } }, required: ['titulo', 'detalle'] },
+            },
+            conclusion: { type: 'string', description: '1-2 frases' },
+          },
+          required: ['resumen', 'fugas', 'plan_accion', 'conclusion'],
+        },
+      }, 1800)
+      setAnalisis(analisisObj)
     } catch (e) { setIaErr(e.message) }
     setIaBusy(false)
   }
@@ -141,11 +227,43 @@ export default function WeeklyMetrics() {
         title="Métricas semanales"
         subtitle="Evolución de OnlyFans e Instagram, modelo por modelo — con análisis automático."
         action={canEdit && (
-          <Button onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancelar' : 'Añadir semana'}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => { setShowImportador(!showImportador); setShowForm(false) }}>
+              {showImportador ? 'Cancelar' : '✨ Importar con IA'}
+            </Button>
+            <Button onClick={() => { setShowForm(!showForm); setShowImportador(false) }}>
+              {showForm ? 'Cancelar' : 'Añadir semana'}
+            </Button>
+          </div>
         )}
       />
+
+      {showImportador && (
+        <Panel className="p-5 mb-6">
+          <p className="text-sm font-medium mb-2">✨ Importar métricas con IA</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+            Pega aquí una captura de pantalla (Ctrl+V) de Infloww u OFM PRO, o simplemente escribe/pega el texto con los números de la semana.
+            La IA rellenará el formulario para que lo revises antes de guardar — nunca se guarda solo.
+          </p>
+          <textarea
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            onPaste={handlePasteImagen}
+            placeholder="Pega aquí una captura (Ctrl+V) o escribe/pega el texto con los datos..."
+            rows={5}
+            className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none mb-3"
+            style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
+          />
+          {importImage && (
+            <div className="mb-3 flex items-center gap-3">
+              <img src={`data:${importImage.mediaType};base64,${importImage.base64}`} alt="Captura pegada" className="h-24 rounded-md border" style={{ borderColor: 'var(--border)' }} />
+              <button onClick={() => setImportImage(null)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar imagen</button>
+            </div>
+          )}
+          {importErr && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{importErr}</p>}
+          <Button onClick={extraerConIA} disabled={importBusy}>{importBusy ? 'Extrayendo…' : 'Extraer datos'}</Button>
+        </Panel>
+      )}
 
       <div className="mb-6 max-w-xs">
         <Select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>

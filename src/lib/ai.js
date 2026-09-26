@@ -22,6 +22,22 @@ export async function iaCall(system, messages, max_tokens) {
   return data.text
 }
 
+// Igual que iaCall, pero fuerza a la IA a devolver el JSON con la forma exacta de "schema"
+// (usando tool_choice en el servidor) — nunca viene mal formado, cortado o envuelto en texto.
+// tool_name/tool_description son solo para que la IA entienda qué se le pide; schema es el
+// input_schema de JSON Schema con la forma exacta del objeto que debe devolver.
+export async function iaCallJSON(system, messages, { tool_name, tool_description, schema }, max_tokens) {
+  const { data, error } = await supabase.functions.invoke('generate-ai', {
+    body: {
+      system, messages, max_tokens,
+      tool: { name: tool_name, description: tool_description, input_schema: schema },
+    },
+  })
+  if (error) throw new Error(error.message || 'Error llamando a la IA.')
+  if (data?.error) throw new Error(data.error)
+  return data.data
+}
+
 // Extrae el primer JSON válido (objeto o array) de un texto, tolerando ```json ... ```
 export function iaJson(text) {
   const clean = text.replace(/```json/g, '').replace(/```/g, '').trim()
