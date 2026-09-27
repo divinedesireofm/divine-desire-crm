@@ -34,7 +34,7 @@ export default function Sanctions() {
   async function load() {
     const [{ data: s }, u, { data: all }] = await Promise.all([
       supabase.from('sanctions').select('*, profiles(full_name)').order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(400),
-      getProfilesByRoles(['manager', 'chatter']),
+      getProfilesByRoles(['manager', 'chatter', 'ig_manager', 'ig_assistant']),
       supabase.from('profiles').select('id, full_name'),
     ])
     setRows(s || [])
@@ -73,10 +73,13 @@ export default function Sanctions() {
 
   const vis = rows.filter((r) => fChatter === 'todos' ? true : r.chatter_id === fChatter)
   const totalMonto = vis.reduce((a, r) => a + (parseFloat(r.monto) || 0), 0)
+  const roleMap = {}
+  users.forEach((u) => { roleMap[u.id] = u.role })
+  const EQUIPO_LABEL = { manager: 'Chatting', chatter: 'Chatting', ig_manager: 'Instagram', ig_assistant: 'Instagram' }
 
   return (
     <div>
-      <PageHeader title="Sanciones" subtitle="Registra las sanciones del equipo con su motivo y fecha." />
+      <PageHeader title="Sanciones" subtitle="Registra las sanciones del equipo (chatting e Instagram) con su motivo y fecha." />
 
       <Panel className="p-5 mb-6">
         <p className="text-sm font-medium mb-4">Nueva sanción</p>
@@ -122,7 +125,7 @@ export default function Sanctions() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Fecha', 'Chatter', 'Monto', 'Motivo', 'Puesta por', 'Vista', ''].map((c) => (
+                  {['Fecha', 'Chatter', 'Equipo', 'Monto', 'Motivo', 'Puesta por', 'Vista', ''].map((c) => (
                     <th key={c} className="text-left px-3 py-2 font-medium" style={{ color: 'var(--text-muted)' }}>{c}</th>
                   ))}
                 </tr>
@@ -132,6 +135,7 @@ export default function Sanctions() {
                   <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td className="px-3 py-2 whitespace-nowrap">{fmtTS(s.created_at)}</td>
                     <td className="px-3 py-2"><strong>{s.profiles?.full_name}</strong></td>
+                    <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{EQUIPO_LABEL[roleMap[s.chatter_id]] || '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{s.monto ? fmtMoney(s.monto) : '—'}</td>
                     <td className="px-3 py-2" style={{ maxWidth: 340, whiteSpace: 'pre-wrap', color: 'var(--text-muted)' }}>{s.motivo}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{nameMap[s.creado_por] || '—'}</td>

@@ -55,6 +55,7 @@ const SECTIONS = [
       { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/cuentas-cero', label: 'Cuentas de cero', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/leads', label: 'Reclutamiento', icon: 'target', roles: ['admin', 'ig_manager'] },
+      { to: '/sanciones', label: 'Sanciones', icon: 'alert', roles: ['ig_manager'] },
     ],
   },
   {
