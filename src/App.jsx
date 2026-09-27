@@ -8,6 +8,8 @@ import Models from './pages/Models'
 import InstagramAccounts from './pages/InstagramAccounts'
 import Reels from './pages/Reels'
 import ZeroAccounts from './pages/ZeroAccounts'
+import IGReports from './pages/IGReports'
+import UnifiedReportsInbox from './pages/UnifiedReportsInbox'
 import WeeklyMetrics from './pages/WeeklyMetrics'
 import ModelsComparison from './pages/ModelsComparison'
 import Chatters from './pages/Chatters'
@@ -87,6 +89,8 @@ function AppRoutes() {
         <Route path="instagram" element={<InstagramAccounts />} />
         <Route path="reels" element={<Reels />} />
         <Route path="cuentas-cero" element={<ZeroAccounts />} />
+        <Route path="reportes-ig" element={<IGReports />} />
+        <Route path="bandeja-reportes" element={<UnifiedReportsInbox />} />
         <Route path="leads" element={<Leads />} />
         <Route path="asistencia" element={<Attendance />} />
         <Route path="reportes-turno" element={<ShiftReports />} />

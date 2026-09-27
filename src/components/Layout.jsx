@@ -54,6 +54,7 @@ const SECTIONS = [
       { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/cuentas-cero', label: 'Cuentas de cero', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/leads', label: 'Reclutamiento', icon: 'target', roles: ['admin', 'ig_manager'] },
+      { to: '/reportes-ig', label: 'Reportes de Instagram', icon: 'file', roles: ['admin', 'ig_manager', 'ig_assistant'] },
     ],
   },
   {
@@ -64,6 +65,7 @@ const SECTIONS = [
       { to: '/equipo', label: 'Equipo', icon: 'users', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/sanciones', label: 'Sanciones', icon: 'alert', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/historial', label: 'Historial', icon: 'clock', roles: ['admin', 'manager', 'ig_manager'] },
+      { to: '/bandeja-reportes', label: 'Bandeja de reportes', icon: 'file', roles: ['admin'] },
     ],
   },
   {
