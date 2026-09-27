@@ -37,7 +37,6 @@ const SECTIONS = [
       { to: '/chatters', label: 'Chatters', icon: 'users', roles: ['admin', 'manager'] },
       { to: '/horarios', label: 'Horarios', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/pagos', label: 'Pagos', icon: 'dollar', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/sanciones', label: 'Sanciones', icon: 'alert', roles: ['admin', 'manager'] },
       { to: '/packs', label: 'Packs', icon: 'package', roles: ['admin', 'manager', 'chatter'] },
       { to: '/scripts', label: 'Scripts', icon: 'chat', roles: ['admin', 'manager', 'chatter'] },
       { to: '/activacion', label: 'Activación', icon: 'zap', roles: ['admin', 'manager', 'chatter'] },
@@ -55,7 +54,6 @@ const SECTIONS = [
       { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/cuentas-cero', label: 'Cuentas de cero', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/leads', label: 'Reclutamiento', icon: 'target', roles: ['admin', 'ig_manager'] },
-      { to: '/sanciones', label: 'Sanciones', icon: 'alert', roles: ['ig_manager'] },
     ],
   },
   {
@@ -64,6 +62,7 @@ const SECTIONS = [
     icon: 'users',
     items: [
       { to: '/equipo', label: 'Equipo', icon: 'users', roles: ['admin', 'manager', 'ig_manager'] },
+      { to: '/sanciones', label: 'Sanciones', icon: 'alert', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/historial', label: 'Historial', icon: 'clock', roles: ['admin', 'manager', 'ig_manager'] },
     ],
   },
