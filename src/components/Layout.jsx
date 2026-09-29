@@ -20,6 +20,7 @@ const SECTIONS = [
       { to: '/fechas', label: 'Fechas importantes', icon: 'calendar', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/anuncios', label: 'Anuncios', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/recursos', label: 'Recursos', icon: 'file', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'] },
+      { to: '/novedades', label: 'Novedades', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'] },
     ],
   },
   {
@@ -33,6 +34,7 @@ const SECTIONS = [
       { to: '/contenido', label: 'Contenido pedido', icon: 'package', roles: ['admin', 'manager'] },
       { to: '/solicitudes-modelos', label: 'Solicitudes de modelos', icon: 'sparkle', roles: ['admin', 'manager'] },
       { to: '/metricas-chatters', label: 'Métricas de chatters', icon: 'chart', roles: ['admin', 'manager'] },
+      { to: '/rendimiento-360', label: 'Rendimiento 360', icon: 'chart', roles: ['admin', 'manager'] },
       { to: '/masivos', label: 'Masivos PPV', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/chatters', label: 'Chatters', icon: 'users', roles: ['admin', 'manager'] },
       { to: '/horarios', label: 'Horarios', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
@@ -58,6 +60,7 @@ const SECTIONS = [
       { to: '/cuentas-cero', label: 'Cuentas de cero', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/incidencias', label: 'Restricciones y apelaciones', icon: 'alert', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/proxies', label: 'Proxies', icon: 'package', roles: ['admin', 'ig_manager'] },
+      { to: '/incentivos-ig', label: 'Incentivos de Instagram', icon: 'dollar', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/leads', label: 'Reclutamiento', icon: 'target', roles: ['admin', 'ig_manager'] },
       { to: '/reportes-ig', label: 'Reportes de Instagram', icon: 'file', roles: ['admin', 'ig_manager', 'ig_assistant'] },
     ],
@@ -71,6 +74,7 @@ const SECTIONS = [
       { to: '/sanciones', label: 'Sanciones', icon: 'alert', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/historial', label: 'Historial', icon: 'clock', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/bandeja-reportes', label: 'Bandeja de reportes', icon: 'file', roles: ['admin'] },
+      { to: '/incidencias-modelos', label: 'Incidencias de modelos', icon: 'alert', roles: ['admin', 'manager'] },
     ],
   },
   {
@@ -81,6 +85,7 @@ const SECTIONS = [
       { to: '/modelos', label: 'Modelos', icon: 'diamond', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/metricas', label: 'Métricas semanales', icon: 'chart', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/comparativa', label: 'Comparativa modelos', icon: 'chart', roles: ['admin', 'manager', 'ig_manager'] },
+      { to: '/salud-of', label: 'Salud OF', icon: 'chart', roles: ['admin', 'manager', 'ig_manager'] },
     ],
   },
 ]

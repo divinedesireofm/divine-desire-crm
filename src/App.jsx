@@ -14,6 +14,11 @@ import ReferenceReels from './pages/ReferenceReels'
 import TrialReels from './pages/TrialReels'
 import AccountIncidents from './pages/AccountIncidents'
 import Proxies from './pages/Proxies'
+import Chat360 from './pages/Chat360'
+import OFHealth from './pages/OFHealth'
+import Changelog from './pages/Changelog'
+import IGIncentives from './pages/IGIncentives'
+import ModelIncidents from './pages/ModelIncidents'
 import UnifiedReportsInbox from './pages/UnifiedReportsInbox'
 import WeeklyMetrics from './pages/WeeklyMetrics'
 import ModelsComparison from './pages/ModelsComparison'
@@ -100,6 +105,11 @@ function AppRoutes() {
         <Route path="trial-reels" element={<TrialReels />} />
         <Route path="incidencias" element={<AccountIncidents />} />
         <Route path="proxies" element={<Proxies />} />
+        <Route path="rendimiento-360" element={<Chat360 />} />
+        <Route path="salud-of" element={<OFHealth />} />
+        <Route path="novedades" element={<Changelog />} />
+        <Route path="incentivos-ig" element={<IGIncentives />} />
+        <Route path="incidencias-modelos" element={<ModelIncidents />} />
         <Route path="bandeja-reportes" element={<UnifiedReportsInbox />} />
         <Route path="leads" element={<Leads />} />
         <Route path="asistencia" element={<Attendance />} />

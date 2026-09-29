@@ -28,6 +28,53 @@ export default function TrialReels() {
   const [evaluando, setEvaluando] = useState(false)
   const [resultado, setResultado] = useState(null) // {base, score, veredicto_formula, ia, id}
 
+  const [showImportador, setShowImportador] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importImage, setImportImage] = useState(null)
+  const [importBusy, setImportBusy] = useState(false)
+  const [importErr, setImportErr] = useState('')
+
+  function handlePasteImagen(e) {
+    const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'))
+    if (!item) return
+    const file = item.getAsFile()
+    const reader = new FileReader()
+    reader.onload = () => setImportImage({ mediaType: file.type, base64: reader.result.split(',')[1] })
+    reader.readAsDataURL(file)
+  }
+
+  async function extraerConIA() {
+    if (!importText.trim() && !importImage) { setImportErr('Pega el texto o la captura con los datos del reel.'); return }
+    setImportBusy(true); setImportErr('')
+    try {
+      const contenido = []
+      if (importImage) contenido.push({ type: 'image', source: { type: 'base64', media_type: importImage.mediaType, data: importImage.base64 } })
+      contenido.push({ type: 'text', text: importText.trim() || 'Extrae los datos de la captura.' })
+      const system = `Eres experto en leer estadísticas de un reel de Instagram (pantalla de "Insights" del propio reel). Extrae los valores EXACTOS que veas. Si un dato no aparece, devuélvelo como null, nunca como 0.`
+      const schema = {
+        type: 'object',
+        properties: {
+          seguidores: { type: ['number', 'null'] }, duracion_seg: { type: ['number', 'null'] },
+          visualizaciones: { type: ['number', 'null'] }, cuentas_alcanzadas: { type: ['number', 'null'] },
+          tiempo_promedio_seg: { type: ['number', 'null'] }, omisiones_pct: { type: ['number', 'null'] },
+          pct_guardado: { type: ['number', 'null'] }, pct_compartido: { type: ['number', 'null'] },
+          pct_reposts: { type: ['number', 'null'] }, nuevos_seguidores: { type: ['number', 'null'] },
+        },
+        required: ['seguidores', 'duracion_seg', 'visualizaciones', 'cuentas_alcanzadas', 'tiempo_promedio_seg', 'omisiones_pct', 'pct_guardado', 'pct_compartido', 'pct_reposts', 'nuevos_seguidores'],
+      }
+      const extraido = await iaCallJSON(system, [{ role: 'user', content: contenido }], { tool_name: 'entregar_metricas_reel', tool_description: 'Entrega las métricas extraídas.', schema }, 900)
+      setForm((f) => {
+        const n = { ...f }
+        Object.entries(extraido).forEach(([k, v]) => { if (v !== null && v !== undefined) n[k] = String(v) })
+        return n
+      })
+      setShowImportador(false)
+      setShowForm(true)
+      setImportText(''); setImportImage(null)
+    } catch (e) { setImportErr(e.message) }
+    setImportBusy(false)
+  }
+
   async function load() {
     setLoading(true)
     const [{ data: h }, r] = await Promise.all([
@@ -117,8 +164,36 @@ export default function TrialReels() {
       <PageHeader
         title="Trial Reels"
         subtitle="Evalúa si una modelo nueva pasa su periodo de prueba, según el rendimiento real de su reel."
-        action={<Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancelar' : '+ Nueva evaluación'}</Button>}
+        action={
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => { setShowImportador(!showImportador); setShowForm(false) }}>{showImportador ? 'Cancelar' : '✨ Importar con IA'}</Button>
+            <Button onClick={() => { setShowForm(!showForm); setShowImportador(false) }}>{showForm ? 'Cancelar' : '+ Nueva evaluación'}</Button>
+          </div>
+        }
       />
+
+      {showImportador && (
+        <Panel className="p-5 mb-6">
+          <p className="text-sm font-medium mb-2">✨ Importar datos del reel con IA</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+            Pega una captura de pantalla (Ctrl+V) de los "Insights" del reel, o escribe/pega el texto con los datos.
+          </p>
+          <textarea
+            value={importText} onChange={(e) => setImportText(e.target.value)} onPaste={handlePasteImagen}
+            placeholder="Pega aquí una captura (Ctrl+V) o el texto..." rows={4}
+            className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none mb-3"
+            style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
+          />
+          {importImage && (
+            <div className="mb-3 flex items-center gap-3">
+              <img src={`data:${importImage.mediaType};base64,${importImage.base64}`} alt="Captura pegada" className="h-24 rounded-md border" style={{ borderColor: 'var(--border)' }} />
+              <button onClick={() => setImportImage(null)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar imagen</button>
+            </div>
+          )}
+          {importErr && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{importErr}</p>}
+          <Button onClick={extraerConIA} disabled={importBusy}>{importBusy ? 'Extrayendo…' : 'Extraer datos'}</Button>
+        </Panel>
+      )}
 
       {showForm && (
         <Panel className="p-5 mb-6">
