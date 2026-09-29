@@ -9,6 +9,11 @@ import InstagramAccounts from './pages/InstagramAccounts'
 import Reels from './pages/Reels'
 import ZeroAccounts from './pages/ZeroAccounts'
 import IGReports from './pages/IGReports'
+import WhatWorks from './pages/WhatWorks'
+import ReferenceReels from './pages/ReferenceReels'
+import TrialReels from './pages/TrialReels'
+import AccountIncidents from './pages/AccountIncidents'
+import Proxies from './pages/Proxies'
 import UnifiedReportsInbox from './pages/UnifiedReportsInbox'
 import WeeklyMetrics from './pages/WeeklyMetrics'
 import ModelsComparison from './pages/ModelsComparison'
@@ -90,6 +95,11 @@ function AppRoutes() {
         <Route path="reels" element={<Reels />} />
         <Route path="cuentas-cero" element={<ZeroAccounts />} />
         <Route path="reportes-ig" element={<IGReports />} />
+        <Route path="lo-que-funciona" element={<WhatWorks />} />
+        <Route path="reels-referencia" element={<ReferenceReels />} />
+        <Route path="trial-reels" element={<TrialReels />} />
+        <Route path="incidencias" element={<AccountIncidents />} />
+        <Route path="proxies" element={<Proxies />} />
         <Route path="bandeja-reportes" element={<UnifiedReportsInbox />} />
         <Route path="leads" element={<Leads />} />
         <Route path="asistencia" element={<Attendance />} />

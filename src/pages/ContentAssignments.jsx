@@ -2,8 +2,23 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
+import CopyButton from '../components/CopyButton'
+import { iaCall, getVoiceGuide, withVoiceGuide } from '../lib/ai'
 
 const DIAS_ALERTA = 14
+
+const FASES_RECORDATORIO = [
+  { n: 1, label: 'Fase 1 · Recordatorio amable', tono: 'cercano y motivador, primer recordatorio suave, sin presión' },
+  { n: 2, label: 'Fase 2 · Segundo aviso cordial', tono: 'amable pero ya recordando que es el segundo aviso' },
+  { n: 3, label: 'Fase 3 · Insistencia con contexto', tono: 'explica por qué se necesita ya, apelando a la planificación del contenido' },
+  { n: 4, label: 'Fase 4 · Urgencia moderada', tono: 'más directo, recalcando que el tiempo empieza a apremiar' },
+  { n: 5, label: 'Fase 5 · Urgencia clara', tono: 'urgencia clara y directa, sin rodeos' },
+  { n: 6, label: 'Fase 6 · Consecuencias visibles', tono: 'explica qué se ve afectado si no llega ya (calendario, otras tareas)' },
+  { n: 7, label: 'Fase 7 · Consecuencias serias', tono: 'serio, deja claro que esto ya es un problema real de cumplimiento' },
+  { n: 8, label: 'Fase 8 · Aviso formal', tono: 'formal, como un aviso oficial, sin cercanía' },
+  { n: 9, label: 'Fase 9 · Última oportunidad', tono: 'definitivo, última oportunidad antes de escalar' },
+  { n: 10, label: 'Fase 10 · Escalamiento a dirección', tono: 'profesional y definitivo, informando que se escalará a dirección si no hay respuesta' },
+]
 
 function diasDesde(fechaISO) {
   const d = new Date(fechaISO + 'T00:00:00')
@@ -31,7 +46,9 @@ function Tarjeta({ r, columna, alerta, desde, onRecordar, onBorrar, onMover }) {
         {!r.hecho_en && r.recordado_en && <> · recordado {r.recordado_en}</>}
       </p>
       {alerta && (
-        <p className="text-xs mb-2 font-medium" style={{ color: 'var(--danger)' }}>⚠️ {desde} días sin hacerse</p>
+        <p className="text-xs mb-2 font-medium" style={{ color: 'var(--danger)' }}>
+          ⚠️ {desde} días sin hacerse{r.fase_recordatorio > 0 ? ` · recordatorio fase ${r.fase_recordatorio}/10` : ''}
+        </p>
       )}
       <div className="flex gap-3 flex-wrap items-center">
         {alerta && (
@@ -117,8 +134,29 @@ export default function ContentAssignments() {
     loadRows(selectedModel)
   }
 
-  async function recordar(row) {
-    await supabase.from('content_assignments').update({ recordado_en: hoyISO() }).eq('id', row.id)
+  const [recordatorio, setRecordatorio] = useState(null) // { row, fase, mensaje, busy, err }
+
+  async function abrirRecordatorio(row) {
+    const fase = Math.min((row.fase_recordatorio || 0) + 1, 10)
+    const infoFase = FASES_RECORDATORIO[fase - 1]
+    setRecordatorio({ row, fase, mensaje: '', busy: true, err: '' })
+    try {
+      const nombreModelo = modelos.find((m) => m.id === selectedModel)?.stage_name || ''
+      const guia = await getVoiceGuide()
+      const system = withVoiceGuide(`Eres el manager de chatting escribiendo un recordatorio directo a una modelo (${nombreModelo}) sobre contenido que no ha entregado todavía. Escribe UN mensaje corto, listo para enviarle por chat, con este tono: ${infoFase.tono}. En español, como si se lo escribieras tú mismo. No firmes el mensaje ni añadas saludos genéricos de más.`, guia)
+      const texto = await iaCall(system, [{ role: 'user', content: `Contenido pendiente: "${row.titulo}". Esta es la fase de recordatorio número ${fase} de 10 (${infoFase.label}).` }], 400)
+      setRecordatorio({ row, fase, mensaje: texto.trim(), busy: false, err: '' })
+    } catch (e) {
+      setRecordatorio({ row, fase, mensaje: '', busy: false, err: e.message })
+    }
+  }
+
+  async function confirmarRecordatorio() {
+    if (!recordatorio) return
+    await supabase.from('content_assignments').update({
+      recordado_en: hoyISO(), fase_recordatorio: recordatorio.fase,
+    }).eq('id', recordatorio.row.id)
+    setRecordatorio(null)
     loadRows(selectedModel)
   }
   async function borrar(row) {
@@ -175,6 +213,29 @@ export default function ContentAssignments() {
         {error && <p className="text-sm mt-2" style={{ color: 'var(--danger)' }}>{error}</p>}
       </Panel>
 
+      {recordatorio && (
+        <Panel className="p-5 mb-6" style={{ borderColor: 'var(--gold)' }}>
+          <p className="text-sm font-medium mb-1">
+            ✨ {FASES_RECORDATORIO[recordatorio.fase - 1].label}
+          </p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+            Recordatorio para "{recordatorio.row.titulo}" — cada vez que uses esta opción, el tono sube un escalón (hasta la fase 10).
+          </p>
+          {recordatorio.busy ? (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Generando mensaje…</p>
+          ) : recordatorio.err ? (
+            <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{recordatorio.err}</p>
+          ) : (
+            <p className="text-sm whitespace-pre-wrap mb-3 p-3 rounded-md" style={{ background: 'var(--panel-alt)' }}>{recordatorio.mensaje}</p>
+          )}
+          <div className="flex gap-2 flex-wrap">
+            {!recordatorio.busy && !recordatorio.err && <CopyButton text={recordatorio.mensaje} />}
+            <Button onClick={confirmarRecordatorio} disabled={recordatorio.busy}>Ya se lo he mandado</Button>
+            <Button variant="ghost" onClick={() => setRecordatorio(null)}>Cancelar</Button>
+          </div>
+        </Panel>
+      )}
+
       {loading ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
       ) : (
@@ -183,7 +244,7 @@ export default function ContentAssignments() {
             vacio="Nada pendiente de enviar. Aquí caen los contenidos recién añadidos." colorBorde="var(--text-muted)"
             dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
             {pendientesDeEnviar.map((r) => (
-              <Tarjeta key={r.id} r={r} columna="pendiente" alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} onMover={moverA} />
+              <Tarjeta key={r.id} r={r} columna="pendiente" alerta={false} desde={0} onRecordar={abrirRecordatorio} onBorrar={borrar} onMover={moverA} />
             ))}
           </Columna>
 
@@ -192,7 +253,7 @@ export default function ContentAssignments() {
             dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
             {enviados.map((r) => {
               const desde = diasDesde(r.recordado_en || r.enviado_en)
-              return <Tarjeta key={r.id} r={r} columna="enviado" alerta={desde >= DIAS_ALERTA} desde={desde} onRecordar={recordar} onBorrar={borrar} onMover={moverA} />
+              return <Tarjeta key={r.id} r={r} columna="enviado" alerta={desde >= DIAS_ALERTA} desde={desde} onRecordar={abrirRecordatorio} onBorrar={borrar} onMover={moverA} />
             })}
           </Columna>
 
@@ -200,7 +261,7 @@ export default function ContentAssignments() {
             vacio="Arrastra aquí cuando la modelo entregue el contenido." colorBorde="var(--success)"
             dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
             {hechos.map((r) => (
-              <Tarjeta key={r.id} r={r} columna="hecho" alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} onMover={moverA} />
+              <Tarjeta key={r.id} r={r} columna="hecho" alerta={false} desde={0} onRecordar={abrirRecordatorio} onBorrar={borrar} onMover={moverA} />
             ))}
           </Columna>
         </div>
