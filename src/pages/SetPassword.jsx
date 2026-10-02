@@ -4,22 +4,47 @@ import { supabase } from '../lib/supabase'
 import { Panel, Button, Input } from '../components/ui'
 import logo from '../assets/logo.png'
 
+function leerErrorDelHash() {
+  const hash = window.location.hash.replace(/^#/, '')
+  const params = new URLSearchParams(hash)
+  const code = params.get('error_code')
+  if (!code) return ''
+  if (code === 'otp_expired') return 'Este enlace ha caducado o ya se ha usado antes. Pide que te manden uno nuevo.'
+  return 'Este enlace no es válido. Pide que te manden uno nuevo.'
+}
+
 export default function SetPassword() {
   const navigate = useNavigate()
   const [ready, setReady] = useState(false)
   const [password, setPassword] = useState('')
   const [confirmar, setConfirmar] = useState('')
   const [error, setError] = useState('')
+  const [enlaceInvalido, setEnlaceInvalido] = useState('')
   const [ok, setOk] = useState(false)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    // El enlace del email crea una sesión temporal automáticamente al cargar esta página
+    // Si el propio enlace ya viene marcado como caducado/usado, Supabase nunca
+    // dispara ningún evento de sesión — hay que detectarlo aparte, si no la
+    // pantalla se queda colgada en "Comprobando el enlace..." para siempre.
+    const errorDelEnlace = leerErrorDelHash()
+    if (errorDelEnlace) { setEnlaceInvalido(errorDelEnlace); return }
+
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') setReady(true)
     })
     supabase.auth.getSession().then(({ data: { session } }) => { if (session) setReady(true) })
-    return () => listener.subscription.unsubscribe()
+
+    // Si en 8 segundos no ha pasado nada (ni sesión ni error), avisamos igualmente
+    // en vez de dejarlo colgado sin explicación.
+    const timeout = setTimeout(() => {
+      setReady((yaListo) => {
+        if (!yaListo) setEnlaceInvalido('Este enlace no ha podido comprobarse. Pide que te manden uno nuevo.')
+        return yaListo
+      })
+    }, 8000)
+
+    return () => { listener.subscription.unsubscribe(); clearTimeout(timeout) }
   }, [])
 
   async function guardar(e) {
@@ -44,7 +69,14 @@ export default function SetPassword() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <Panel className="p-8 w-full max-w-sm text-center">
         <img src={logo} alt="Divine Desire" className="h-20 object-contain mx-auto mb-6" />
-        {!ready ? (
+        {enlaceInvalido ? (
+          <div>
+            <p className="text-sm mb-2" style={{ color: 'var(--danger)' }}>⚠️ {enlaceInvalido}</p>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Avisa a quien te dio de alta para que te reenvíe el email desde "Equipo" → "Enviar email de reset".
+            </p>
+          </div>
+        ) : !ready ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Comprobando el enlace…</p>
         ) : ok ? (
           <p className="text-sm" style={{ color: 'var(--success)' }}>Contraseña guardada ✓ Ya puedes iniciar sesión…</p>
