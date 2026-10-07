@@ -1,0 +1,74 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from './AuthContext'
+
+const DIAS_ALERTA_CONTENIDO = 14
+const Ctx = createContext(null)
+
+// Reúne en una sola lista:
+//  - los avisos guardados en la base de datos (reportes, sanciones, nuevos compañeros, entradas/salidas)
+//  - los avisos calculados al vuelo para quien gestiona (contenido atrasado, contraseña sin crear)
+// Cada aviso tiene una clave; al marcarlo como leído se guarda esa clave y desaparece para esa persona.
+export function NotificationsProvider({ children }) {
+  const { profile, hasAnyRole } = useAuth()
+  const activo = !!profile && hasAnyRole(['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'])
+  const gestiona = hasAnyRole(['admin', 'manager', 'ig_manager'])
+  const [items, setItems] = useState([])
+  const [leidas, setLeidas] = useState(() => new Set())
+  const [cargado, setCargado] = useState(false)
+  const leidasRef = useRef(leidas)
+  leidasRef.current = leidas
+
+  const cargar = useCallback(async () => {
+    if (!profile) return
+    const hace14d = new Date(Date.now() - 14 * 86400000).toISOString()
+    const hace14dias = new Date(Date.now() - DIAS_ALERTA_CONTENIDO * 86400000).toISOString().slice(0, 10)
+
+    const consultas = [
+      supabase.from('notifications').select('id, tipo, prioridad, texto, ruta, created_at').gte('created_at', hace14d).order('created_at', { ascending: false }).limit(150),
+      supabase.from('notification_reads').select('clave').eq('user_id', profile.id).limit(2000),
+    ]
+    if (gestiona) {
+      consultas.push(
+        supabase.from('content_assignments').select('id, titulo, models(stage_name)').lte('enviado_en', hace14dias).is('hecho_en', null).not('enviado_en', 'is', null),
+        supabase.from('profiles').select('id, full_name').eq('password_set', false),
+      )
+    }
+    const [{ data: notifs }, { data: reads }, r3, r4] = await Promise.all(consultas)
+
+    const lista = (notifs || []).map((n) => ({ key: 'n:' + n.id, tipo: n.tipo, prioridad: n.prioridad, texto: n.texto, ruta: n.ruta, fecha: n.created_at }))
+    ;((r3 && r3.data) || []).forEach((c) => lista.push({ key: 'cont:' + c.id, tipo: 'contenido', prioridad: 'alta', texto: `${c.models?.stage_name}: "${c.titulo}" lleva más de 14 días sin entregarse`, ruta: '/contenido', fecha: null }))
+    ;((r4 && r4.data) || []).forEach((p) => lista.push({ key: 'pwd:' + p.id, tipo: 'pendiente', prioridad: 'alta', texto: `${p.full_name} todavía no ha creado su contraseña`, ruta: '/equipo', fecha: null }))
+
+    setItems(lista)
+    setLeidas(new Set((reads || []).map((r) => r.clave)))
+    setCargado(true)
+  }, [profile, gestiona])
+
+  useEffect(() => {
+    if (!activo) return
+    cargar()
+    const poll = setInterval(cargar, 30000)
+    const alVolver = () => { if (document.visibilityState === 'visible') cargar() }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => { clearInterval(poll); document.removeEventListener('visibilitychange', alVolver) }
+  }, [activo, cargar])
+
+  const marcarLeidas = useCallback(async (claves) => {
+    if (!claves.length || !profile) return
+    setLeidas((s) => { const n = new Set(s); claves.forEach((c) => n.add(c)); return n })
+    const { error } = await supabase.from('notification_reads').upsert(claves.map((clave) => ({ user_id: profile.id, clave })), { onConflict: 'user_id,clave' })
+    if (error) cargar() // si falla, vuelve al estado real
+  }, [profile, cargar])
+
+  const noLeidas = useMemo(() => items.filter((i) => !leidas.has(i.key)), [items, leidas])
+  const importantes = useMemo(() => noLeidas.filter((i) => i.prioridad !== 'baja'), [noLeidas])
+  const secundarias = useMemo(() => noLeidas.filter((i) => i.prioridad === 'baja'), [noLeidas])
+
+  const value = { activo, cargado, importantes, secundarias, marcarLeidas, recargar: cargar }
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+}
+
+export function useNotifications() {
+  return useContext(Ctx)
+}

@@ -7,6 +7,8 @@ import AnnouncementGate from './AnnouncementGate'
 import PildoraGate from './PildoraGate'
 import ShiftTimer from './ShiftTimer'
 import NotificationBell from './NotificationBell'
+import NotificationPopup from './NotificationPopup'
+import { NotificationsProvider } from '../context/NotificationsContext'
 import ThemeToggle from './ThemeToggle'
 import { SECTIONS, buscarItem } from '../lib/navigation'
 import { Panel } from './ui'
@@ -52,6 +54,7 @@ export default function Layout() {
   const etiquetaRoles = roles.map((r) => ROLE_LABELS[r] || r).join(' · ')
 
   return (
+    <NotificationsProvider>
     <div className="h-screen flex flex-col overflow-hidden">
       {/* Barra superior, solo en móvil: logo + botón de menú */}
       <div
@@ -162,7 +165,7 @@ export default function Layout() {
         </div>
       </aside>
       <main ref={mainRef} className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden relative">
-        <div className="hidden md:flex items-center gap-2 absolute top-4 right-4 md:top-6 md:right-8 z-10">
+        <div className="hidden md:flex items-center justify-end gap-2 mb-4">
           <ThemeToggle />
           <NotificationBell />
         </div>
@@ -178,6 +181,8 @@ export default function Layout() {
         </AnnouncementGate>
       </main>
       </div>
+      <NotificationPopup />
     </div>
+    </NotificationsProvider>
   )
 }
