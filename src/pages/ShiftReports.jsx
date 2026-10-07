@@ -38,6 +38,18 @@ function fmtTS(ts) {
   return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
 }
 
+const normUser = (v) => '@' + String(v || '').replace(/[@\s]/g, '')
+const r2 = (n) => Math.round(n * 100) / 100
+const fmt$ = (n) => '$' + Number(n || 0).toFixed(2)
+const FAN_VACIO = { fan: '', user: '@', monto: '', tipo: 'ppv' }
+function totales(compras) {
+  const c = compras || []
+  return {
+    ppv: r2(c.filter((x) => x.tipo === 'ppv').reduce((a, x) => a + Number(x.monto || 0), 0)),
+    tips: r2(c.filter((x) => x.tipo === 'tip').reduce((a, x) => a + Number(x.monto || 0), 0)),
+  }
+}
+
 export default function ShiftReports() {
   const { profile, hasAnyRole, hasRole } = useAuth()
   const esMgr = hasAnyRole(['admin', 'manager'])
@@ -54,7 +66,8 @@ export default function ShiftReports() {
   const [turnoAuto, setTurnoAuto] = useState(false)
   const [sel, setSel] = useState([])
   const [campos, setCampos] = useState({}) // { [modelId]: { texto, trafico, fans, facturacion } }
-  const [fanInput, setFanInput] = useState({}) // texto en curso del input de fans, por modelo
+  const [fanInput, setFanInput] = useState({}) // compra en curso (fan, @user, monto, tipo), por modelo
+  const [errCompra, setErrCompra] = useState({})
 
   const [fChatter, setFChatter] = useState('todos')
   const [fFecha, setFFecha] = useState('')
@@ -94,19 +107,29 @@ export default function ShiftReports() {
 
   function toggleModelo(id) {
     setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.concat([id])))
-    setCampos((c) => c[id] ? c : { ...c, [id]: { texto: '', trafico: 'medio', fans: [], facturacion: '', tips: '' } })
+    setCampos((c) => c[id] ? c : { ...c, [id]: { texto: '', trafico: 'medio', compras: [] } })
   }
   function setCampo(id, key, value) {
     setCampos((c) => ({ ...c, [id]: { ...c[id], [key]: value } }))
   }
-  function agregarFan(modelId) {
-    const nombre = (fanInput[modelId] || '').trim()
-    if (!nombre) return
-    setCampos((c) => ({ ...c, [modelId]: { ...c[modelId], fans: [...(c[modelId]?.fans || []), nombre] } }))
-    setFanInput((f) => ({ ...f, [modelId]: '' }))
+  function setFanField(modelId, key, value) {
+    setFanInput((f) => ({ ...f, [modelId]: { ...FAN_VACIO, ...(f[modelId] || {}), [key]: key === 'user' ? normUser(value) : value } }))
   }
-  function quitarFan(modelId, i) {
-    setCampos((c) => ({ ...c, [modelId]: { ...c[modelId], fans: c[modelId].fans.filter((_, j) => j !== i) } }))
+  function agregarCompra(modelId) {
+    const f = { ...FAN_VACIO, ...(fanInput[modelId] || {}) }
+    const monto = parseFloat(f.monto)
+    let msg = ''
+    if (!f.fan.trim()) msg = 'Escribe el nombre del fan.'
+    else if (f.user.length < 2) msg = 'Escribe el usuario del fan (@usuario).'
+    else if (!(monto > 0)) msg = 'Indica la cantidad gastada.'
+    setErrCompra((e) => ({ ...e, [modelId]: msg }))
+    if (msg) return
+    const compra = { fan: f.fan.trim(), user: f.user, monto: r2(monto), tipo: f.tipo }
+    setCampos((c) => ({ ...c, [modelId]: { ...c[modelId], compras: [...(c[modelId]?.compras || []), compra] } }))
+    setFanInput((x) => ({ ...x, [modelId]: { ...FAN_VACIO, tipo: f.tipo } }))
+  }
+  function quitarCompra(modelId, i) {
+    setCampos((c) => ({ ...c, [modelId]: { ...c[modelId], compras: c[modelId].compras.filter((_, j) => j !== i) } }))
   }
 
   async function enviar() {
@@ -116,6 +139,8 @@ export default function ShiftReports() {
     if (!sel.length) { setError('Selecciona al menos una modelo.'); return }
     const vacios = sel.filter((id) => !(campos[id]?.texto || '').trim())
     if (vacios.length) { setError('Falta el reporte de alguna modelo seleccionada.'); return }
+    const sinAnadir = sel.find((id) => { const f = fanInput[id]; return f && (f.fan?.trim() || f.monto || (f.user || '@').length > 1) })
+    if (sinAnadir) { setError('Tienes una compra a medio rellenar. Pulsa «Añadir compra» o bórrala antes de enviar.'); return }
     setBusy(true)
     const { data: rep, error: e1 } = await supabase
       .from('shift_reports')
@@ -123,19 +148,25 @@ export default function ShiftReports() {
       .select()
       .single()
     if (e1) { setError('No se pudo guardar el reporte.'); setBusy(false); return }
-    const detalle = sel.map((model_id) => ({
-      report_id: rep.id,
-      model_id,
-      texto: campos[model_id].texto.trim(),
-      trafico: campos[model_id].trafico || null,
-      fans_compradores: campos[model_id].fans || [],
-      facturacion: campos[model_id].facturacion ? parseFloat(campos[model_id].facturacion) : null,
-      tips: campos[model_id].tips ? parseFloat(campos[model_id].tips) : null,
-    }))
+    const detalle = sel.map((model_id) => {
+      const compras = campos[model_id].compras || []
+      const t = totales(compras)
+      return {
+        report_id: rep.id,
+        model_id,
+        texto: campos[model_id].texto.trim(),
+        trafico: campos[model_id].trafico || null,
+        compras,
+        fans_compradores: compras.map((c) => `${c.fan} (${c.user})`),
+        facturacion: t.ppv > 0 ? t.ppv : null,
+        tips: t.tips > 0 ? t.tips : null,
+      }
+    })
     const { error: e2 } = await supabase.from('shift_report_details').insert(detalle)
     if (e2) { setError('El reporte se creó pero falló el detalle.'); setBusy(false); return }
     setSel([])
     setCampos({})
+    setFanInput({})
     setOk('Reporte enviado ✓')
     await load()
     setBusy(false)
@@ -175,7 +206,7 @@ export default function ShiftReports() {
         const { data } = await supabase.from('shift_report_details').select('*, models(stage_name)').eq('report_id', r.id)
         det = data || []
       }
-      det.forEach((d) => filas.push({ ...r, modelo: d.models?.stage_name, texto: d.texto, trafico: d.trafico, facturacion: d.facturacion, tips: d.tips, fans: (d.fans_compradores || []).join(', ') }))
+      det.forEach((d) => filas.push({ ...r, modelo: d.models?.stage_name, texto: d.texto, trafico: d.trafico, facturacion: d.facturacion, tips: d.tips, fans: (d.fans_compradores || []).join(', '), compras: (d.compras || []).map((c) => `${c.fan} ${c.user} ${fmt$(c.monto)} ${c.tipo === 'tip' ? 'tip' : 'PPV'}`).join(' | ') }))
     }
     exportCSV('reportes_de_turno', filas, [
       { label: 'Fecha', get: (r) => fmtFecha(r.fecha) },
@@ -187,6 +218,7 @@ export default function ShiftReports() {
       { label: 'Tips', key: 'tips' },
       { label: 'Reporte', key: 'texto' },
       { label: 'Fans que compraron', key: 'fans' },
+      { label: 'Detalle de compras', key: 'compras' },
       { label: 'Enviado', get: (r) => fmtTS(r.created_at) },
     ])
   }
@@ -268,55 +300,53 @@ export default function ShiftReports() {
                     ))}
                   </div>
                 </div>
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Facturado por ventas de PPV</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
-                    <Input
-                      type="number" step="0.01" placeholder="0.00"
-                      value={c.facturacion || ''}
-                      onChange={(e) => setCampo(id, 'facturacion', e.target.value)}
-                      style={{ paddingLeft: 22 }}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tips (propinas) en el turno</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
-                    <Input
-                      type="number" step="0.01" placeholder="0.00"
-                      value={c.tips || ''}
-                      onChange={(e) => setCampo(id, 'tips', e.target.value)}
-                      style={{ paddingLeft: 22 }}
-                    />
-                  </div>
-                </div>
               </div>
               <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fans que compraron en este turno</label>
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {(c.fans || []).length === 0 && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Ninguno todavía</span>}
-                {(c.fans || []).map((f, i) => (
-                  <span
-                    key={i}
-                    onClick={() => quitarFan(id, i)}
-                    title="Clic para quitar"
-                    className="px-2 py-1 rounded-full text-xs cursor-pointer"
-                    style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
-                  >
-                    {f} ✕
-                  </span>
-                ))}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Nombre o usuario del fan"
-                  value={fanInput[id] || ''}
-                  onChange={(e) => setFanInput((f) => ({ ...f, [id]: e.target.value }))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregarFan(id) } }}
-                />
-                <Button variant="ghost" onClick={() => agregarFan(id)}>Añadir</Button>
-              </div>
+              {(c.compras || []).length === 0 ? (
+                <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Ninguno todavía. Añade cada compra y los totales se suman solos.</p>
+              ) : (
+                <div className="mb-3 space-y-1">
+                  {c.compras.map((x, i) => (
+                    <div key={i} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                      <span className="min-w-0 flex-1 truncate"><strong>{x.fan}</strong> <span style={{ color: 'var(--text-muted)' }}>{x.user}</span></span>
+                      <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: x.tipo === 'tip' ? 'var(--gold)22' : 'var(--success)22', color: x.tipo === 'tip' ? 'var(--gold)' : 'var(--success)' }}>{x.tipo === 'tip' ? 'Tip' : 'PPV'}</span>
+                      <span className="tabular-nums">{fmt$(x.monto)}</span>
+                      <button onClick={() => quitarCompra(id, i)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(() => {
+                const f = { ...FAN_VACIO, ...(fanInput[id] || {}) }
+                return (
+                  <div className="mb-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      <Input placeholder="Nombre del fan" value={f.fan} onChange={(e) => setFanField(id, 'fan', e.target.value)} />
+                      <Input placeholder="@usuario" value={f.user} onChange={(e) => setFanField(id, 'user', e.target.value)} />
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
+                        <Input type="number" step="0.01" min="0" placeholder="0.00" value={f.monto} onChange={(e) => setFanField(id, 'monto', e.target.value)} style={{ paddingLeft: 22 }} />
+                      </div>
+                      <Select value={f.tipo} onChange={(e) => setFanField(id, 'tipo', e.target.value)}>
+                        <option value="ppv">PPV</option>
+                        <option value="tip">Tip</option>
+                      </Select>
+                      <Button variant="ghost" onClick={() => agregarCompra(id)}>Añadir compra</Button>
+                    </div>
+                    {errCompra[id] && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{errCompra[id]}</p>}
+                  </div>
+                )
+              })()}
+              {(() => {
+                const t = totales(c.compras)
+                return (
+                  <div className="flex flex-wrap gap-4 text-sm px-3 py-2 rounded-md" style={{ background: 'var(--accent-soft)' }}>
+                    <span>PPV facturado: <strong className="tabular-nums" style={{ color: 'var(--success)' }}>{fmt$(t.ppv)}</strong></span>
+                    <span>Tips: <strong className="tabular-nums" style={{ color: 'var(--gold)' }}>{fmt$(t.tips)}</strong></span>
+                    <span>Total {modelo?.stage_name}: <strong className="tabular-nums">{fmt$(t.ppv + t.tips)}</strong></span>
+                  </div>
+                )
+              })()}
             </Panel>
           )
         })}
@@ -407,7 +437,18 @@ export default function ShiftReports() {
                                   )}
                                 </div>
                                 <div className="whitespace-pre-wrap">{d.texto}</div>
-                                {d.fans_compradores?.length > 0 && (
+                                {d.compras?.length > 0 ? (
+                                  <div className="mt-2 space-y-0.5 text-sm">
+                                    <strong style={{ color: 'var(--text-muted)' }}>Fans que compraron:</strong>
+                                    {d.compras.map((x, i) => (
+                                      <div key={i} className="flex items-center gap-2">
+                                        <span>{x.fan} <span style={{ color: 'var(--text-muted)' }}>{x.user}</span></span>
+                                        <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: x.tipo === 'tip' ? 'var(--gold)22' : 'var(--success)22', color: x.tipo === 'tip' ? 'var(--gold)' : 'var(--success)' }}>{x.tipo === 'tip' ? 'Tip' : 'PPV'}</span>
+                                        <span className="tabular-nums">{fmt$(x.monto)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : d.fans_compradores?.length > 0 && (
                                   <div className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
                                     <strong>Fans que compraron:</strong> {d.fans_compradores.join(', ')}
                                   </div>

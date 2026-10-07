@@ -21,10 +21,19 @@ const USOS = [
 ]
 const ESTADOS = [
   { id: 'pendiente', n: 'Pendiente', color: 'var(--gold)' },
-  { id: 'en_proceso', n: 'En proceso', color: 'var(--accent)' },
-  { id: 'entregada', n: 'Entregada', color: 'var(--success)' },
-  { id: 'cancelada', n: 'Cancelada', color: 'var(--danger)' },
+  { id: 'entregada', n: 'Entregado', color: 'var(--success)' },
+  { id: 'cancelada', n: 'Cancelado', color: 'var(--danger)' },
 ]
+const normUser = (v) => '@' + String(v || '').replace(/[@\s]/g, '')
+function fmtFechaISO(iso) {
+  if (!iso) return ''
+  const [y, m, d] = String(iso).slice(0, 10).split('-')
+  return `${d}/${m}/${y}`
+}
+function hoyISO() {
+  const d = new Date()
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+}
 const T_OBJ = (id) => TIPO_META[id] || { n: id, cat: 'interno' }
 const E_OBJ = (id) => ESTADOS.find((e) => e.id === id) || ESTADOS[0]
 const U_OBJ = (id) => USOS.find((u) => u.id === id)
@@ -44,10 +53,11 @@ function genTexto(r) {
     if (uo) L.push('🎯 Uso: ' + uo.n)
   } else {
     if (r.fan) L.push('⚡️ Fan: ' + r.fan)
-    if (r.user_of) L.push('🙋‍♂️ User: ' + r.user_of)
+    if (r.user_of && r.user_of.length > 1) L.push('🙋‍♂️ User: ' + r.user_of)
     if (r.precio) L.push('💸 Precio: ' + r.precio)
   }
   if (r.duracion) L.push('⏱️ Duración: ' + r.duracion)
+  if (r.fecha_entrega) L.push('📅 Entrega estimada: ' + fmtFechaISO(r.fecha_entrega))
   if (tm.cat !== 'interno' && r.idioma) L.push('🩵 Idioma: ' + r.idioma)
   L.push('✅ Descripción:')
   L.push(r.descripcion || '')
@@ -60,10 +70,11 @@ function genTexto(r) {
   return L.join('\n')
 }
 
-const EMPTY_FORM = { tipo: 'personalizado', modelo: '', fan: '', user_of: '', precio: '', duracion: '', idioma: 'español', uso: 'masivo', descripcion: '', imagenesTxt: '' }
+const EMPTY_FORM = { tipo: 'personalizado', modelo: '', fan: '', user_of: '@', precio: '', duracion: '', fecha_entrega: '', idioma: 'español', uso: 'masivo', descripcion: '', imagenesTxt: '' }
 
 export default function Requests() {
-  const { profile, hasAnyRole } = useAuth()
+  const { profile, hasAnyRole, hasRole } = useAuth()
+  const esAdmin = hasRole('admin')
   const esMgr = hasAnyRole(['admin', 'manager'])
   const [rows, setRows] = useState([])
   const [modelos, setModelos] = useState([])
@@ -71,9 +82,11 @@ export default function Requests() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [fCat, setFCat] = useState('todas')
-  const [fEstado, setFEstado] = useState('activas')
+  const [fEstado, setFEstado] = useState('pendiente')
   const [rev, setRev] = useState(null)
   const [openModel, setOpenModel] = useState({})
+  const [openReq, setOpenReq] = useState({})
+  const [editId, setEditId] = useState(null)
 
   const esInterno = T_OBJ(form.tipo).cat === 'interno'
 
@@ -95,14 +108,49 @@ export default function Requests() {
     if (!esInterno && !form.fan.trim()) { setError('En customs de fan, indica el nombre del fan.'); return }
     setBusy(true)
     const imagenes = form.imagenesTxt.split('\n').map((s) => s.trim()).filter(Boolean)
+    const entrega = form.fecha_entrega || null
+    const user_of = form.user_of.length > 1 ? form.user_of : ''
     const payload = esInterno
-      ? { tipo: form.tipo, modelo: form.modelo, uso: form.uso, duracion: form.duracion.trim(), descripcion: form.descripcion.trim(), imagenes, solicitado_por: profile.id }
-      : { tipo: form.tipo, modelo: form.modelo, fan: form.fan.trim(), user_of: form.user_of.trim(), precio: form.precio.trim(), duracion: form.duracion.trim(), idioma: form.idioma, descripcion: form.descripcion.trim(), imagenes, solicitado_por: profile.id }
-    const { error } = await supabase.from('requests').insert([payload])
+      ? { tipo: form.tipo, modelo: form.modelo, uso: form.uso, duracion: form.duracion.trim(), fecha_entrega: entrega, descripcion: form.descripcion.trim(), imagenes }
+      : { tipo: form.tipo, modelo: form.modelo, fan: form.fan.trim(), user_of, precio: form.precio.trim(), duracion: form.duracion.trim(), fecha_entrega: entrega, idioma: form.idioma, descripcion: form.descripcion.trim(), imagenes }
+    let err
+    if (editId) {
+      // al cambiar de tipo, limpia los campos que ya no aplican
+      const extra = esInterno ? { fan: null, user_of: null, precio: null, idioma: null } : { uso: null }
+      ;({ error: err } = await supabase.from('requests').update({ ...payload, ...extra, updated_at: new Date().toISOString() }).eq('id', editId))
+    } else {
+      ;({ error: err } = await supabase.from('requests').insert([{ ...payload, solicitado_por: profile.id }]))
+    }
     setBusy(false)
-    if (error) { setError('No se pudo crear la solicitud.'); return }
-    setForm((f) => ({ ...f, fan: '', user_of: '', precio: '', duracion: '', descripcion: '', imagenesTxt: '' }))
+    if (err) { setError(editId ? 'No se pudieron guardar los cambios.' : 'No se pudo crear la solicitud.'); return }
+    setEditId(null)
+    setForm((f) => ({ ...EMPTY_FORM, tipo: f.tipo, modelo: f.modelo, idioma: f.idioma, uso: f.uso }))
     load()
+  }
+
+  function editar(r) {
+    setError('')
+    setEditId(r.id)
+    setForm({
+      tipo: r.tipo, modelo: r.modelo || '', fan: r.fan || '', user_of: normUser(r.user_of), precio: r.precio || '',
+      duracion: r.duracion || '', fecha_entrega: r.fecha_entrega ? String(r.fecha_entrega).slice(0, 10) : '',
+      idioma: r.idioma || 'español', uso: r.uso || 'masivo', descripcion: r.descripcion || '',
+      imagenesTxt: (Array.isArray(r.imagenes) ? r.imagenes : []).join('\n'),
+    })
+    setRev(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  function cancelarEdicion() {
+    setEditId(null)
+    setError('')
+    setForm((f) => ({ ...EMPTY_FORM, modelo: f.modelo }))
+  }
+  async function borrar(r) {
+    if (!confirm(`¿Eliminar esta solicitud${r.fan ? ` de ${r.fan}` : ''}? No se puede deshacer.`)) return
+    const { error: e } = await supabase.from('requests').delete().eq('id', r.id)
+    if (e) { alert('No se pudo eliminar. Solo el admin puede borrar solicitudes.'); return }
+    if (editId === r.id) cancelarEdicion()
+    setRows((rs) => rs.filter((x) => x.id !== r.id))
   }
 
   async function cambiarEstado(r, estado) {
@@ -111,7 +159,8 @@ export default function Requests() {
   }
 
   const vis = useMemo(() => rows.filter((r) => {
-    const okEstado = fEstado === 'todas' ? true : fEstado === 'activas' ? (r.estado === 'pendiente' || r.estado === 'en_proceso') : r.estado === fEstado
+    const est = E_OBJ(r.estado).id
+    const okEstado = fEstado === 'todas' ? true : est === fEstado
     const okCat = fCat === 'todas' ? true : T_OBJ(r.tipo).cat === fCat
     return okEstado && okCat
   }), [rows, fEstado, fCat])
@@ -130,7 +179,7 @@ export default function Requests() {
       />
 
       <Panel className="p-5 mb-6">
-        <p className="text-sm font-medium mb-4">Nueva solicitud</p>
+        <p className="text-sm font-medium mb-4">{editId ? 'Editando solicitud' : 'Nueva solicitud'}</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
           <div>
             <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tipo</label>
@@ -173,11 +222,15 @@ export default function Requests() {
           {!esInterno && (
             <>
               <Input placeholder="Fan (nombre)" value={form.fan} onChange={(e) => setForm({ ...form, fan: e.target.value })} />
-              <Input placeholder="Usuario OF (@usuario)" value={form.user_of} onChange={(e) => setForm({ ...form, user_of: e.target.value })} />
+              <Input placeholder="@usuario" value={form.user_of} onChange={(e) => setForm({ ...form, user_of: normUser(e.target.value) })} />
               <Input placeholder="Precio acordado ($200)" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} />
             </>
           )}
           <Input placeholder={esInterno ? 'Duración (opcional, ej: 1 min)' : 'Duración (ej: 5 min)'} value={form.duracion} onChange={(e) => setForm({ ...form, duracion: e.target.value })} />
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fecha de entrega estimada</label>
+            <Input type="date" value={form.fecha_entrega} onChange={(e) => setForm({ ...form, fecha_entrega: e.target.value })} />
+          </div>
         </div>
         <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>
           {esInterno ? 'Descripción / qué se necesita' : 'Descripción / requerimientos del fan'}
@@ -200,7 +253,10 @@ export default function Requests() {
           style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
         />
         {error && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{error}</p>}
-        <Button onClick={crear} disabled={busy}>{busy ? 'Creando…' : 'Crear solicitud'}</Button>
+        <div className="flex gap-2">
+          <Button onClick={crear} disabled={busy}>{busy ? 'Guardando…' : editId ? 'Guardar cambios' : 'Crear solicitud'}</Button>
+          {editId && <Button variant="ghost" onClick={cancelarEdicion}>Cancelar edición</Button>}
+        </div>
       </Panel>
 
       <Panel className="p-5 mb-6">
@@ -220,14 +276,71 @@ export default function Requests() {
             </button>
             {openModel[g.modelo] && (
               <div className="pl-3 mt-1 space-y-1">
-                {g.items.map((r) => (
-                  <div key={r.id} onClick={() => setRev(r)} className="flex items-center gap-3 text-sm px-3 py-1.5 rounded-md cursor-pointer hover:opacity-80">
-                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{T_OBJ(r.tipo).n}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>{r.fan || '—'}</span>
-                    <span className="flex-1 truncate" style={{ color: 'var(--text-muted)' }}>{r.descripcion}</span>
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtTS(r.created_at)}</span>
-                  </div>
-                ))}
+                {g.items.map((r) => {
+                  const tm = T_OBJ(r.tipo)
+                  const interno = tm.cat === 'interno'
+                  const uo = U_OBJ(r.uso)
+                  const eo = E_OBJ(r.estado)
+                  const abierto = !!openReq[r.id]
+                  const imgs = Array.isArray(r.imagenes) ? r.imagenes : []
+                  const vencida = r.estado === 'pendiente' && r.fecha_entrega && String(r.fecha_entrega).slice(0, 10) < hoyISO()
+                  const campo = (label, val) => val ? (
+                    <div><span className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</span><div>{val}</div></div>
+                  ) : null
+                  return (
+                    <div key={r.id} className="rounded-md" style={{ border: abierto ? '1px solid var(--border)' : '1px solid transparent' }}>
+                      <div onClick={() => setOpenReq((o) => ({ ...o, [r.id]: !o[r.id] }))} className="flex items-center gap-3 text-sm px-3 py-1.5 cursor-pointer hover:opacity-80">
+                        <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{tm.n}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: `${eo.color}22`, color: eo.color }}>{eo.n}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>{interno ? (uo?.n || '—') : (r.fan || '—')}</span>
+                        <span className="flex-1 truncate" style={{ color: 'var(--text-muted)' }}>{r.descripcion}</span>
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtTS(r.created_at)}</span>
+                        <span className="text-xs">{abierto ? '▾' : '▸'}</span>
+                      </div>
+                      {abierto && (
+                        <div className="px-3 pb-3 pt-1">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm mb-3">
+                            {campo('Tipo', tm.n)}
+                            {campo('Estado', <span style={{ color: eo.color }}>{eo.n}</span>)}
+                            {campo('Modelo', r.modelo)}
+                            {interno ? campo('Uso', uo?.n) : (<>
+                              {campo('Fan', r.fan)}
+                              {campo('Usuario', r.user_of && r.user_of.length > 1 ? r.user_of : '')}
+                              {campo('Precio', r.precio)}
+                              {campo('Idioma', r.idioma)}
+                            </>)}
+                            {campo('Duración', r.duracion)}
+                            {campo('Entrega estimada', r.fecha_entrega ? <span style={{ color: vencida ? 'var(--danger)' : undefined }}>{fmtFechaISO(r.fecha_entrega)}{vencida ? ' · vencida' : ''}</span> : '')}
+                            {campo('Pedida por', r.profiles?.full_name)}
+                            {campo('Creada', fmtTS(r.created_at))}
+                            {r.updated_at && r.updated_at !== r.created_at ? campo('Última modificación', fmtTS(r.updated_at)) : null}
+                          </div>
+                          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Descripción</div>
+                          <p className="text-sm whitespace-pre-wrap mb-3">{r.descripcion}</p>
+                          {imgs.length > 0 && (
+                            <div className="mb-3">
+                              <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Referencias</div>
+                              {imgs.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="block text-xs truncate hover:underline" style={{ color: 'var(--accent)' }}>{u}</a>)}
+                            </div>
+                          )}
+                          <div className="flex flex-wrap items-center gap-3">
+                            <select
+                              value={eo.id}
+                              onChange={(e) => cambiarEstado(r, e.target.value)}
+                              className="text-xs px-2 py-1 rounded-md"
+                              style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: eo.color }}
+                            >
+                              {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.n}</option>)}
+                            </select>
+                            <button onClick={() => editar(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar</button>
+                            <button onClick={() => setRev(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Texto WhatsApp</button>
+                            {esAdmin && <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -244,7 +357,6 @@ export default function Requests() {
               <option value="interno">Contenido del equipo</option>
             </Select>
             <Select value={fEstado} onChange={(e) => setFEstado(e.target.value)} className="max-w-[160px]">
-              <option value="activas">Activas</option>
               <option value="todas">Todos los estados</option>
               {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.n}</option>)}
             </Select>
@@ -257,7 +369,7 @@ export default function Requests() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Tipo', 'Modelo', 'Fan / Uso', 'Precio', 'Duración', 'Descripción', 'Pedida por', 'Estado', ''].map((c) => (
+                  {['Tipo', 'Modelo', 'Fan / Uso', 'Precio', 'Duración', 'Entrega', 'Descripción', 'Pedida por', 'Estado', ''].map((c) => (
                     <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>
                   ))}
                 </tr>
@@ -274,6 +386,7 @@ export default function Requests() {
                       <td className="px-3 py-2">{interno ? (uo?.n || '—') : (r.fan || '—')}</td>
                       <td className="px-3 py-2">{interno ? '—' : (r.precio || '—')}</td>
                       <td className="px-3 py-2">{r.duracion || '—'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: r.estado === 'pendiente' && r.fecha_entrega && String(r.fecha_entrega).slice(0, 10) < hoyISO() ? 'var(--danger)' : undefined }}>{r.fecha_entrega ? fmtFechaISO(r.fecha_entrega) : '—'}</td>
                       <td className="px-3 py-2" style={{ maxWidth: 260, whiteSpace: 'pre-wrap', color: 'var(--text-muted)' }}>{r.descripcion}</td>
                       <td className="px-3 py-2">
                         {r.profiles?.full_name}
@@ -281,7 +394,7 @@ export default function Requests() {
                       </td>
                       <td className="px-3 py-2">
                         <select
-                          value={r.estado}
+                          value={E_OBJ(r.estado).id}
                           onChange={(e) => cambiarEstado(r, e.target.value)}
                           className="text-xs px-2 py-1 rounded-md"
                           style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: E_OBJ(r.estado).color }}
@@ -290,7 +403,11 @@ export default function Requests() {
                         </select>
                       </td>
                       <td className="px-3 py-2">
-                        <button onClick={() => setRev(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Revisar</button>
+                        <div className="flex gap-3 whitespace-nowrap">
+                          <button onClick={() => setRev(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Revisar</button>
+                          <button onClick={() => editar(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar</button>
+                          {esAdmin && <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -301,7 +418,7 @@ export default function Requests() {
         )}
       </Panel>
 
-      {rev && <RevisarModal r={rev} onClose={() => setRev(null)} />}
+      {rev && <RevisarModal key={rev.id} r={rev} onClose={() => setRev(null)} />}
     </div>
   )
 }
