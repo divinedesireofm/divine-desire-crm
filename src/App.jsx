@@ -46,6 +46,7 @@ import ModelRequests from './pages/ModelRequests'
 import Resources from './pages/Resources'
 import ChatterMetrics from './pages/ChatterMetrics'
 import Requests from './pages/Requests'
+import Recaptures from './pages/Recaptures'
 import Massives from './pages/Massives'
 import SetPassword from './pages/SetPassword'
 
@@ -134,6 +135,7 @@ function AppRoutes() {
         <Route path="recursos" element={<Resources />} />
         <Route path="metricas-chatters" element={<ChatterMetrics />} />
         <Route path="solicitudes" element={<Requests />} />
+        <Route path="recaptaciones" element={<Recaptures />} />
         <Route path="masivos" element={<Massives />} />
       </Route>
     </Routes>

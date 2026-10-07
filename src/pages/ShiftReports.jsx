@@ -50,6 +50,84 @@ function totales(compras) {
   }
 }
 
+function validarCompras(compras) {
+  for (const c of compras || []) {
+    if (!String(c.fan || '').trim()) return 'Hay una compra sin nombre de fan.'
+    if (String(c.user || '@').length < 2) return `Falta el @usuario de ${c.fan}.`
+    if (!(parseFloat(c.monto) > 0)) return `Falta la cantidad gastada de ${c.fan}.`
+  }
+  return ''
+}
+const normalizarCompras = (compras) => (compras || []).map((c) => ({ fan: String(c.fan).trim(), user: c.user, monto: r2(parseFloat(c.monto)), tipo: c.tipo === 'tip' ? 'tip' : 'ppv' }))
+const pendiente = (f) => !!f && (f.fan?.trim() || f.monto || (f.user || '@').length > 1)
+
+// Lista de compras editable fila a fila + formulario para añadir otra + totales automáticos
+function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
+  const [err, setErr] = useState('')
+  const f = { ...FAN_VACIO, ...(nuevo || {}) }
+  function setRow(i, key, value) {
+    onChange(compras.map((c, j) => (j === i ? { ...c, [key]: key === 'user' ? normUser(value) : value } : c)))
+  }
+  function setNew(key, value) {
+    setNuevo({ ...f, [key]: key === 'user' ? normUser(value) : value })
+  }
+  function anadir() {
+    const msg = validarCompras([f])
+    setErr(msg)
+    if (msg) return
+    onChange([...compras, { fan: f.fan.trim(), user: f.user, monto: f.monto, tipo: f.tipo }])
+    setNuevo({ ...FAN_VACIO, tipo: f.tipo })
+  }
+  const t = totales(compras)
+  return (
+    <div>
+      {compras.length === 0 ? (
+        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Ninguno todavía. Añade cada compra y los totales se suman solos.</p>
+      ) : (
+        <div className="mb-3 space-y-2">
+          {compras.map((x, i) => (
+            <div key={i} className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-center">
+              <Input placeholder="Nombre del fan" value={x.fan} onChange={(e) => setRow(i, 'fan', e.target.value)} />
+              <Input placeholder="@usuario" value={x.user} onChange={(e) => setRow(i, 'user', e.target.value)} />
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
+                <Input type="number" step="0.01" min="0" placeholder="0.00" value={x.monto} onChange={(e) => setRow(i, 'monto', e.target.value)} style={{ paddingLeft: 22 }} />
+              </div>
+              <Select value={x.tipo} onChange={(e) => setRow(i, 'tipo', e.target.value)}>
+                <option value="ppv">PPV</option>
+                <option value="tip">Tip</option>
+              </Select>
+              <button type="button" onClick={() => onChange(compras.filter((_, j) => j !== i))} className="text-xs hover:underline text-left" style={{ color: 'var(--danger)' }}>Quitar</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Añadir otra compra</p>
+      <div className="mb-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <Input placeholder="Nombre del fan" value={f.fan} onChange={(e) => setNew('fan', e.target.value)} />
+          <Input placeholder="@usuario" value={f.user} onChange={(e) => setNew('user', e.target.value)} />
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
+            <Input type="number" step="0.01" min="0" placeholder="0.00" value={f.monto} onChange={(e) => setNew('monto', e.target.value)} style={{ paddingLeft: 22 }} />
+          </div>
+          <Select value={f.tipo} onChange={(e) => setNew('tipo', e.target.value)}>
+            <option value="ppv">PPV</option>
+            <option value="tip">Tip</option>
+          </Select>
+          <Button variant="ghost" onClick={anadir}>Añadir compra</Button>
+        </div>
+        {err && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{err}</p>}
+      </div>
+      <div className="flex flex-wrap gap-4 text-sm px-3 py-2 rounded-md" style={{ background: 'var(--accent-soft)' }}>
+        <span>PPV facturado: <strong className="tabular-nums" style={{ color: 'var(--success)' }}>{fmt$(t.ppv)}</strong></span>
+        <span>Tips: <strong className="tabular-nums" style={{ color: 'var(--gold)' }}>{fmt$(t.tips)}</strong></span>
+        <span>Total {etiqueta}: <strong className="tabular-nums">{fmt$(t.ppv + t.tips)}</strong></span>
+      </div>
+    </div>
+  )
+}
+
 export default function ShiftReports() {
   const { profile, hasAnyRole, hasRole } = useAuth()
   const esMgr = hasAnyRole(['admin', 'manager'])
@@ -67,7 +145,7 @@ export default function ShiftReports() {
   const [sel, setSel] = useState([])
   const [campos, setCampos] = useState({}) // { [modelId]: { texto, trafico, fans, facturacion } }
   const [fanInput, setFanInput] = useState({}) // compra en curso (fan, @user, monto, tipo), por modelo
-  const [errCompra, setErrCompra] = useState({})
+  const [editDet, setEditDet] = useState(null) // { id, reportId, compras, nuevo } al editar compras de un reporte enviado
 
   const [fChatter, setFChatter] = useState('todos')
   const [fFecha, setFFecha] = useState('')
@@ -112,24 +190,23 @@ export default function ShiftReports() {
   function setCampo(id, key, value) {
     setCampos((c) => ({ ...c, [id]: { ...c[id], [key]: value } }))
   }
-  function setFanField(modelId, key, value) {
-    setFanInput((f) => ({ ...f, [modelId]: { ...FAN_VACIO, ...(f[modelId] || {}), [key]: key === 'user' ? normUser(value) : value } }))
-  }
-  function agregarCompra(modelId) {
-    const f = { ...FAN_VACIO, ...(fanInput[modelId] || {}) }
-    const monto = parseFloat(f.monto)
-    let msg = ''
-    if (!f.fan.trim()) msg = 'Escribe el nombre del fan.'
-    else if (f.user.length < 2) msg = 'Escribe el usuario del fan (@usuario).'
-    else if (!(monto > 0)) msg = 'Indica la cantidad gastada.'
-    setErrCompra((e) => ({ ...e, [modelId]: msg }))
-    if (msg) return
-    const compra = { fan: f.fan.trim(), user: f.user, monto: r2(monto), tipo: f.tipo }
-    setCampos((c) => ({ ...c, [modelId]: { ...c[modelId], compras: [...(c[modelId]?.compras || []), compra] } }))
-    setFanInput((x) => ({ ...x, [modelId]: { ...FAN_VACIO, tipo: f.tipo } }))
-  }
-  function quitarCompra(modelId, i) {
-    setCampos((c) => ({ ...c, [modelId]: { ...c[modelId], compras: c[modelId].compras.filter((_, j) => j !== i) } }))
+  const setNuevoFan = (modelId, v) => setFanInput((f) => ({ ...f, [modelId]: v }))
+
+  async function guardarEdicionCompras(d, reporte) {
+    const msg = validarCompras(editDet.compras) || (pendiente(editDet.nuevo) ? 'Tienes una compra a medio rellenar. Pulsa «Añadir compra» o bórrala.' : '')
+    if (msg) { setEditDet((e) => ({ ...e, err: msg })); return }
+    const compras = normalizarCompras(editDet.compras)
+    const t = totales(compras)
+    const cambios = {
+      compras,
+      fans_compradores: compras.map((c) => `${c.fan} (${c.user})`),
+      facturacion: t.ppv > 0 ? t.ppv : null,
+      tips: t.tips > 0 ? t.tips : null,
+    }
+    const { error: e } = await supabase.from('shift_report_details').update(cambios).eq('id', d.id)
+    if (e) { setEditDet((x) => ({ ...x, err: 'No se pudieron guardar los cambios.' })); return }
+    setDetalles((prev) => ({ ...prev, [reporte.id]: (prev[reporte.id] || []).map((x) => (x.id === d.id ? { ...x, ...cambios } : x)) }))
+    setEditDet(null)
   }
 
   async function enviar() {
@@ -139,8 +216,9 @@ export default function ShiftReports() {
     if (!sel.length) { setError('Selecciona al menos una modelo.'); return }
     const vacios = sel.filter((id) => !(campos[id]?.texto || '').trim())
     if (vacios.length) { setError('Falta el reporte de alguna modelo seleccionada.'); return }
-    const sinAnadir = sel.find((id) => { const f = fanInput[id]; return f && (f.fan?.trim() || f.monto || (f.user || '@').length > 1) })
-    if (sinAnadir) { setError('Tienes una compra a medio rellenar. Pulsa «Añadir compra» o bórrala antes de enviar.'); return }
+    const malas = sel.map((id) => validarCompras(campos[id]?.compras)).find(Boolean)
+    if (malas) { setError(malas); return }
+    if (sel.some((id) => pendiente(fanInput[id]))) { setError('Tienes una compra a medio rellenar. Pulsa «Añadir compra» o bórrala antes de enviar.'); return }
     setBusy(true)
     const { data: rep, error: e1 } = await supabase
       .from('shift_reports')
@@ -149,7 +227,7 @@ export default function ShiftReports() {
       .single()
     if (e1) { setError('No se pudo guardar el reporte.'); setBusy(false); return }
     const detalle = sel.map((model_id) => {
-      const compras = campos[model_id].compras || []
+      const compras = normalizarCompras(campos[model_id].compras)
       const t = totales(compras)
       return {
         report_id: rep.id,
@@ -301,52 +379,14 @@ export default function ShiftReports() {
                   </div>
                 </div>
               </div>
-              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fans que compraron en este turno</label>
-              {(c.compras || []).length === 0 ? (
-                <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Ninguno todavía. Añade cada compra y los totales se suman solos.</p>
-              ) : (
-                <div className="mb-3 space-y-1">
-                  {c.compras.map((x, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-                      <span className="min-w-0 flex-1 truncate"><strong>{x.fan}</strong> <span style={{ color: 'var(--text-muted)' }}>{x.user}</span></span>
-                      <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: x.tipo === 'tip' ? 'var(--gold)22' : 'var(--success)22', color: x.tipo === 'tip' ? 'var(--gold)' : 'var(--success)' }}>{x.tipo === 'tip' ? 'Tip' : 'PPV'}</span>
-                      <span className="tabular-nums">{fmt$(x.monto)}</span>
-                      <button onClick={() => quitarCompra(id, i)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {(() => {
-                const f = { ...FAN_VACIO, ...(fanInput[id] || {}) }
-                return (
-                  <div className="mb-3">
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                      <Input placeholder="Nombre del fan" value={f.fan} onChange={(e) => setFanField(id, 'fan', e.target.value)} />
-                      <Input placeholder="@usuario" value={f.user} onChange={(e) => setFanField(id, 'user', e.target.value)} />
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: 'var(--text-muted)' }}>$</span>
-                        <Input type="number" step="0.01" min="0" placeholder="0.00" value={f.monto} onChange={(e) => setFanField(id, 'monto', e.target.value)} style={{ paddingLeft: 22 }} />
-                      </div>
-                      <Select value={f.tipo} onChange={(e) => setFanField(id, 'tipo', e.target.value)}>
-                        <option value="ppv">PPV</option>
-                        <option value="tip">Tip</option>
-                      </Select>
-                      <Button variant="ghost" onClick={() => agregarCompra(id)}>Añadir compra</Button>
-                    </div>
-                    {errCompra[id] && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{errCompra[id]}</p>}
-                  </div>
-                )
-              })()}
-              {(() => {
-                const t = totales(c.compras)
-                return (
-                  <div className="flex flex-wrap gap-4 text-sm px-3 py-2 rounded-md" style={{ background: 'var(--accent-soft)' }}>
-                    <span>PPV facturado: <strong className="tabular-nums" style={{ color: 'var(--success)' }}>{fmt$(t.ppv)}</strong></span>
-                    <span>Tips: <strong className="tabular-nums" style={{ color: 'var(--gold)' }}>{fmt$(t.tips)}</strong></span>
-                    <span>Total {modelo?.stage_name}: <strong className="tabular-nums">{fmt$(t.ppv + t.tips)}</strong></span>
-                  </div>
-                )
-              })()}
+              <label className="text-xs mb-2 block" style={{ color: 'var(--text-muted)' }}>Fans que compraron en este turno</label>
+              <ComprasEditor
+                compras={c.compras || []}
+                onChange={(v) => setCampo(id, 'compras', v)}
+                nuevo={fanInput[id]}
+                setNuevo={(v) => setNuevoFan(id, v)}
+                etiqueta={modelo?.stage_name}
+              />
             </Panel>
           )
         })}
@@ -437,21 +477,51 @@ export default function ShiftReports() {
                                   )}
                                 </div>
                                 <div className="whitespace-pre-wrap">{d.texto}</div>
+                                {editDet?.id === d.id ? (
+                                  <div className="mt-2 p-3 rounded-md" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
+                                    <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Editando compras. Al guardar, el PPV facturado y los tips se recalculan con estas compras.</p>
+                                    <ComprasEditor
+                                      compras={editDet.compras}
+                                      onChange={(v) => setEditDet((e) => ({ ...e, compras: v, err: '' }))}
+                                      nuevo={editDet.nuevo}
+                                      setNuevo={(v) => setEditDet((e) => ({ ...e, nuevo: v }))}
+                                      etiqueta={d.models?.stage_name}
+                                    />
+                                    {editDet.err && <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>{editDet.err}</p>}
+                                    <div className="flex gap-2 mt-3">
+                                      <Button onClick={() => guardarEdicionCompras(d, r)}>Guardar cambios</Button>
+                                      <Button variant="ghost" onClick={() => setEditDet(null)}>Cancelar</Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
                                 {d.compras?.length > 0 ? (
-                                  <div className="mt-2 space-y-0.5 text-sm">
-                                    <strong style={{ color: 'var(--text-muted)' }}>Fans que compraron:</strong>
-                                    {d.compras.map((x, i) => (
-                                      <div key={i} className="flex items-center gap-2">
-                                        <span>{x.fan} <span style={{ color: 'var(--text-muted)' }}>{x.user}</span></span>
-                                        <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: x.tipo === 'tip' ? 'var(--gold)22' : 'var(--success)22', color: x.tipo === 'tip' ? 'var(--gold)' : 'var(--success)' }}>{x.tipo === 'tip' ? 'Tip' : 'PPV'}</span>
-                                        <span className="tabular-nums">{fmt$(x.monto)}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : d.fans_compradores?.length > 0 && (
-                                  <div className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-                                    <strong>Fans que compraron:</strong> {d.fans_compradores.join(', ')}
-                                  </div>
+                                    <div className="mt-2 space-y-0.5 text-sm">
+                                      <strong style={{ color: 'var(--text-muted)' }}>Fans que compraron:</strong>
+                                      {d.compras.map((x, i) => (
+                                        <div key={i} className="flex items-center gap-2">
+                                          <span>{x.fan} <span style={{ color: 'var(--text-muted)' }}>{x.user}</span></span>
+                                          <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: x.tipo === 'tip' ? 'var(--gold)22' : 'var(--success)22', color: x.tipo === 'tip' ? 'var(--gold)' : 'var(--success)' }}>{x.tipo === 'tip' ? 'Tip' : 'PPV'}</span>
+                                          <span className="tabular-nums">{fmt$(x.monto)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : d.fans_compradores?.length > 0 && (
+                                    <div className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
+                                      <strong>Fans que compraron:</strong> {d.fans_compradores.join(', ')}
+                                    </div>
+                                  )}
+  
+                                    {(esMgr || r.chatter_id === profile.id) && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setEditDet({ id: d.id, compras: d.compras?.length ? d.compras.map((x) => ({ ...x })) : (d.fans_compradores || []).map((n) => ({ fan: n, user: '@', monto: '', tipo: 'ppv' })), nuevo: FAN_VACIO, err: '' }) }}
+                                        className="text-xs hover:underline mt-2"
+                                        style={{ color: 'var(--accent)' }}
+                                      >
+                                        Editar compras
+                                      </button>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             ))

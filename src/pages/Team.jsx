@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { readFunctionError } from '../lib/functions'
 import { Panel, Button, Input, Select, StatusBadge, PageHeader } from '../components/ui'
+import PermissionsMatrix from '../components/PermissionsMatrix'
 
 const ROLE_LABEL = { admin: 'Admin', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente IG', modelo: 'Modelo' }
 const TODOS_LOS_ROLES = ['manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo']
@@ -32,7 +33,9 @@ function puedeGestionar(rolesGestor, rolesObjetivo) {
 }
 
 export default function Team() {
-  const { profile, roles } = useAuth()
+  const { profile, roles, hasRole } = useAuth()
+  const esAdmin = hasRole('admin')
+  const [vista, setVista] = useState('miembros')
   const asignables = rolesAsignables(roles)
   const visibles = rolesVisibles(roles)
   const [rows, setRows] = useState([])
@@ -85,10 +88,26 @@ export default function Team() {
         title="Equipo"
         subtitle="Gestiona a tu equipo. Cada persona puede tener uno o varios roles a la vez."
         action={asignables.length > 0 && (
-          <Button onClick={() => setNuevo({ email: '', full_name: '', roles: [asignables[0]], password: '', model_id: '' })}>+ Nuevo usuario</Button>
+          <Button onClick={() => setNuevo({ email: '', full_name: '', roles: [], password: '', model_id: '' })}>+ Nuevo usuario</Button>
         )}
       />
 
+      {esAdmin && (
+        <div className="flex gap-2 mb-4">
+          {[['miembros', 'Miembros'], ['permisos', 'Permisos por rol']].map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setVista(id)}
+              className="px-3 py-1.5 rounded-full text-sm"
+              style={{ background: vista === id ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${vista === id ? 'var(--accent)' : 'var(--border)'}`, color: vista === id ? 'var(--accent)' : 'var(--text)' }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {esAdmin && vista === 'permisos' ? <PermissionsMatrix /> : (<>
       <Panel>
         {loading ? (
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
@@ -162,6 +181,7 @@ export default function Team() {
         />
       )}
       {resetU && <ResetModal u={resetU} onClose={() => setResetU(null)} />}
+      </>)}
     </div>
   )
 }
@@ -275,15 +295,27 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
 function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
   const [nombre, setNombre] = useState(usuario.full_name)
   const [rolesSel, setRolesSel] = useState(usuario.roles)
+  const [email, setEmail] = useState('')
+  const [emailOriginal, setEmailOriginal] = useState(null) // null = aún cargando
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    supabase.functions.invoke('team-admin', { body: { action: 'get_email', user_id: usuario.id } }).then(({ data }) => {
+      setEmail(data?.email || '')
+      setEmailOriginal(data?.email || '')
+    })
+  }, [usuario.id])
 
   async function guardar() {
     if (!nombre.trim()) { setErr('El nombre no puede quedar vacío.'); return }
     if (!rolesSel.length) { setErr('Debe tener al menos un rol.'); return }
+    const emailNuevo = email.trim()
+    if (emailOriginal !== null && emailNuevo && !/^\S+@\S+\.\S+$/.test(emailNuevo)) { setErr('El email no es válido.'); return }
     setBusy(true); setErr('')
+    const cambiaEmail = emailOriginal !== null && emailNuevo && emailNuevo.toLowerCase() !== emailOriginal.toLowerCase()
     const { data, error } = await supabase.functions.invoke('team-admin', {
-      body: { action: 'update_roles', user_id: usuario.id, full_name: nombre.trim(), roles: rolesSel },
+      body: { action: 'update_roles', user_id: usuario.id, full_name: nombre.trim(), roles: rolesSel, email: cambiaEmail ? emailNuevo : undefined },
     })
     setBusy(false)
     if (error) { setErr(await readFunctionError(error)); return }
@@ -294,7 +326,11 @@ function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
   return (
     <Panel className="p-5 mt-4">
       <p className="text-sm font-medium mb-3">Editar · {usuario.full_name}</p>
-      <Input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} className="mb-3" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-1">
+        <Input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
+        <Input placeholder={emailOriginal === null ? 'Cargando email…' : 'Email'} type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={emailOriginal === null} />
+      </div>
+      <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Si cambias el email, esa persona entrará con el nuevo desde ese momento.</p>
       <label className="text-xs mb-2 block" style={{ color: 'var(--text-muted)' }}>Roles (puedes marcar varios)</label>
       <div className="mb-3">
         <RoleCheckboxes asignables={asignables} selected={rolesSel} onChange={setRolesSel} />
