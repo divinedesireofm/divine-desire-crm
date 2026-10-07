@@ -54,6 +54,22 @@ export function NotificationsProvider({ children }) {
     return () => { clearInterval(poll); document.removeEventListener('visibilitychange', alVolver) }
   }, [activo, cargar])
 
+  // Tiempo real: cuando la base de datos guarda un aviso nuevo que esta persona puede ver, llega al instante.
+  // (La base de datos solo envía los avisos que le corresponden por rol.) Si el canal falla,
+  // el refresco cada 30 s y al volver a la pestaña sigue funcionando como respaldo.
+  useEffect(() => {
+    if (!activo || !profile) return
+    let temporizador = null
+    const canal = supabase
+      .channel('avisos-' + profile.id)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
+        clearTimeout(temporizador)
+        temporizador = setTimeout(cargar, 300)
+      })
+      .subscribe()
+    return () => { clearTimeout(temporizador); supabase.removeChannel(canal) }
+  }, [activo, profile, cargar])
+
   const marcarLeidas = useCallback(async (claves) => {
     if (!claves.length || !profile) return
     setLeidas((s) => { const n = new Set(s); claves.forEach((c) => n.add(c)); return n })
