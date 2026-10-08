@@ -152,6 +152,7 @@ export default function ShiftReports() {
   const [chatters, setChatters] = useState([])
   const [borrarAntes, setBorrarAntes] = useState('')
   const [borrando, setBorrando] = useState(false)
+  const [totRep, setTotRep] = useState({}) // { [report_id]: { ppv, tips } } para la columna «Facturado»
 
   async function load() {
     let q = supabase.from('shift_reports').select('*, profiles(full_name)').order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(300)
@@ -165,6 +166,21 @@ export default function ShiftReports() {
     setModelos(m || [])
     setReportes(r || [])
     setChatters(cs)
+    cargarTotales((r || []).map((x) => x.id))
+  }
+
+  // Total facturado de cada turno (PPV + tips de todas las modelos del reporte)
+  async function cargarTotales(ids) {
+    const acc = {}
+    for (let i = 0; i < ids.length; i += 80) {
+      const { data } = await supabase.from('shift_report_details').select('report_id, facturacion, tips').in('report_id', ids.slice(i, i + 80))
+      ;(data || []).forEach((d) => {
+        const t = acc[d.report_id] || (acc[d.report_id] = { ppv: 0, tips: 0 })
+        t.ppv += Number(d.facturacion || 0)
+        t.tips += Number(d.tips || 0)
+      })
+    }
+    setTotRep(acc)
   }
 
   // Preselecciona el turno asignado al chatter (si lo tiene) para que no tenga que elegirlo a mano,
@@ -207,6 +223,7 @@ export default function ShiftReports() {
     if (e) { setEditDet((x) => ({ ...x, err: 'No se pudieron guardar los cambios.' })); return }
     setDetalles((prev) => ({ ...prev, [reporte.id]: (prev[reporte.id] || []).map((x) => (x.id === d.id ? { ...x, ...cambios } : x)) }))
     setEditDet(null)
+    cargarTotales(reportes.map((x) => x.id))
   }
 
   async function enviar() {
@@ -294,6 +311,7 @@ export default function ShiftReports() {
       { label: 'Tráfico', get: (r) => TRAFICO.find((t) => t.id === r.trafico)?.n || '' },
       { label: 'Facturación', key: 'facturacion' },
       { label: 'Tips', key: 'tips' },
+      { label: 'Total modelo (PPV + tips)', get: (r) => r2(Number(r.facturacion || 0) + Number(r.tips || 0)) },
       { label: 'Reporte', key: 'texto' },
       { label: 'Fans que compraron', key: 'fans' },
       { label: 'Detalle de compras', key: 'compras' },
@@ -391,6 +409,24 @@ export default function ShiftReports() {
           )
         })}
 
+        {sel.length > 0 && (() => {
+          const filasTot = sel.map((id) => ({ nombre: modelos.find((m) => m.id === id)?.stage_name, ...totales(campos[id]?.compras) }))
+          const ppv = r2(filasTot.reduce((a, x) => a + x.ppv, 0))
+          const tips = r2(filasTot.reduce((a, x) => a + x.tips, 0))
+          return (
+            <div className="p-4 rounded-md mb-3" style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
+              <div className="flex items-baseline justify-between flex-wrap gap-2">
+                <span className="text-sm font-medium">Total facturado en este turno</span>
+                <span className="font-display text-2xl font-semibold tabular-nums">{fmt$(ppv + tips)}</span>
+              </div>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                PPV {fmt$(ppv)} · Tips {fmt$(tips)}
+                {filasTot.length > 1 && ' · ' + filasTot.map((x) => `${x.nombre}: ${fmt$(x.ppv + x.tips)}`).join(' · ')}
+              </p>
+            </div>
+          )
+        })()}
+
         {error && <p className="text-sm mb-2" style={{ color: 'var(--danger)' }}>{error}</p>}
         {ok && <p className="text-sm mb-2" style={{ color: 'var(--success)' }}>{ok}</p>}
         <Button onClick={enviar} disabled={busy}>{busy ? 'Enviando…' : 'Enviar reporte'}</Button>
@@ -424,7 +460,7 @@ export default function ShiftReports() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Fecha', 'Turno', 'Chatter', 'Enviado', ''].map((c) => (
+                  {['Fecha', 'Turno', 'Chatter', 'Facturado', 'Enviado', ''].map((c) => (
                     <th key={c} className="text-left px-3 py-2 font-medium" style={{ color: 'var(--text-muted)' }}>{c}</th>
                   ))}
                 </tr>
@@ -440,6 +476,7 @@ export default function ShiftReports() {
                         </span>
                       </td>
                       <td className="px-3 py-2"><strong>{r.profiles?.full_name}</strong></td>
+                      <td className="px-3 py-2 tabular-nums font-medium">{totRep[r.id] ? fmt$(totRep[r.id].ppv + totRep[r.id].tips) : '—'}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{fmtTS(r.created_at)}</td>
                       <td className="px-3 py-2 text-right" style={{ color: 'var(--text-muted)' }}>
                         {hasRole('admin') && (
@@ -452,11 +489,23 @@ export default function ShiftReports() {
                     </tr>
                     {abierto === r.id && (
                       <tr>
-                        <td colSpan={5} className="px-3 py-3" style={{ background: 'var(--panel-alt)' }}>
+                        <td colSpan={6} className="px-3 py-3" style={{ background: 'var(--panel-alt)' }}>
                           {(detalles[r.id] || []).length === 0 ? (
                             <p style={{ color: 'var(--text-muted)' }}>Cargando…</p>
                           ) : (
-                            (detalles[r.id] || []).map((d) => (
+                            <>
+                              {(() => {
+                                const det = detalles[r.id] || []
+                                const ppv = r2(det.reduce((a, d) => a + Number(d.facturacion || 0), 0))
+                                const tips = r2(det.reduce((a, d) => a + Number(d.tips || 0), 0))
+                                return (
+                                  <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3 p-3 rounded-md" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
+                                    <span className="text-sm font-medium">Total facturado del turno</span>
+                                    <span><strong className="font-display text-lg tabular-nums">{fmt$(ppv + tips)}</strong> <span className="text-xs" style={{ color: 'var(--text-muted)' }}>PPV {fmt$(ppv)} · Tips {fmt$(tips)}</span></span>
+                                  </div>
+                                )
+                              })()}
+                            {(detalles[r.id] || []).map((d) => (
                               <div key={d.id} className="mb-3">
                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                                   <strong style={{ color: 'var(--accent)' }}>{d.models?.stage_name}</strong>
@@ -524,7 +573,8 @@ export default function ShiftReports() {
                                   </>
                                 )}
                               </div>
-                            ))
+                            ))}
+                            </>
                           )}
                         </td>
                       </tr>

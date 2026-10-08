@@ -1,33 +1,41 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useNotifications, } from '../context/NotificationsContext'
+import { useNotifications } from '../context/NotificationsContext'
+import { useAuth } from '../context/AuthContext'
 import { hace } from './NotificationBell'
 import { Panel, Button } from './ui'
 
-// Ventana emergente con los avisos importantes sin leer. Sale al entrar al CRM y cada vez
-// que llega uno nuevo. Se puede cerrar para seguir trabajando, pero los avisos no desaparecen
-// hasta que se marcan como leídos: volverá a salir en la próxima entrada.
+// Ventana emergente con los avisos importantes sin leer. Sale UNA sola vez, al iniciar sesión /
+// entrar al CRM. Los avisos que lleguen después no abren la ventana: aparecen en la campana.
+// Se puede cerrar para seguir trabajando, pero los avisos no desaparecen hasta que se marcan
+// como leídos: volverá a salir en la próxima entrada.
+function yaMostrada(id) { try { return sessionStorage.getItem('dd_popup_' + id) === '1' } catch { return false } }
+function marcarMostrada(id) { try { sessionStorage.setItem('dd_popup_' + id, '1') } catch { /* sin almacenamiento: se mostrará una vez por carga */ } }
+
 export default function NotificationPopup() {
   const nt = useNotifications()
+  const { profile } = useAuth()
   const [abierta, setAbierta] = useState(false)
-  const vistas = useRef(new Set())
+  const [decidido, setDecidido] = useState(false) // ya se decidió si toca mostrarla en esta entrada
   const navigate = useNavigate()
 
   const importantes = nt?.importantes || []
-  const claves = importantes.map((i) => i.key).join('|')
 
+  // Solo en la primera carga tras entrar: si hay avisos sin leer, se abre. Después nunca se reabre sola.
   useEffect(() => {
-    if (!nt?.cargado) return
-    if (importantes.some((i) => !vistas.current.has(i.key))) setAbierta(true)
-    if (importantes.length === 0) setAbierta(false)
-  }, [claves, nt?.cargado])
+    if (!nt?.cargado || !profile || decidido) return
+    setDecidido(true)
+    if (yaMostrada(profile.id)) return
+    marcarMostrada(profile.id)
+    if (importantes.length > 0) setAbierta(true)
+  }, [nt?.cargado, profile, decidido])
+
+  // Si se marcan todos como leídos, se cierra sola
+  useEffect(() => { if (importantes.length === 0) setAbierta(false) }, [importantes.length])
 
   if (!nt || !abierta || importantes.length === 0) return null
 
-  function cerrar() {
-    importantes.forEach((i) => vistas.current.add(i.key))
-    setAbierta(false)
-  }
+  function cerrar() { setAbierta(false) }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-16" style={{ background: 'rgba(0,0,0,0.55)' }} role="dialog" aria-modal="true" aria-label="Avisos pendientes">
