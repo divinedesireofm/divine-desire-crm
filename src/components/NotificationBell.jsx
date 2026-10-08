@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useNotifications } from '../context/NotificationsContext'
 import Icon from './Icon'
+import { sonidoActivo, setSonidoActivo, reproducirAviso } from '../lib/sonido'
 
 export function hace(fecha) {
   if (!fecha) return ''
@@ -16,6 +17,7 @@ export function hace(fecha) {
 export default function NotificationBell() {
   const nt = useNotifications()
   const [abierto, setAbierto] = useState(false)
+  const [sonido, setSonido] = useState(sonidoActivo())
   const ref = useRef(null)
   const navigate = useNavigate()
 
@@ -29,6 +31,13 @@ export default function NotificationBell() {
   if (!nt || !nt.activo) return null
   const { importantes, secundarias, marcarLeidas } = nt
   const total = importantes.length + secundarias.length
+
+  function alternarSonido() {
+    const nuevo = !sonido
+    setSonido(nuevo)
+    setSonidoActivo(nuevo)
+    if (nuevo) reproducirAviso('importante', true) // al activarlo suena una vez para que se oiga cómo es
+  }
 
   return (
     <div className="relative" ref={ref}>
@@ -95,6 +104,10 @@ export default function NotificationBell() {
               )}
             </>
           )}
+          <div className="px-4 py-2 flex items-center justify-between text-xs" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+            <span>{sonido ? '🔊 Sonido de avisos activado' : '🔇 Sonido de avisos desactivado'}</span>
+            <button onClick={alternarSonido} className="hover:underline" style={{ color: 'var(--accent)' }}>{sonido ? 'Desactivar' : 'Activar'}</button>
+          </div>
         </div>
       )}
     </div>

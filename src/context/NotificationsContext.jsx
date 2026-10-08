@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
+import { reproducirAviso, instalarDesbloqueo } from '../lib/sonido'
 
 const DIAS_ALERTA_CONTENIDO = 14
 const Ctx = createContext(null)
@@ -17,6 +18,7 @@ export function NotificationsProvider({ children }) {
   const [leidas, setLeidas] = useState(() => new Set())
   const [cargado, setCargado] = useState(false)
   const leidasRef = useRef(leidas)
+  const vistosRef = useRef(null) // claves ya conocidas; null hasta la primera carga
   leidasRef.current = leidas
 
   const cargar = useCallback(async () => {
@@ -80,6 +82,16 @@ export function NotificationsProvider({ children }) {
   const noLeidas = useMemo(() => items.filter((i) => !leidas.has(i.key)), [items, leidas])
   const importantes = useMemo(() => noLeidas.filter((i) => i.prioridad !== 'baja'), [noLeidas])
   const secundarias = useMemo(() => noLeidas.filter((i) => i.prioridad === 'baja'), [noLeidas])
+
+  // Sonido: solo cuando aparece un aviso nuevo sin leer después de la primera carga
+  useEffect(() => { if (!activo) return undefined; return instalarDesbloqueo() }, [activo])
+  useEffect(() => {
+    if (!cargado) return
+    if (vistosRef.current === null) { vistosRef.current = new Set(items.map((i) => i.key)); return }
+    const nuevos = noLeidas.filter((i) => !vistosRef.current.has(i.key))
+    items.forEach((i) => vistosRef.current.add(i.key))
+    if (nuevos.length) reproducirAviso(nuevos.some((i) => i.prioridad !== 'baja') ? 'importante' : 'secundaria')
+  }, [items, cargado])
 
   const value = { activo, cargado, importantes, secundarias, marcarLeidas, recargar: cargar }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
