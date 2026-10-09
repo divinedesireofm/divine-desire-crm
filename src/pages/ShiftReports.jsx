@@ -489,93 +489,112 @@ export default function ShiftReports() {
                     </tr>
                     {abierto === r.id && (
                       <tr>
-                        <td colSpan={6} className="px-3 py-3" style={{ background: 'var(--panel-alt)' }}>
+                        <td colSpan={6} className="px-4 py-5" style={{ background: 'var(--panel-alt)' }}>
                           {(detalles[r.id] || []).length === 0 ? (
                             <p style={{ color: 'var(--text-muted)' }}>Cargando…</p>
-                          ) : (
-                            <>
-                              {(() => {
-                                const det = detalles[r.id] || []
-                                const ppv = r2(det.reduce((a, d) => a + Number(d.facturacion || 0), 0))
-                                const tips = r2(det.reduce((a, d) => a + Number(d.tips || 0), 0))
-                                return (
-                                  <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3 p-3 rounded-md" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
-                                    <span className="text-sm font-medium">Total facturado del turno</span>
-                                    <span><strong className="font-display text-lg tabular-nums">{fmt$(ppv + tips)}</strong> <span className="text-xs" style={{ color: 'var(--text-muted)' }}>PPV {fmt$(ppv)} · Tips {fmt$(tips)}</span></span>
+                          ) : (() => {
+                            const det = detalles[r.id] || []
+                            const ppv = r2(det.reduce((a, d) => a + Number(d.facturacion || 0), 0))
+                            const tips = r2(det.reduce((a, d) => a + Number(d.tips || 0), 0))
+                            const nCompras = det.reduce((a, d) => a + (d.compras?.length || d.fans_compradores?.length || 0), 0)
+                            return (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                  <div className="col-span-2 md:col-span-1 rounded-lg px-4 py-3" style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
+                                    <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Total del turno</p>
+                                    <p className="font-display text-2xl font-semibold tabular-nums">{fmt$(ppv + tips)}</p>
                                   </div>
-                                )
-                              })()}
-                            {(detalles[r.id] || []).map((d) => (
-                              <div key={d.id} className="mb-3">
-                                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                  <strong style={{ color: 'var(--accent)' }}>{d.models?.stage_name}</strong>
-                                  {d.trafico && (
-                                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: `${TRAFICO.find((t) => t.id === d.trafico)?.color}22`, color: TRAFICO.find((t) => t.id === d.trafico)?.color }}>
-                                      Tráfico {TRAFICO.find((t) => t.id === d.trafico)?.n}
-                                    </span>
-                                  )}
-                                  {d.facturacion != null && (
-                                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--success)22', color: 'var(--success)' }}>
-                                      ${Number(d.facturacion).toFixed(2)}
-                                    </span>
-                                  )}
-                                  {d.tips != null && (
-                                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--gold)22', color: 'var(--gold)' }}>
-                                      💰 ${Number(d.tips).toFixed(2)} tips
-                                    </span>
-                                  )}
+                                  {[['PPV', fmt$(ppv), 'var(--success)'], ['Tips', fmt$(tips), 'var(--gold)'], ['Compras', `${nCompras} · ${det.length} ${det.length === 1 ? 'modelo' : 'modelos'}`, 'var(--text)']].map(([t, v, c]) => (
+                                    <div key={t} className="rounded-lg px-4 py-3" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
+                                      <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>{t}</p>
+                                      <p className="font-display text-xl font-semibold tabular-nums" style={{ color: c }}>{v}</p>
+                                    </div>
+                                  ))}
                                 </div>
-                                <div className="whitespace-pre-wrap">{d.texto}</div>
-                                {editDet?.id === d.id ? (
-                                  <div className="mt-2 p-3 rounded-md" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
-                                    <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Editando compras. Al guardar, el PPV facturado y los tips se recalculan con estas compras.</p>
-                                    <ComprasEditor
-                                      compras={editDet.compras}
-                                      onChange={(v) => setEditDet((e) => ({ ...e, compras: v, err: '' }))}
-                                      nuevo={editDet.nuevo}
-                                      setNuevo={(v) => setEditDet((e) => ({ ...e, nuevo: v }))}
-                                      etiqueta={d.models?.stage_name}
-                                    />
-                                    {editDet.err && <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>{editDet.err}</p>}
-                                    <div className="flex gap-2 mt-3">
-                                      <Button onClick={() => guardarEdicionCompras(d, r)}>Guardar cambios</Button>
-                                      <Button variant="ghost" onClick={() => setEditDet(null)}>Cancelar</Button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <>
-                                {d.compras?.length > 0 ? (
-                                    <div className="mt-2 space-y-0.5 text-sm">
-                                      <strong style={{ color: 'var(--text-muted)' }}>Fans que compraron:</strong>
-                                      {d.compras.map((x, i) => (
-                                        <div key={i} className="flex items-center gap-2">
-                                          <span>{x.fan} <span style={{ color: 'var(--text-muted)' }}>{x.user}</span></span>
-                                          <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: x.tipo === 'tip' ? 'var(--gold)22' : 'var(--success)22', color: x.tipo === 'tip' ? 'var(--gold)' : 'var(--success)' }}>{x.tipo === 'tip' ? 'Tip' : 'PPV'}</span>
-                                          <span className="tabular-nums">{fmt$(x.monto)}</span>
+
+                                {det.map((d) => {
+                                  const tf = TRAFICO.find((t) => t.id === d.trafico)
+                                  const totM = r2(Number(d.facturacion || 0) + Number(d.tips || 0))
+                                  return (
+                                    <div key={d.id} className="rounded-lg overflow-hidden" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
+                                      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3" style={{ borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${tf?.color || 'var(--border)'}` }}>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <strong className="text-base" style={{ color: 'var(--accent)' }}>{d.models?.stage_name}</strong>
+                                          {tf && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${tf.color}22`, color: tf.color }}>Tráfico {tf.n}</span>}
                                         </div>
-                                      ))}
+                                        <div className="text-right">
+                                          <span className="font-display text-lg font-semibold tabular-nums">{fmt$(totM)}</span>
+                                          <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>PPV {fmt$(d.facturacion)} · Tips {fmt$(d.tips)}</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="px-4 py-3 space-y-3">
+                                        {d.texto && (
+                                          <div>
+                                            <p className="text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>Resumen del turno</p>
+                                            <p className="text-sm whitespace-pre-wrap pl-3" style={{ borderLeft: '2px solid var(--border)' }}>{d.texto}</p>
+                                          </div>
+                                        )}
+
+                                        {editDet?.id === d.id ? (
+                                          <div className="p-3 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
+                                            <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Editando compras. Al guardar, el PPV facturado y los tips se recalculan con estas compras.</p>
+                                            <ComprasEditor
+                                              compras={editDet.compras}
+                                              onChange={(v) => setEditDet((e) => ({ ...e, compras: v, err: '' }))}
+                                              nuevo={editDet.nuevo}
+                                              setNuevo={(v) => setEditDet((e) => ({ ...e, nuevo: v }))}
+                                              etiqueta={d.models?.stage_name}
+                                            />
+                                            {editDet.err && <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>{editDet.err}</p>}
+                                            <div className="flex gap-2 mt-3">
+                                              <Button onClick={() => guardarEdicionCompras(d, r)}>Guardar cambios</Button>
+                                              <Button variant="ghost" onClick={() => setEditDet(null)}>Cancelar</Button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div>
+                                            <div className="flex items-center justify-between mb-1">
+                                              <p className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Fans que compraron{d.compras?.length ? ` (${d.compras.length})` : ''}</p>
+                                              {(esMgr || r.chatter_id === profile.id) && (
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); setEditDet({ id: d.id, compras: d.compras?.length ? d.compras.map((x) => ({ ...x })) : (d.fans_compradores || []).map((n) => ({ fan: n, user: '@', monto: '', tipo: 'ppv' })), nuevo: FAN_VACIO, err: '' }) }}
+                                                  className="text-xs hover:underline"
+                                                  style={{ color: 'var(--accent)' }}
+                                                >
+                                                  Editar compras
+                                                </button>
+                                              )}
+                                            </div>
+                                            {d.compras?.length > 0 ? (
+                                              <table className="w-full text-sm">
+                                                <tbody>
+                                                  {d.compras.map((x, i) => (
+                                                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                                                      <td className="py-1.5 pr-3 font-medium">{x.fan}</td>
+                                                      <td className="py-1.5 pr-3" style={{ color: 'var(--text-muted)' }}>{x.user}</td>
+                                                      <td className="py-1.5 pr-3">
+                                                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: x.tipo === 'tip' ? 'var(--gold)22' : 'var(--success)22', color: x.tipo === 'tip' ? 'var(--gold)' : 'var(--success)' }}>{x.tipo === 'tip' ? 'Tip' : 'PPV'}</span>
+                                                      </td>
+                                                      <td className="py-1.5 text-right tabular-nums font-medium">{fmt$(x.monto)}</td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            ) : d.fans_compradores?.length > 0 ? (
+                                              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{d.fans_compradores.join(', ')}</p>
+                                            ) : (
+                                              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin compras registradas.</p>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
                                     </div>
-                                  ) : d.fans_compradores?.length > 0 && (
-                                    <div className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-                                      <strong>Fans que compraron:</strong> {d.fans_compradores.join(', ')}
-                                    </div>
-                                  )}
-  
-                                    {(esMgr || r.chatter_id === profile.id) && (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); setEditDet({ id: d.id, compras: d.compras?.length ? d.compras.map((x) => ({ ...x })) : (d.fans_compradores || []).map((n) => ({ fan: n, user: '@', monto: '', tipo: 'ppv' })), nuevo: FAN_VACIO, err: '' }) }}
-                                        className="text-xs hover:underline mt-2"
-                                        style={{ color: 'var(--accent)' }}
-                                      >
-                                        Editar compras
-                                      </button>
-                                    )}
-                                  </>
-                                )}
+                                  )
+                                })}
                               </div>
-                            ))}
-                            </>
-                          )}
+                            )
+                          })()}
                         </td>
                       </tr>
                     )}

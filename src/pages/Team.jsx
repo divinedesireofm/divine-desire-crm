@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { readFunctionError } from '../lib/functions'
@@ -7,6 +7,9 @@ import PermissionsMatrix from '../components/PermissionsMatrix'
 
 const ROLE_LABEL = { admin: 'Admin', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente IG', modelo: 'Modelo' }
 const TODOS_LOS_ROLES = ['manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo']
+// Orden en que se muestran los grupos: cada persona sale una sola vez, en el grupo de su rol más alto
+const ORDEN_GRUPOS = ['admin', 'manager', 'ig_manager', 'chatter', 'ig_assistant', 'modelo']
+const GRUPO_PLURAL = { admin: 'Administración', manager: 'Managers de Chatting', ig_manager: 'Managers de Instagram', chatter: 'Chatters', ig_assistant: 'Asistentes de Instagram', modelo: 'Modelos' }
 
 // Qué roles puede ASIGNAR cada tipo de manager (marcando varias casillas)
 function rolesAsignables(roles) {
@@ -58,6 +61,21 @@ export default function Team() {
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+
+  // Agrupa por el rol más alto de cada persona; dentro de cada grupo, activos primero y por nombre
+  const grupos = useMemo(() => {
+    const por = {}
+    rows.forEach((u) => {
+      const rs = rolesPorUsuario[u.id] || [u.role]
+      const rol = ORDEN_GRUPOS.find((r) => rs.includes(r)) || rs[0] || 'otro'
+      ;(por[rol] = por[rol] || []).push(u)
+    })
+    const orden = [...ORDEN_GRUPOS, ...Object.keys(por).filter((r) => !ORDEN_GRUPOS.includes(r))]
+    return orden.filter((r) => por[r]?.length).map((rol) => ({
+      rol,
+      personas: por[rol].sort((a, b) => (b.active === a.active ? 0 : a.active ? -1 : 1) || (a.full_name || '').localeCompare(b.full_name || '', 'es')),
+    }))
+  }, [rows, rolesPorUsuario])
 
   async function toggleActivo(u) {
     if (u.id === profile.id) { alert('No puedes desactivar tu propia cuenta.'); return }
@@ -124,7 +142,15 @@ export default function Team() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((u) => {
+              {grupos.map((g) => (
+                <Fragment key={g.rol}>
+                  <tr style={{ background: 'var(--panel-alt)', borderBottom: '1px solid var(--border)' }}>
+                    <td colSpan={4} className="px-4 py-2">
+                      <span className="text-xs font-medium uppercase tracking-wide" style={{ color: 'var(--accent)' }}>{GRUPO_PLURAL[g.rol] || g.rol}</span>
+                      <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>{g.personas.length}</span>
+                    </td>
+                  </tr>
+                  {g.personas.map((u) => {
                 const rs = rolesPorUsuario[u.id] || [u.role]
                 const puede = puedeGestionar(roles, rs)
                 return (
@@ -161,7 +187,9 @@ export default function Team() {
                     </td>
                   </tr>
                 )
-              })}
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
           </div>
