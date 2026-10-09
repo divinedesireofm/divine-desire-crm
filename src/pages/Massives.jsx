@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
+import ModelName from '../components/ModelAvatar'
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -103,7 +104,7 @@ function MasivosCal() {
               <div key={iso} className="rounded-md p-1.5 min-h-[80px]" style={{ background: iso === hoy ? 'var(--accent-soft)' : 'var(--panel-alt)', border: '1px solid var(--border)' }}>
                 <div className="flex justify-between text-xs mb-1">
                   <span>{d}</span>
-                  {esMgr && <span onClick={() => setAdd({ fecha: iso, chatter_id: chatters[0]?.id || '', modelos: [], nota: '' })} className="cursor-pointer" style={{ color: 'var(--text-muted)' }}>+</span>}
+                  {esMgr && <span onClick={() => setAdd({ fecha: iso, chatter_id: chatters[0]?.id || '', modelos: [], nota: '' })} className="cursor-pointer leading-none select-none hover:opacity-80" style={{ color: 'var(--text-muted)', fontSize: 18, fontWeight: 300, padding: '0 4px' }} title="Añadir">+</span>}
                 </div>
                 {Object.entries(porChatter).map(([nombre, items]) => (
                   <div key={nombre} className="mb-1">
@@ -117,7 +118,7 @@ function MasivosCal() {
                           className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
                           style={{ background: 'var(--panel)', color: 'var(--accent)' }}
                         >
-                          {ev.models?.stage_name}
+                          <ModelName name={ev.models?.stage_name} size={14} />
                         </span>
                       ))}
                     </div>
@@ -161,7 +162,7 @@ function MasivoModal({ add, modelos, chatters, profile, onClose, onSaved }) {
   return (
     <Panel className="p-5 mt-4">
       <p className="text-sm font-medium mb-3">Asignar masivo</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
         <Select value={chatterId} onChange={(e) => setChatterId(e.target.value)}>
           {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
@@ -178,7 +179,7 @@ function MasivoModal({ add, modelos, chatters, profile, onClose, onSaved }) {
               className="px-3 py-1.5 rounded-full text-sm"
               style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}
             >
-              {m.stage_name}
+              <ModelName name={m.stage_name} size={18} />
             </button>
           )
         })}

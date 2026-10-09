@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
+import ModelName from '../components/ModelAvatar'
 
 const STATUS_OPTIONS = ['calentando', 'activa', 'en_revision', 'suspendida', 'baneada']
 
@@ -131,7 +132,7 @@ export default function InstagramAccounts() {
       {showForm && (
         <Panel className="p-5 mb-6">
           <p className="text-sm mb-4 font-medium">{editingId ? 'Editar cuenta' : 'Nueva cuenta'}</p>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <form onSubmit={handleSubmit} className="grid grid-cols-3 gap-3">
             <Input
               placeholder="Instagram original (si la cuenta fue comprada)"
               value={form.original_username}
@@ -237,7 +238,7 @@ export default function InstagramAccounts() {
                         <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a>
                       ) : `@${a.username}`}
                     </Td>
-                    <Td>{a.models?.stage_name || '—'}</Td>
+                    <Td><ModelName name={a.models?.stage_name} /></Td>
                     <Td>{(a.target_audience || []).join(', ') || '—'}</Td>
                     <Td><StatusBadge status={a.status} /></Td>
                     <Td>{a.profiles?.full_name || '—'}</Td>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { Panel, PageHeader, DeltaBadge } from '../components/ui'
+import ModelName from '../components/ModelAvatar'
 
 const COLORES = ['var(--accent)', 'var(--gold)', 'var(--success)', 'var(--danger)', '#a78bfa', '#38bdf8']
 
@@ -62,7 +63,7 @@ export default function ModelsComparison() {
                 className="px-3 py-1.5 rounded-full text-sm"
                 style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}
               >
-                {m.stage_name}
+                <ModelName name={m.stage_name} size={18} />
               </button>
             )
           })}

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, PageHeader } from '../components/ui'
 import Icon from '../components/Icon'
+import ModelName from '../components/ModelAvatar'
 
 const TURNOS = { madrugada: 'Madrugada', 'mañana': 'Mañana', tarde: 'Tarde' }
 const TRAFICO = { bajo: { n: 'Bajo', c: 'var(--danger)' }, medio: { n: 'Medio', c: 'var(--gold)' }, alto: { n: 'Alto', c: 'var(--success)' } }
@@ -105,7 +106,7 @@ function TarjetaReporte({ r }) {
           return (
             <div key={i} className="pl-3 py-1" style={{ borderLeft: `3px solid ${t?.c || 'var(--border)'}` }}>
               <div className="flex items-center gap-2 flex-wrap text-sm">
-                <strong style={{ color: 'var(--accent)' }}>{d.models?.stage_name}</strong>
+                <strong style={{ color: 'var(--accent)' }}><ModelName name={d.models?.stage_name} size={20} /></strong>
                 {t && <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: `${t.c}22`, color: t.c }}>Tráfico {t.n}</span>}
                 <span className="text-xs tabular-nums ml-auto" style={{ color: total > 0 ? 'var(--success)' : 'var(--text-muted)' }}>{fmt$(total)}</span>
               </div>

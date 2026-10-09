@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Panel, Select, PageHeader } from '../components/ui'
+import ModelName from '../components/ModelAvatar'
 
 function fmtTS(ts) {
   const d = new Date(ts)
@@ -90,7 +91,7 @@ export default function UnifiedReportsInbox() {
                       <div className="space-y-2 pt-3">
                         {(i.detalle || []).map((d, idx) => (
                           <div key={idx}>
-                            <p className="font-medium">{d.models?.stage_name} {d.facturacion ? `· $${d.facturacion}` : ''} {d.tips ? `· $${d.tips} tips` : ''}</p>
+                            <p className="font-medium"><ModelName name={d.models?.stage_name} /> {d.facturacion ? `· $${d.facturacion}` : ''} {d.tips ? `· $${d.tips} tips` : ''}</p>
                             <p style={{ color: 'var(--text-muted)' }}>{d.texto}</p>
                           </div>
                         ))}

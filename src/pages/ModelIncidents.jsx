@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
+import ModelName from '../components/ModelAvatar'
 
 const TIPOS = { salud: 'Salud', conflicto: 'Conflicto', disciplinaria: 'Disciplinaria', otro: 'Otro' }
 const ESTADO_COLOR = { abierta: 'var(--danger)', resuelta: 'var(--success)' }
@@ -91,7 +92,7 @@ export default function ModelIncidents() {
               <div key={inc.id} className="p-4">
                 <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
                   <div>
-                    <strong className="text-sm">{inc.models?.stage_name}</strong>
+                    <strong className="text-sm"><ModelName name={inc.models?.stage_name} /></strong>
                     <span className="text-xs ml-2" style={{ color: 'var(--text-muted)' }}>{TIPOS[inc.tipo]} · {inc.fecha}</span>
                   </div>
                   <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${ESTADO_COLOR[inc.estado]}22`, color: ESTADO_COLOR[inc.estado] }}>

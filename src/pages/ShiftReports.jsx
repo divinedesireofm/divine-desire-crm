@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
+import ModelName from '../components/ModelAvatar'
 
 const TURNOS = [
   { id: 'madrugada', n: 'Madrugada', h: '2:00 – 10:00 VE' },
@@ -356,7 +357,7 @@ export default function ShiftReports() {
                   color: active ? 'var(--accent)' : 'var(--text)',
                 }}
               >
-                {m.stage_name}
+                <ModelName name={m.stage_name} size={18} />
               </button>
             )
           })}
@@ -367,7 +368,7 @@ export default function ShiftReports() {
           const c = campos[id] || {}
           return (
             <Panel key={id} className="p-4 mb-3">
-              <p className="text-sm font-medium mb-3">Reporte de {modelo?.stage_name}</p>
+              <p className="text-sm font-medium mb-3">Reporte de <ModelName name={modelo?.stage_name} size={22} /></p>
               <textarea
                 value={c.texto || ''}
                 onChange={(e) => setCampo(id, 'texto', e.target.value)}
@@ -519,7 +520,7 @@ export default function ShiftReports() {
                                     <div key={d.id} className="rounded-lg overflow-hidden" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
                                       <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3" style={{ borderBottom: '1px solid var(--border)', borderLeft: `3px solid ${tf?.color || 'var(--border)'}` }}>
                                         <div className="flex items-center gap-2 flex-wrap">
-                                          <strong className="text-base" style={{ color: 'var(--accent)' }}>{d.models?.stage_name}</strong>
+                                          <strong className="text-base" style={{ color: 'var(--accent)' }}><ModelName name={d.models?.stage_name} size={24} /></strong>
                                           {tf && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${tf.color}22`, color: tf.color }}>Tráfico {tf.n}</span>}
                                         </div>
                                         <div className="text-right">

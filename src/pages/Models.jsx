@@ -2,49 +2,58 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, Table, Td, StatusBadge, PageHeader } from '../components/ui'
+import { ModelAvatar } from '../components/ModelAvatar'
+import { reducirImagen, refrescarFotosModelos } from '../lib/modelPhotos'
 
 const STATUS_OPTIONS = ['en_preparacion', 'activa', 'pausada', 'en_negociacion', 'baja']
 const STATUS_LABELS = { en_preparacion: 'En preparación', activa: 'Activa', pausada: 'Pausada', en_negociacion: 'En negociación', baja: 'Baja' }
 const EMPTY_FORM = { stage_name: '', status: 'en_preparacion', commission_percent: '', email: '', phone: '', notes: '' }
 
-const PASOS_ONBOARDING = [
-  { key: 'contrato', label: 'Firmar contrato' },
-  { key: 'cuenta_of', label: 'Crear cuenta de OnlyFans' },
-  { key: 'branding', label: 'Definir 4Ps / branding' },
-  { key: 'cuentas_ig', label: 'Crear cuentas de Instagram' },
-  { key: 'primer_contenido', label: 'Recibir primer lote de contenido' },
-  { key: 'primer_reporte', label: 'Primera semana de métricas registrada' },
-]
-
 export default function Models() {
-  const { hasRole, hasAnyRole } = useAuth()
+  const { hasRole } = useAuth()
   const canEdit = hasRole('admin')
-  const canOnboard = hasAnyRole(['admin', 'manager'])
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
-  const [modeloOnboarding, setModeloOnboarding] = useState('')
+  const [subiendo, setSubiendo] = useState(null)
 
   async function load() {
     setLoading(true)
     const { data, error } = await supabase.from('models').select('*').order('created_at', { ascending: false })
-    if (!error) {
-      setModels(data)
-      if (data?.length && !modeloOnboarding) setModeloOnboarding(data[0].id)
-    }
+    if (!error) setModels(data)
     setLoading(false)
   }
 
   useEffect(() => { load() }, [])
 
-  async function toggleOnboarding(modelo, key) {
-    const actual = modelo.onboarding || {}
-    const nuevo = { ...actual, [key]: actual[key] ? null : new Date().toISOString().slice(0, 10) }
-    await supabase.from('models').update({ onboarding: nuevo }).eq('id', modelo.id)
-    load()
+  async function subirFoto(m, file) {
+    if (!file) return
+    setError(null); setSubiendo(m.id)
+    try {
+      const blob = await reducirImagen(file)
+      const ruta = `${m.id}-${Date.now()}.jpg`
+      const { error: e1 } = await supabase.storage.from('model-photos').upload(ruta, blob, { contentType: 'image/jpeg', upsert: true })
+      if (e1) throw e1
+      const { data } = supabase.storage.from('model-photos').getPublicUrl(ruta)
+      const { error: e2 } = await supabase.from('models').update({ photo_url: data.publicUrl }).eq('id', m.id)
+      if (e2) throw e2
+      if (m.photo_url) { const vieja = m.photo_url.split('/model-photos/')[1]; if (vieja) supabase.storage.from('model-photos').remove([vieja]) }
+      await load(); refrescarFotosModelos()
+    } catch (err) {
+      setError('No se pudo subir la foto: ' + (err.message || 'inténtalo de nuevo'))
+    }
+    setSubiendo(null)
+  }
+
+  async function quitarFoto(m) {
+    if (!confirm(`¿Quitar la foto de ${m.stage_name}?`)) return
+    await supabase.from('models').update({ photo_url: null }).eq('id', m.id)
+    const vieja = (m.photo_url || '').split('/model-photos/')[1]
+    if (vieja) supabase.storage.from('model-photos').remove([vieja])
+    await load(); refrescarFotosModelos()
   }
 
   function startCreate() {
@@ -89,6 +98,7 @@ export default function Models() {
     setEditingId(null)
     setForm(EMPTY_FORM)
     load()
+    refrescarFotosModelos()
   }
 
   return (
@@ -106,7 +116,7 @@ export default function Models() {
       {showForm && (
         <Panel className="p-5 mb-6">
           <p className="text-sm mb-4 font-medium">{editingId ? 'Editar modelo' : 'Nuevo modelo'}</p>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3">
             <Input
               placeholder="Nombre artístico"
               value={form.stage_name}
@@ -162,7 +172,23 @@ export default function Models() {
             rows={models}
             renderRow={(m) => (
               <>
-                <Td>{m.stage_name}</Td>
+                <Td>
+                  <div className="flex items-center gap-3">
+                    {canEdit ? (
+                      <label className="cursor-pointer relative group" title={m.photo_url ? 'Cambiar foto' : 'Subir foto'} style={{ opacity: subiendo === m.id ? 0.5 : 1 }}>
+                        <ModelAvatar name={m.stage_name} url={m.photo_url || null} size={40} />
+                        <input type="file" accept="image/*" className="hidden" disabled={subiendo === m.id} onChange={(e) => { subirFoto(m, e.target.files[0]); e.target.value = '' }} />
+                        <span className="absolute -bottom-1 -right-1 text-[10px] leading-none rounded-full px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'var(--accent)', color: '#000' }}>✎</span>
+                      </label>
+                    ) : <ModelAvatar name={m.stage_name} url={m.photo_url || null} size={40} />}
+                    <div>
+                      <p>{m.stage_name}</p>
+                      {canEdit && (m.photo_url
+                        ? <button onClick={() => quitarFoto(m)} className="text-[11px] hover:underline" style={{ color: 'var(--text-muted)' }}>Quitar foto</button>
+                        : <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{subiendo === m.id ? 'Subiendo…' : 'Clic en el círculo para añadir foto'}</span>)}
+                    </div>
+                  </div>
+                </Td>
                 <Td><StatusBadge status={m.status} /></Td>
                 <Td>{m.commission_percent ? `${m.commission_percent}%` : '—'}</Td>
                 <Td style={{ color: 'var(--text-muted)' }}>{m.email || '—'}</Td>
@@ -180,38 +206,6 @@ export default function Models() {
           />
         )}
       </Panel>
-
-      {canOnboard && models.length > 0 && (
-        <Panel className="p-5 mt-6">
-          <p className="text-sm font-medium mb-3">✅ Onboarding de modelos</p>
-          <div className="max-w-xs mb-4">
-            <Select value={modeloOnboarding} onChange={(e) => setModeloOnboarding(e.target.value)}>
-              {models.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
-            </Select>
-          </div>
-          {(() => {
-            const m = models.find((x) => x.id === modeloOnboarding)
-            if (!m) return null
-            const est = m.onboarding || {}
-            return (
-              <div className="space-y-2">
-                {PASOS_ONBOARDING.map((p) => {
-                  const hecho = !!est[p.key]
-                  return (
-                    <label key={p.key} className="flex items-center gap-3 p-2 rounded-md cursor-pointer" style={{ background: 'var(--panel-alt)' }}>
-                      <input type="checkbox" checked={hecho} onChange={() => toggleOnboarding(m, p.key)} />
-                      <span className="text-sm flex-1" style={{ textDecoration: hecho ? 'line-through' : 'none', color: hecho ? 'var(--text-muted)' : 'var(--text)' }}>
-                        {p.label}
-                      </span>
-                      {hecho && <span className="text-xs" style={{ color: 'var(--success)' }}>{est[p.key]}</span>}
-                    </label>
-                  )
-                })}
-              </div>
-            )
-          })()}
-        </Panel>
-      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
+import ModelName from '../components/ModelAvatar'
 
 function fmtFecha(ts) { return new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) }
 
@@ -49,7 +50,7 @@ export default function ModelRequests() {
             {visibles.map((r) => (
               <div key={r.id} className="p-4">
                 <div className="flex items-center justify-between mb-1">
-                  <strong className="text-sm">{r.models?.stage_name}</strong>
+                  <strong className="text-sm"><ModelName name={r.models?.stage_name} /></strong>
                   <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtFecha(r.created_at)}</span>
                 </div>
                 <p className="text-sm mb-2">{r.mensaje}</p>
