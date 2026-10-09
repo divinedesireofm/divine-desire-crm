@@ -30,14 +30,20 @@ export default function Sanctions() {
   const [error, setError] = useState(null)
 
   const [nameMap, setNameMap] = useState({})
+  const [pagoFecha, setPagoFecha] = useState({}) // id de pago -> fecha
 
   async function load() {
     const [{ data: s }, u, { data: all }] = await Promise.all([
       supabase.from('sanctions').select('*, profiles(full_name)').order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(400),
-      getProfilesByRoles(['manager', 'chatter', 'ig_manager', 'ig_assistant']),
+      getProfilesByRoles(['manager', 'chatter']),
       supabase.from('profiles').select('id, full_name'),
     ])
     setRows(s || [])
+    const ids = [...new Set((s || []).map((x) => x.payout_id).filter(Boolean))]
+    if (ids.length) {
+      const { data: pg } = await supabase.from('chatter_payouts').select('id, fecha').in('id', ids)
+      const pm = {}; (pg || []).forEach((p) => { pm[p.id] = p.fecha }); setPagoFecha(pm)
+    } else setPagoFecha({})
     setUsers(u)
     const map = {}
     ;(all || []).forEach((p) => { map[p.id] = p.full_name })
@@ -66,24 +72,21 @@ export default function Sanctions() {
   }
 
   async function borrar(s) {
-    if (!confirm(`¿Eliminar esta sanción de ${s.profiles?.full_name}?`)) return
+    if (!confirm(`¿Eliminar esta sanción de ${s.profiles?.full_name}?${s.payout_id ? ' Ya está descontada en un pago: el importe seguirá en ese pago, pero dejará de aparecer en sus notas.' : ''}`)) return
     await supabase.from('sanctions').delete().eq('id', s.id)
     load()
   }
 
   const vis = rows.filter((r) => fChatter === 'todos' ? true : r.chatter_id === fChatter)
   const totalMonto = vis.reduce((a, r) => a + (parseFloat(r.monto) || 0), 0)
-  const roleMap = {}
-  users.forEach((u) => { roleMap[u.id] = u.role })
-  const EQUIPO_LABEL = { manager: 'Chatting', chatter: 'Chatting', ig_manager: 'Instagram', ig_assistant: 'Instagram' }
 
   return (
     <div>
-      <PageHeader title="Sanciones" subtitle="Registra las sanciones del equipo (chatting e Instagram) con su motivo y fecha." />
+      <PageHeader title="Sanciones" subtitle="Registra las sanciones del equipo con su motivo y fecha. Si indicas un monto, se descuenta en el siguiente pago del chatter (apartado Pagos) y el motivo aparece en las notas del pago." />
 
       <Panel className="p-5 mb-6">
         <p className="text-sm font-medium mb-4">Nueva sanción</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <Select value={form.chatter_id} onChange={(e) => setForm({ ...form, chatter_id: e.target.value })}>
             {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
           </Select>
@@ -125,7 +128,7 @@ export default function Sanctions() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Fecha', 'Chatter', 'Equipo', 'Monto', 'Motivo', 'Puesta por', 'Vista', ''].map((c) => (
+                  {['Fecha', 'Chatter', 'Monto', 'Motivo', 'Puesta por', 'Vista', 'Descontada en pago', ''].map((c) => (
                     <th key={c} className="text-left px-3 py-2 font-medium" style={{ color: 'var(--text-muted)' }}>{c}</th>
                   ))}
                 </tr>
@@ -135,7 +138,6 @@ export default function Sanctions() {
                   <tr key={s.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td className="px-3 py-2 whitespace-nowrap">{fmtTS(s.created_at)}</td>
                     <td className="px-3 py-2"><strong>{s.profiles?.full_name}</strong></td>
-                    <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{EQUIPO_LABEL[roleMap[s.chatter_id]] || '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{s.monto ? fmtMoney(s.monto) : '—'}</td>
                     <td className="px-3 py-2" style={{ maxWidth: 340, whiteSpace: 'pre-wrap', color: 'var(--text-muted)' }}>{s.motivo}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{nameMap[s.creado_por] || '—'}</td>
@@ -146,6 +148,11 @@ export default function Sanctions() {
                       >
                         {s.visto ? 'Vista' : 'Sin ver'}
                       </span>
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {s.payout_id && pagoFecha[s.payout_id]
+                        ? <span className="px-2 py-0.5 rounded-full text-xs" style={{ background: 'var(--success)22', color: 'var(--success)' }}>Pago {fmtFecha(pagoFecha[s.payout_id])}</span>
+                        : <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Pendiente</span>}
                     </td>
                     <td className="px-3 py-2">
                       <button onClick={() => borrar(s)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>
