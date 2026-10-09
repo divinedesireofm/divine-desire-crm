@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment } from 'react'
+import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
@@ -129,6 +129,133 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
   )
 }
 
+// Edición completa de un reporte ya enviado: fecha, turno, modelos, resumen, tráfico y compras
+function EditarReporte({ rep, det, modelos, onDone, onCancel }) {
+  const opciones = useMemo(() => {
+    const m = [...modelos]
+    det.forEach((d) => { if (!m.find((x) => x.id === d.model_id)) m.push({ id: d.model_id, stage_name: d.models?.stage_name || '—' }) })
+    return m
+  }, [modelos, det])
+  const [fecha, setFecha] = useState(rep.fecha)
+  const [turno, setTurno] = useState(rep.turno)
+  const [sel, setSel] = useState(det.map((d) => d.model_id))
+  const [campos, setCampos] = useState(() => {
+    const c = {}
+    det.forEach((d) => { c[d.model_id] = { detId: d.id, texto: d.texto || '', trafico: d.trafico || 'medio', compras: (d.compras || []).map((x) => ({ ...x })), antiguo: !(d.compras || []).length && (d.fans_compradores || []).length > 0 ? d.fans_compradores : null } })
+    return c
+  })
+  const [nuevo, setNuevo] = useState({})
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  function alternar(id) {
+    setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.concat([id])))
+    setCampos((c) => (c[id] ? c : { ...c, [id]: { detId: null, texto: '', trafico: 'medio', compras: [], antiguo: null } }))
+  }
+  const setCampo = (id, k, v) => setCampos((c) => ({ ...c, [id]: { ...c[id], [k]: v } }))
+
+  async function guardar() {
+    setErr('')
+    if (!fecha || !turno) { setErr('Indica la fecha y el turno.'); return }
+    if (!sel.length) { setErr('El reporte debe tener al menos una modelo.'); return }
+    if (sel.some((id) => !(campos[id]?.texto || '').trim())) { setErr('Falta el resumen de alguna modelo.'); return }
+    const mala = sel.map((id) => validarCompras(campos[id].compras)).find(Boolean)
+    if (mala) { setErr(mala); return }
+    if (sel.some((id) => pendiente(nuevo[id]))) { setErr('Tienes una compra a medio rellenar. Pulsa «Añadir compra» o bórrala.'); return }
+    setBusy(true)
+    const fallos = []
+    const r1 = await supabase.from('shift_reports').update({ fecha, turno, edited_at: new Date().toISOString() }).eq('id', rep.id)
+    if (r1.error) fallos.push(r1.error.message)
+    // modelos quitadas
+    const quitar = det.filter((d) => !sel.includes(d.model_id)).map((d) => d.id)
+    if (quitar.length) { const r = await supabase.from('shift_report_details').delete().in('id', quitar); if (r.error) fallos.push(r.error.message) }
+    for (const id of sel) {
+      const c = campos[id]
+      const base = { texto: c.texto.trim(), trafico: c.trafico || null }
+      let extra = {}
+      if (c.compras.length || !c.antiguo) {
+        const compras = normalizarCompras(c.compras)
+        const t = totales(compras)
+        extra = { compras, fans_compradores: compras.map((x) => `${x.fan} (${x.user})`), facturacion: t.ppv > 0 ? t.ppv : null, tips: t.tips > 0 ? t.tips : null }
+      }
+      const r = c.detId
+        ? await supabase.from('shift_report_details').update({ ...base, ...extra }).eq('id', c.detId)
+        : await supabase.from('shift_report_details').insert([{ report_id: rep.id, model_id: id, ...base, ...extra }])
+      if (r.error) fallos.push(r.error.message)
+    }
+    setBusy(false)
+    if (fallos.length) { setErr('No se pudo guardar todo: ' + fallos[0]); return }
+    onDone()
+  }
+
+  return (
+    <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm font-medium">Editando reporte de {rep.profiles?.full_name}</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Al guardar, el total facturado se recalcula con las compras.</p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fecha</label>
+          <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Turno</label>
+          <Select value={turno} onChange={(e) => setTurno(e.target.value)}>
+            {TURNOS.map((t) => <option key={t.id} value={t.id}>{t.n} ({t.h})</option>)}
+          </Select>
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs mb-2 block" style={{ color: 'var(--text-muted)' }}>Modelos del reporte (desmarcar una elimina su parte al guardar)</label>
+        <div className="flex flex-wrap gap-2">
+          {opciones.map((m) => {
+            const on = sel.includes(m.id)
+            return (
+              <button key={m.id} type="button" onClick={() => alternar(m.id)} className="px-3 py-1.5 rounded-full text-sm"
+                style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}>
+                <ModelName name={m.stage_name} size={18} />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {sel.map((id) => {
+        const modelo = opciones.find((m) => m.id === id)
+        const c = campos[id]
+        return (
+          <div key={id} className="rounded-lg p-4" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
+            <p className="text-sm font-medium mb-3"><ModelName name={modelo?.stage_name} size={22} /></p>
+            <textarea value={c.texto} onChange={(e) => setCampo(id, 'texto', e.target.value)} rows={3}
+              className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none mb-3"
+              style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tráfico del turno</label>
+            <div className="flex gap-2 mb-3 max-w-sm">
+              {TRAFICO.map((t) => (
+                <button key={t.id} type="button" onClick={() => setCampo(id, 'trafico', t.id)} className="flex-1 px-2 py-1.5 rounded-md text-xs"
+                  style={{ background: c.trafico === t.id ? `${t.color}22` : 'var(--panel-alt)', border: `1px solid ${c.trafico === t.id ? t.color : 'var(--border)'}`, color: c.trafico === t.id ? t.color : 'var(--text)' }}>{t.n}</button>
+              ))}
+            </div>
+            <label className="text-xs mb-2 block" style={{ color: 'var(--text-muted)' }}>Fans que compraron</label>
+            {c.antiguo && !c.compras.length && (
+              <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Reporte antiguo con fans anotados sin importe ({c.antiguo.join(', ')}). Si no añades compras, se conservan tal cual.</p>
+            )}
+            <ComprasEditor compras={c.compras} onChange={(v) => setCampo(id, 'compras', v)} nuevo={nuevo[id]} setNuevo={(v) => setNuevo((n) => ({ ...n, [id]: v }))} etiqueta={modelo?.stage_name} />
+          </div>
+        )
+      })}
+
+      {err && <p className="text-sm" style={{ color: 'var(--danger)' }}>{err}</p>}
+      <div className="flex gap-2">
+        <Button onClick={guardar} disabled={busy}>{busy ? 'Guardando…' : 'Guardar cambios'}</Button>
+        <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancelar</Button>
+      </div>
+    </div>
+  )
+}
+
 export default function ShiftReports() {
   const { profile, hasAnyRole, hasRole } = useAuth()
   const esMgr = hasAnyRole(['admin', 'manager'])
@@ -146,6 +273,7 @@ export default function ShiftReports() {
   const [sel, setSel] = useState([])
   const [campos, setCampos] = useState({}) // { [modelId]: { texto, trafico, fans, facturacion } }
   const [fanInput, setFanInput] = useState({}) // compra en curso (fan, @user, monto, tipo), por modelo
+  const [editRepId, setEditRepId] = useState(null) // reporte que se está editando por completo
   const [editDet, setEditDet] = useState(null) // { id, reportId, compras, nuevo } al editar compras de un reporte enviado
 
   const [fChatter, setFChatter] = useState('todos')
@@ -275,6 +403,23 @@ export default function ShiftReports() {
       const { data } = await supabase.from('shift_report_details').select('*, models(stage_name)').eq('report_id', rep.id)
       setDetalles((prev) => ({ ...prev, [rep.id]: data || [] }))
     }
+  }
+
+  // Abre el reporte y entra en modo edición
+  async function editarReporte(rep) {
+    setAbierto(rep.id)
+    if (!detalles[rep.id]) {
+      const { data } = await supabase.from('shift_report_details').select('*, models(stage_name)').eq('report_id', rep.id)
+      setDetalles((prev) => ({ ...prev, [rep.id]: data || [] }))
+    }
+    setEditDet(null)
+    setEditRepId(rep.id)
+  }
+  async function terminarEdicion(rep) {
+    const { data } = await supabase.from('shift_report_details').select('*, models(stage_name)').eq('report_id', rep.id)
+    setDetalles((prev) => ({ ...prev, [rep.id]: data || [] }))
+    setEditRepId(null)
+    load()
   }
 
   async function borrarReporte(rep) {
@@ -470,7 +615,7 @@ export default function ShiftReports() {
                 {reportes.map((r) => (
                   <Fragment key={r.id}>
                     <tr onClick={() => verDetalle(r)} className="cursor-pointer hover:opacity-80" style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td className="px-3 py-2">{fmtFecha(r.fecha)}</td>
+                      <td className="px-3 py-2">{fmtFecha(r.fecha)}{r.edited_at && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full" title={'Editado el ' + fmtTS(r.edited_at)} style={{ background: 'var(--panel-alt)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>editado</span>}</td>
                       <td className="px-3 py-2">
                         <span className="px-2 py-0.5 rounded-full text-xs" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
                           {T_NAME(r.turno)}
@@ -480,6 +625,11 @@ export default function ShiftReports() {
                       <td className="px-3 py-2 tabular-nums font-medium">{totRep[r.id] ? fmt$(totRep[r.id].ppv + totRep[r.id].tips) : '—'}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{fmtTS(r.created_at)}</td>
                       <td className="px-3 py-2 text-right" style={{ color: 'var(--text-muted)' }}>
+                        {(esMgr || r.chatter_id === profile.id) && (
+                          <button onClick={(e) => { e.stopPropagation(); editarReporte(r) }} className="mr-3 px-2.5 py-1 rounded-md text-xs font-medium hover:opacity-80" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--accent)' }}>
+                            Editar
+                          </button>
+                        )}
                         {hasRole('admin') && (
                           <button onClick={(e) => { e.stopPropagation(); borrarReporte(r) }} className="mr-3 hover:underline" style={{ color: 'var(--danger)' }}>
                             Borrar
@@ -491,7 +641,9 @@ export default function ShiftReports() {
                     {abierto === r.id && (
                       <tr>
                         <td colSpan={6} className="px-4 py-5" style={{ background: 'var(--panel-alt)' }}>
-                          {(detalles[r.id] || []).length === 0 ? (
+                          {editRepId === r.id && detalles[r.id] ? (
+                            <EditarReporte rep={r} det={detalles[r.id]} modelos={modelos} onDone={() => terminarEdicion(r)} onCancel={() => setEditRepId(null)} />
+                          ) : (detalles[r.id] || []).length === 0 ? (
                             <p style={{ color: 'var(--text-muted)' }}>Cargando…</p>
                           ) : (() => {
                             const det = detalles[r.id] || []

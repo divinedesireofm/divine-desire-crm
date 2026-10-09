@@ -17,7 +17,32 @@ export function calcPago(p) {
   return r2(num(p.fact_neta) * num(p.pct) + num(p.bonos) + num(p.adelanto) + num(p.penalizacion) + num(p.deuda))
 }
 
-const VACIO = { account_id: '', fecha: hoyISO(), bruta: '', neta: '', pct: '', bonos: '', adelanto: '', penalizacion: '', deuda: '', notas: '', estado: 'Pagado' }
+const VACIO = { account_id: '', fecha: hoyISO(), bruta: '', neta: '', pct: '', bonos: '', adelanto: '', penalizacion: '', deuda: '', notas: '', estado: 'Pendiente' }
+
+// ---------- calendario de cobros ----------
+// Pago de nómina: un lunes sí y otro no (cada 14 días a partir del último lunes de pago registrado).
+// Bonos: los días 1 y 16 de cada mes.
+const aDate = (isoStr) => { const [y, m, d] = isoStr.split('-').map(Number); return new Date(y, m - 1, d) }
+const aISO = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+const sumarDias = (isoStr, n) => { const d = aDate(isoStr); d.setDate(d.getDate() + n); return aISO(d) }
+const difDias = (a, b) => Math.round((aDate(a) - aDate(b)) / 86400000)
+const DIAS_BONO = [1, 16]
+const esDiaBono = (isoStr) => DIAS_BONO.includes(Number(isoStr.slice(8, 10)))
+// Fecha ancla: el último lunes con un pago de facturación real (si no hay, cualquier lunes con pago)
+function anclaPagos(pagos) {
+  const lunes = pagos.filter((p) => aDate(p.fecha).getDay() === 1)
+  const reales = lunes.filter((p) => num(p.fact_neta) > 0).map((p) => p.fecha).sort()
+  const todos = lunes.map((p) => p.fecha).sort()
+  return reales.pop() || todos.pop() || null
+}
+const esDiaPago = (isoStr, ancla) => !!ancla && difDias(isoStr, ancla) % 14 === 0
+function proximoBono(desde) {
+  let d = desde
+  for (let i = 0; i < 40; i++) { if (esDiaBono(d)) return d; d = sumarDias(d, 1) }
+  return desde
+}
+const NOMBRE_MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+const DIAS_SEM = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
 export default function Payments() {
   const { hasRole } = useAuth()
@@ -90,9 +115,9 @@ function PagosAdmin() {
   }
 
   // ---------- pago ----------
-  function nuevoPago() {
-    const c = sel !== 'todas' ? cuentaDe(sel) : cuentas.find((x) => x.activa !== false) || cuentas[0]
-    const fecha = hoyISO()
+  function nuevoPago(fechaIni, cuentaId) {
+    const c = cuentaId ? cuentaDe(cuentaId) : sel !== 'todas' ? cuentaDe(sel) : cuentas.find((x) => x.activa !== false) || cuentas[0]
+    const fecha = fechaIni || hoyISO()
     setEditId(null)
     setForm({ ...VACIO, fecha, account_id: c?.id || '', pct: c?.pct_defecto ?? 0.15, ...(c ? seleccionPorDefecto(c.id, fecha) : { selB: [], selS: [] }) })
     setVista('pagos')
@@ -202,13 +227,13 @@ function PagosAdmin() {
       <PageHeader
         title="Pagos a chatters"
         subtitle="Registro de lo pagado a cada chatter. Introduces la facturación de Infloww y el pago se calcula solo con la misma fórmula del Excel."
-        action={<div className="flex gap-2"><Button variant="ghost" onClick={() => editarCuenta(null)}>+ Cuenta</Button><Button onClick={nuevoPago} disabled={!cuentas.length}>+ Registrar pago</Button></div>}
+        action={<div className="flex gap-2"><Button variant="ghost" onClick={() => editarCuenta(null)}>+ Cuenta</Button><Button onClick={() => nuevoPago()} disabled={!cuentas.length}>+ Registrar pago</Button></div>}
       />
 
       {msg && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{msg}</p>}
 
       <div className="flex gap-2 mb-4">
-        {[['pagos', 'Pagos'], ['bonos', 'Bonos']].map(([k, t]) => (
+        {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos']].map(([k, t]) => (
           <button key={k} onClick={() => setVista(k)} className="px-4 py-1.5 rounded-md text-sm font-medium"
             style={{ background: vista === k ? 'var(--accent)' : 'var(--panel-alt)', color: vista === k ? '#000' : 'var(--text)', border: '1px solid ' + (vista === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
         ))}
@@ -216,6 +241,8 @@ function PagosAdmin() {
 
       {vista === 'bonos' ? (
         <BonosTab cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={cargar} />
+      ) : vista === 'calendario' ? (
+        <CalendarioTab cuentas={cuentas} pagos={pagos} bonos={bonos} onRegistrar={nuevoPago} onVerPagos={(id) => { setSel(id); setVista('pagos') }} />
       ) : (<>
       {/* Resumen */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
@@ -316,7 +343,8 @@ function PagosAdmin() {
               <div><label className="text-xs block mb-1" style={lbl}>Sanciones (se descuenta)</label><Input type="number" step="0.01" min="0" value={form.penalizacion} onChange={(e) => setF({ penalizacion: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Deuda a descontar (se resta)</label><Input type="number" step="0.01" min="0" value={form.deuda} onChange={(e) => setF({ deuda: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Estado</label>
-                <Select value={form.estado} onChange={(e) => setF({ estado: e.target.value })}><option>Pagado</option><option>Pendiente</option></Select></div>
+                <Select value={form.estado} onChange={(e) => setF({ estado: e.target.value })}><option>Pendiente</option><option>Pagado</option></Select>
+                <p className="text-[11px] mt-1" style={lbl}>Se guarda Pendiente hasta que confirmes el pago.</p></div>
               <div className="col-span-2"><label className="text-xs block mb-1" style={lbl}>Notas</label><Input value={form.notas} onChange={(e) => setF({ notas: e.target.value })} placeholder="Notas propias (los bonos y sanciones se añaden solos)" /></div>
             </div>
             {(() => {
@@ -416,6 +444,144 @@ function PagosAdmin() {
   )
 }
 
+// =====================================================================================
+// CALENDARIO: próximos pagos (lunes alternos) y cobro de bonos (días 1 y 16)
+// =====================================================================================
+function CalendarioTab({ cuentas, pagos, bonos, onRegistrar, onVerPagos }) {
+  const hoy = hoyISO()
+  const ancla = useMemo(() => anclaPagos(pagos), [pagos])
+  const [mes, setMes] = useState(() => { const d = aDate(hoy); return new Date(d.getFullYear(), d.getMonth(), 1) })
+  const [dia, setDia] = useState(null)
+  const lbl = { color: 'var(--text-muted)' }
+  const activas = cuentas.filter((c) => c.activa !== false)
+
+  const fechasBono = useMemo(() => new Set(bonos.map((b) => b.fecha_cobro)), [bonos])
+  const tipoDia = (iso) => ({ pago: esDiaPago(iso, ancla), bono: esDiaBono(iso) || fechasBono.has(iso) })
+
+  // próximas 6 fechas con algo que hacer
+  const proximas = useMemo(() => {
+    const out = []
+    let d = hoy
+    for (let i = 0; i < 70 && out.length < 6; i++) {
+      const t = { pago: esDiaPago(d, ancla), bono: esDiaBono(d) || fechasBono.has(d) }
+      if (t.pago || t.bono) out.push({ fecha: d, ...t })
+      d = sumarDias(d, 1)
+    }
+    return out
+  }, [hoy, ancla, fechasBono])
+
+  // celdas del mes (semana empieza en lunes)
+  const celdas = useMemo(() => {
+    const primero = new Date(mes.getFullYear(), mes.getMonth(), 1)
+    const lead = (primero.getDay() + 6) % 7
+    const n = new Date(mes.getFullYear(), mes.getMonth() + 1, 0).getDate()
+    const arr = Array(lead).fill(null)
+    for (let i = 1; i <= n; i++) arr.push(aISO(new Date(mes.getFullYear(), mes.getMonth(), i)))
+    while (arr.length % 7) arr.push(null)
+    return arr
+  }, [mes])
+
+  const pendientes = pagos.filter((p) => p.estado === 'Pendiente')
+  const cuentaDe = (id) => cuentas.find((c) => c.id === id)
+  const enDias = (iso) => { const n = difDias(iso, hoy); return n === 0 ? 'hoy' : n === 1 ? 'mañana' : n < 0 ? `hace ${-n} d` : `en ${n} días` }
+
+  const det = dia ? tipoDia(dia) : null
+  const pagosDia = dia ? pagos.filter((p) => p.fecha === dia) : []
+  const bonosDia = dia ? bonos.filter((b) => b.fecha_cobro === dia) : []
+
+  return (
+    <div>
+      {!ancla && <Panel className="p-4 mb-4"><p className="text-sm" style={lbl}>Todavía no hay ningún pago registrado en lunes, así que no se puede calcular el ciclo quincenal. Registra uno y el calendario se generará solo.</p></Panel>}
+
+      {pendientes.length > 0 && (
+        <Panel className="p-4 mb-4" style={{ borderColor: 'var(--accent)' }}>
+          <p className="text-sm"><strong style={{ color: 'var(--accent)' }}>{pendientes.length} {pendientes.length === 1 ? 'pago pendiente' : 'pagos pendientes'}</strong> de confirmar: {money(pendientes.reduce((t, p) => t + calcPago(p), 0))} en total
+            {' '}<span style={lbl}>({pendientes.slice(0, 6).map((p) => `${cuentaDe(p.account_id)?.nombre} ${fmtF(p.fecha)}`).join(' · ')}{pendientes.length > 6 ? '…' : ''})</span></p>
+        </Panel>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <Panel className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() - 1, 1))} className="px-2 py-1 rounded hover:opacity-70" aria-label="Mes anterior">←</button>
+            <p className="font-medium">{NOMBRE_MES[mes.getMonth()]} {mes.getFullYear()}</p>
+            <button onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() + 1, 1))} className="px-2 py-1 rounded hover:opacity-70" aria-label="Mes siguiente">→</button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1" style={lbl}>{DIAS_SEM.map((d) => <div key={d}>{d}</div>)}</div>
+          <div className="grid grid-cols-7 gap-1">
+            {celdas.map((iso, i) => {
+              if (!iso) return <div key={i} />
+              const t = tipoDia(iso)
+              const esHoy = iso === hoy
+              const on = dia === iso
+              return (
+                <button key={iso} onClick={() => setDia(on ? null : iso)} className="rounded-md py-2 text-sm flex flex-col items-center gap-1 min-h-[54px]"
+                  style={{ background: on ? 'var(--accent-soft)' : t.pago ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : esHoy ? 'var(--text-muted)' : 'var(--border)'}`, fontWeight: esHoy ? 700 : 400 }}>
+                  <span>{Number(iso.slice(8))}</span>
+                  <span className="flex gap-1 h-2">
+                    {t.pago && <span title="Pago de nómina" style={{ width: 7, height: 7, borderRadius: 4, background: 'var(--accent)' }} />}
+                    {t.bono && <span title="Cobro de bonos" style={{ width: 7, height: 7, borderRadius: 4, background: 'var(--success)' }} />}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="flex gap-4 mt-3 text-xs" style={lbl}>
+            <span className="flex items-center gap-1.5"><span style={{ width: 7, height: 7, borderRadius: 4, background: 'var(--accent)' }} /> Pago (lunes alternos)</span>
+            <span className="flex items-center gap-1.5"><span style={{ width: 7, height: 7, borderRadius: 4, background: 'var(--success)' }} /> Bonos (días 1 y 16)</span>
+          </div>
+          {ancla && <p className="text-[11px] mt-2" style={lbl}>Ciclo calculado desde el último lunes de pago registrado ({fmtF(ancla)}), cada 14 días.</p>}
+        </Panel>
+
+        <div className="space-y-4">
+          <Panel className="p-4">
+            <p className="text-sm font-medium mb-3">Próximas fechas</p>
+            {proximas.length === 0 ? <p className="text-sm" style={lbl}>Sin fechas próximas.</p> : proximas.map((p) => (
+              <button key={p.fecha} onClick={() => { setDia(p.fecha); setMes(new Date(aDate(p.fecha).getFullYear(), aDate(p.fecha).getMonth(), 1)) }}
+                className="w-full flex items-center gap-2 py-2 text-sm text-left hover:opacity-80" style={{ borderBottom: '1px solid var(--border)' }}>
+                <strong className="tabular-nums w-[72px]">{fmtF(p.fecha)}</strong>
+                <span className="flex gap-1.5 flex-wrap">
+                  {p.pago && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>Pago</span>}
+                  {p.bono && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--success) 15%, transparent)', color: 'var(--success)' }}>Bonos</span>}
+                </span>
+                <span className="ml-auto text-xs" style={lbl}>{enDias(p.fecha)}</span>
+              </button>
+            ))}
+          </Panel>
+
+          {dia && (
+            <Panel className="p-4">
+              <p className="text-sm font-medium mb-1">{fmtF(dia)} · {enDias(dia)}</p>
+              <p className="text-xs mb-3" style={lbl}>{[det.pago && 'Día de pago de nómina', det.bono && 'Día de cobro de bonos'].filter(Boolean).join(' · ') || 'Sin pagos previstos este día'}</p>
+              {activas.map((c) => {
+                const pg = pagosDia.find((p) => p.account_id === c.id)
+                const bs = bonosDia.filter((b) => b.account_id === c.id)
+                if (!pg && !det.pago && !bs.length) return null
+                return (
+                  <div key={c.id} className="flex items-center gap-2 py-2 text-sm flex-wrap" style={{ borderBottom: '1px solid var(--border)' }}>
+                    <span className="font-medium">{c.nombre}</span>
+                    {bs.length > 0 && <span className="text-xs" style={lbl}>{bs.map((b) => `${b.nombre} +${money(b.monto)}`).join(', ')}</span>}
+                    <span className="ml-auto">
+                      {pg ? (
+                        <button onClick={() => onVerPagos(c.id)} className="text-xs px-2 py-0.5 rounded-full" style={pg.estado === 'Pagado' ? { background: 'color-mix(in srgb, var(--success) 15%, transparent)', color: 'var(--success)' } : { background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+                          {pg.estado} · {money(calcPago(pg))}
+                        </button>
+                      ) : (det.pago || bs.length > 0) ? (
+                        <button onClick={() => onRegistrar(dia, c.id)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Registrar pago</button>
+                      ) : null}
+                    </span>
+                  </div>
+                )
+              })}
+              {!det.pago && !det.bono && pagosDia.length === 0 && <p className="text-xs" style={lbl}>Elige otra fecha o registra un pago manualmente en la pestaña Pagos.</p>}
+            </Panel>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Notas del pago = notas escritas + bonos aplicados + sanciones aplicadas
 function notasCompletas(p, bonos, sanciones) {
   const partes = []
@@ -433,7 +599,7 @@ function notasCompletas(p, bonos, sanciones) {
 function BonosTab({ cuentas, bonos, pagos, onCambio }) {
   const activas = cuentas.filter((c) => c.activa !== false)
   const [nombre, setNombre] = useState('')
-  const [fecha, setFecha] = useState(hoyISO())
+  const [fecha, setFecha] = useState(proximoBono(hoyISO()))
   const [nota, setNota] = useState('')
   const [montos, setMontos] = useState({})
   const [comun, setComun] = useState('')
@@ -479,7 +645,7 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
             <div><label className="text-xs block mb-1" style={lbl}>Nombre del bono</label>
               <Input list="nombres-bono" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Bono quincenal, Chatter del mes…" required />
               <datalist id="nombres-bono">{nombres.map((n) => <option key={n} value={n} />)}</datalist></div>
-            <div><label className="text-xs block mb-1" style={lbl}>Fecha de cobro</label><Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required /></div>
+            <div><label className="text-xs block mb-1" style={lbl}>Fecha de cobro <span style={{ color: 'var(--accent)' }}>· habitual: días 1 y 16</span></label><Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required /></div>
             <div><label className="text-xs block mb-1" style={lbl}>Nota (opcional)</label><Input value={nota} onChange={(e) => setNota(e.target.value)} /></div>
           </div>
           <div className="flex items-end gap-2 mb-3 flex-wrap">
