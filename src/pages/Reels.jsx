@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { iaCallJSON, getVoiceGuide, withVoiceGuide } from '../lib/ai'
+import ReelsModelo from './ReelsModelo'
 
 const EMPTY = { titulo: '', categoria: '', fecha_publicacion: '', reproducciones: '', alcance: '', visitas_perfil: '', seguidores_ganados: '', riesgo_restriccion: false, notas: '' }
 const CATEGORIAS = ['rol', 'pregunta_fan', 'chiste_texto', 'cuerpo_estetica', 'romantico', 'humor_remate', 'otro']
@@ -17,7 +18,14 @@ const REGLAS_REELS = `Eres el analista de reels de Instagram de la agencia Divin
 function fmtEs(n) { return n === null || n === undefined || n === '' ? '—' : Number(n).toLocaleString('es-ES', { maximumFractionDigits: 1 }) }
 function ratio(n, d, mult = 1) { if (!n || !d) return null; return (Number(n) / Number(d)) * mult }
 
+// La cuenta solo-modelo ve las planificaciones que le han enviado; el equipo ve el registro de reels.
 export default function Reels() {
+  const { hasRole, hasAnyRole } = useAuth()
+  const soloModelo = hasRole('modelo') && !hasAnyRole(['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'])
+  return soloModelo ? <ReelsModelo /> : <ReelsEquipo />
+}
+
+function ReelsEquipo() {
   const { hasAnyRole } = useAuth()
   const puedeGestionar = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
   const [cuentas, setCuentas] = useState([])

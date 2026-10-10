@@ -13,7 +13,7 @@ const PASOS_CALENTAMIENTO = [
   { key: 'listo_para_link', label: 'Lista para añadir el link en la destacada' },
 ]
 
-export default function ZeroAccounts() {
+export default function ZeroAccounts({ embebido = false }) {
   const [cuentas, setCuentas] = useState([])
   const [cuentaId, setCuentaId] = useState('')
   const [log, setLog] = useState([])
@@ -63,7 +63,7 @@ export default function ZeroAccounts() {
   if (cuentas.length === 0) {
     return (
       <div>
-        <PageHeader title="Cuentas de cero" subtitle="Seguimiento especial para cuentas recién creadas, en fase de calentamiento." />
+        {!embebido && <PageHeader title="Cuentas de cero" subtitle="Seguimiento especial para cuentas recién creadas, en fase de calentamiento." />}
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
           No hay ninguna cuenta con estado "Calentando" ahora mismo. Cambia el estado de una cuenta a "Calentando" desde Cuentas de Instagram para que aparezca aquí.
         </p>
@@ -73,7 +73,7 @@ export default function ZeroAccounts() {
 
   return (
     <div>
-      <PageHeader title="Cuentas de cero" subtitle="Seguimiento especial para cuentas recién creadas, en fase de calentamiento." />
+      {!embebido && <PageHeader title="Cuentas de cero" subtitle="Seguimiento especial para cuentas recién creadas, en fase de calentamiento." />}
 
       <div className="mb-6 max-w-xs">
         <Select value={cuentaId} onChange={(e) => setCuentaId(e.target.value)}>

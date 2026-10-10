@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 
@@ -11,11 +12,15 @@ const nTipo = (id) => TIPOS.find((t) => t.id === id)?.n || id
 
 const reelVacio = (i = 0) => ({ origen: 'nuevo', tipo: i % 2 === 0 ? 'sugerente' : 'marca_personal', link: '', gancho: '', texto: '' })
 const estructura = (dias, porDia) => Array.from({ length: dias }, () => ({ reels: Array.from({ length: porDia }, (_, i) => reelVacio(i)) }))
-const VACIA = { id: null, account_id: '', titulo: '', reglas: '', mostrar_resumen: true, dias: estructura(7, 2) }
+const VACIA = { id: null, account_id: '', titulo: '', reglas: '', mostrar_resumen: true, estado: 'guardada', responsable_id: '', created_at: null, dias: estructura(7, 2) }
 
 const sinArroba = (u) => String(u || '').replace(/^@/, '')
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`
 const fmtTS = (ts) => (ts ? new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '')
+// Fecha exacta de creación: «10/10/2026 23:53»
+const fmtExacta = (ts) => (ts ? new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
+const tituloHoy = () => new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+const ESTADOS = { borrador: ['Borrador', 'var(--gold)'], guardada: ['Guardada', 'var(--text-muted)'], enviada: ['Enviada a la modelo', 'var(--success)'] }
 
 // ---- Texto listo para copiar y pegar a la chica ----
 function bloqueReel(r) {
@@ -25,12 +30,12 @@ function bloqueReel(r) {
   if (r.texto?.trim()) l.push(`📝 ${r.texto.trim()}`)
   return l.join('\n')
 }
-function textoDia(d, i) {
+export function textoDia(d, i) {
   return [`DIA ${i + 1}:`, ...(d.reels || []).map(bloqueReel).map((b, j) => (j === 0 ? b : '\n' + b))].join('\n')
 }
-function textoPlan(p, usuario) {
+export function textoPlan(p, usuario) {
   const todos = (p.dias || []).flatMap((d) => d.reels || [])
-  const partes = [`REELS ${sinArroba(usuario)} ${String(p.titulo || '').toUpperCase()}`.trim()]
+  const partes = [`REELS ${sinArroba(usuario)} ${String(p.titulo || tituloHoy()).toUpperCase()}`.trim()]
   if (p.mostrar_resumen) {
     const mp = todos.filter((r) => r.tipo === 'marca_personal').length
     const ga = todos.filter((r) => r.origen === 'ganador').length
@@ -45,7 +50,7 @@ function textoPlan(p, usuario) {
 }
 
 export default function IGPlans() {
-  const { hasAnyRole } = useAuth()
+  const { hasAnyRole, profile } = useAuth()
   const puedeBorrar = hasAnyRole(['admin', 'ig_manager'])
   const [cuentas, setCuentas] = useState([])
   const [planes, setPlanes] = useState([])
@@ -57,13 +62,17 @@ export default function IGPlans() {
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [guardando, setGuardando] = useState(false)
+  const [vista, setVista] = useState('planes') // planes | borradores
+  const [equipo, setEquipo] = useState([])
 
   async function cargar() {
     setLoading(true)
-    const [{ data: c }, { data: p }] = await Promise.all([
-      supabase.from('instagram_accounts').select('id, username, models(stage_name)').order('username'),
+    const [{ data: c }, { data: p }, eq] = await Promise.all([
+      supabase.from('instagram_accounts').select('id, username, model_id, models(stage_name)').order('username'),
       supabase.from('ig_plans').select('*').order('created_at', { ascending: false }).limit(300),
+      getProfilesByRoles(['admin', 'ig_manager', 'ig_assistant']),
     ])
+    setEquipo(eq || [])
     setCuentas(c || [])
     setPlanes(p || [])
     setLoading(false)
@@ -72,26 +81,29 @@ export default function IGPlans() {
 
   const cuenta = (id) => cuentas.find((c) => c.id === id)
   const usuarioDe = (id) => cuenta(id)?.username || ''
-  const visibles = useMemo(() => planes.filter((p) => filtro === 'todas' || p.account_id === filtro), [planes, filtro])
+  const nombreDe = (id) => equipo.find((x) => x.id === id)?.full_name || '—'
+  const delFiltro = useMemo(() => planes.filter((p) => filtro === 'todas' || p.account_id === filtro), [planes, filtro])
+  const borradores = delFiltro.filter((p) => p.estado === 'borrador')
+  const visibles = delFiltro.filter((p) => p.estado !== 'borrador')
   const texto = useMemo(() => (ed ? textoPlan(ed, usuarioDe(ed.account_id) || 'cuenta') : ''), [ed, cuentas])
   const totalReels = (p) => (p.dias || []).reduce((a, d) => a + (d.reels?.length || 0), 0)
 
   function nueva() {
     setMsg(''); setErr('')
-    setEd({ ...VACIA, account_id: filtro !== 'todas' ? filtro : (cuentas[0]?.id || ''), dias: estructura(7, 2) })
+    setEd({ ...VACIA, account_id: filtro !== 'todas' ? filtro : (cuentas[0]?.id || ''), responsable_id: profile?.id || '', dias: estructura(7, 2) })
     setNDias(7); setNPorDia(2)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   function abrir(p) {
     setMsg(''); setErr('')
-    setEd({ id: p.id, account_id: p.account_id, titulo: p.titulo, reglas: p.reglas || '', mostrar_resumen: p.mostrar_resumen, dias: JSON.parse(JSON.stringify(p.dias || [])) })
+    setEd({ id: p.id, account_id: p.account_id, titulo: p.titulo, reglas: p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: p.estado || 'guardada', responsable_id: p.responsable_id || '', created_at: p.created_at, dias: JSON.parse(JSON.stringify(p.dias || [])) })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   // Mismo esquema (días, reels, nuevo/ganador y tipo) pero sin enlaces ni textos: punto de partida de la semana siguiente
   function duplicarEstructura(p) {
     setMsg(''); setErr('')
     setEd({
-      id: null, account_id: p.account_id, titulo: '', reglas: p.reglas || '', mostrar_resumen: p.mostrar_resumen,
+      id: null, account_id: p.account_id, titulo: '', reglas: p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: 'guardada', responsable_id: profile?.id || '', created_at: null,
       dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '' })) })),
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -113,19 +125,39 @@ export default function IGPlans() {
     setDias((ds) => ds.filter((_, i) => i !== di))
   }
 
-  async function guardar() {
+  // destino: 'borrador' | 'guardada' | 'enviada'
+  async function guardar(destino = 'guardada') {
     setErr(''); setMsg('')
     if (!ed.account_id) { setErr('Elige la cuenta de Instagram.'); return }
-    if (!ed.titulo.trim()) { setErr('Escribe el título de la semana (por ejemplo «2ª SEMANA OCTUBRE 26»).'); return }
+    if (destino === 'enviada') {
+      const c = cuenta(ed.account_id)
+      if (!c?.model_id) { setErr('Esa cuenta no tiene modelo asignada: asígnala en «Cuentas de Instagram» para poder enviarle la planificación.'); return }
+      if (!confirm(`¿Enviar esta planificación a ${c.models?.stage_name || 'la modelo'}? Le saldrá en su apartado «Envío de reels».`)) return
+    }
     setGuardando(true)
-    const payload = { account_id: ed.account_id, titulo: ed.titulo.trim(), reglas: ed.reglas.trim() || null, mostrar_resumen: ed.mostrar_resumen, dias: ed.dias }
+    const ahora = new Date().toISOString()
+    const payload = {
+      account_id: ed.account_id,
+      // La planificación se identifica por su fecha exacta de creación (ya no por la semana)
+      titulo: ed.titulo.trim() || tituloHoy(),
+      reglas: ed.reglas.trim() || null, mostrar_resumen: ed.mostrar_resumen, dias: ed.dias,
+      estado: destino, responsable_id: ed.responsable_id || profile?.id || null,
+    }
+    if (destino === 'enviada') { payload.enviado_at = ahora; payload.enviado_por = profile?.id || null }
+    else if (ed.estado === 'enviada') { payload.enviado_at = null; payload.enviado_por = null } // al guardar de nuevo sin enviar, se retira
     const { data, error } = ed.id
       ? await supabase.from('ig_plans').update(payload).eq('id', ed.id).select().single()
       : await supabase.from('ig_plans').insert([payload]).select().single()
     setGuardando(false)
-    if (error) { setErr(error.message.includes('does not exist') ? 'Falta ejecutar la migración 43 en Supabase.' : 'No se pudo guardar. Revisa que tengas acceso a esa cuenta.'); return }
-    setEd((e) => ({ ...e, id: data.id }))
-    setMsg('Guardada.')
+    if (error) { setErr(error.message.includes('does not exist') || error.message.includes('column') ? 'Falta ejecutar la migración 52b en Supabase.' : 'No se pudo guardar. Revisa que tengas acceso a esa cuenta.'); return }
+    setEd((e) => ({ ...e, id: data.id, titulo: data.titulo, estado: data.estado, created_at: data.created_at }))
+    setMsg(destino === 'borrador' ? 'Guardada como borrador.' : destino === 'enviada' ? 'Enviada a la modelo.' : ed.estado === 'enviada' ? 'Guardada. Ya no la ve la modelo: pulsa «Enviar a la modelo» para que vea los cambios.' : 'Guardada.')
+    cargar()
+  }
+  async function retirar(p) {
+    if (!confirm('¿Retirar esta planificación de la modelo? Dejará de verla y pasa a «Guardada».')) return
+    const { error } = await supabase.from('ig_plans').update({ estado: 'guardada', enviado_at: null, enviado_por: null }).eq('id', p.id)
+    if (error) { alert('No se pudo retirar.'); return }
     cargar()
   }
   async function borrar(p) {
@@ -158,8 +190,15 @@ export default function IGPlans() {
                   </Select>
                 </div>
                 <div>
-                  <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Semana</label>
-                  <Input placeholder="2ª SEMANA OCTUBRE 26" value={ed.titulo} onChange={(e) => setEd({ ...ed, titulo: e.target.value })} />
+                  <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Responsable</label>
+                  <Select value={ed.responsable_id} onChange={(e) => setEd({ ...ed, responsable_id: e.target.value })}>
+                    <option value="">— Sin responsable —</option>
+                    {equipo.map((x) => <option key={x.id} value={x.id}>{x.full_name}</option>)}
+                  </Select>
+                </div>
+                <div className="sm:col-span-2 text-xs flex flex-wrap items-center gap-x-4 gap-y-1" style={{ color: 'var(--text-muted)' }}>
+                  <span>{ed.created_at ? `Creada el ${fmtExacta(ed.created_at)}` : `Se creará con la fecha exacta al guardar (${tituloHoy()})`}</span>
+                  <span className="px-2 py-0.5 rounded-full" style={{ background: 'var(--panel-alt)', color: ESTADOS[ed.estado]?.[1] }}>{ESTADOS[ed.estado]?.[0] || ed.estado}</span>
                 </div>
               </div>
               <div className="mb-3">
@@ -240,10 +279,15 @@ export default function IGPlans() {
               )}
               {err && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{err}</p>}
               {msg && <p className="text-sm mt-3" style={{ color: 'var(--success)' }}>{msg}</p>}
-              <div className="flex gap-2 mt-4">
-                <Button onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar planificación'}</Button>
+              <div className="flex flex-wrap gap-2 mt-4">
+                <Button onClick={() => guardar('enviada')} disabled={guardando}>{guardando ? 'Guardando…' : '📤 Enviar a la modelo'}</Button>
+                <Button variant="ghost" onClick={() => guardar('guardada')} disabled={guardando}>Guardar</Button>
+                <Button variant="ghost" onClick={() => guardar('borrador')} disabled={guardando}>Guardar como borrador</Button>
                 <Button variant="ghost" onClick={() => setEd(null)}>Cerrar</Button>
               </div>
+              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                «Enviar a la modelo» hace que la vea en su apartado «Envío de reels». Un borrador no lo ve nadie fuera del equipo: queda en la pestaña «Borradores» para revisarlo antes.
+              </p>
             </Panel>
           </div>
         </div>
@@ -251,7 +295,14 @@ export default function IGPlans() {
 
       <Panel className="p-5">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-          <p className="text-sm font-medium">Planificaciones guardadas</p>
+          <div className="flex gap-2">
+            {[['planes', `Planificaciones (${visibles.length})`], ['borradores', `Borradores (${borradores.length})`]].map(([id, label]) => (
+              <button
+                key={id} onClick={() => setVista(id)} className="px-3 py-1.5 rounded-full text-sm"
+                style={{ background: vista === id ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${vista === id ? 'var(--accent)' : 'var(--border)'}`, color: vista === id ? 'var(--accent)' : 'var(--text)' }}
+              >{label}</button>
+            ))}
+          </div>
           <div className="min-w-[220px]">
             <Select value={filtro} onChange={(e) => setFiltro(e.target.value)}>
               <option value="todas">Todas las cuentas</option>
@@ -261,31 +312,41 @@ export default function IGPlans() {
         </div>
         {loading ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
-        ) : visibles.length === 0 ? (
-          <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>Todavía no hay planificaciones. Pulsa «Nueva planificación».</p>
+        ) : (vista === 'planes' ? visibles : borradores).length === 0 ? (
+          <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
+            {vista === 'planes' ? 'Todavía no hay planificaciones. Pulsa «Nueva planificación».' : 'No hay borradores. Usa «Guardar como borrador» en una planificación para dejarla pendiente de revisar.'}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Cuenta', 'Semana', 'Contenido', 'Actualizada', ''].map((c) => <th key={c} className="text-left px-3 py-2 font-medium" style={{ color: 'var(--text-muted)' }}>{c}</th>)}
+                  {['Cuenta', 'Fecha de creación', 'Responsable', 'Estado', 'Contenido', ''].map((c) => <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>)}
                 </tr>
               </thead>
               <tbody>
-                {visibles.map((p) => (
-                  <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td className="px-3 py-2 whitespace-nowrap"><strong>@{sinArroba(usuarioDe(p.account_id))}</strong></td>
-                    <td className="px-3 py-2">{p.titulo}</td>
-                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}</td>
-                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{fmtTS(p.updated_at)}</td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <button className="text-xs underline mr-3" onClick={() => abrir(p)}>Abrir / editar</button>
-                      <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(textoPlan(p, usuarioDe(p.account_id))).catch(() => {}); setMsg('') ; alert('Texto copiado.') }}>Copiar texto</button>
-                      <button className="text-xs underline mr-3" onClick={() => duplicarEstructura(p)}>Duplicar estructura</button>
-                      {puedeBorrar && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(p)}>Borrar</button>}
-                    </td>
-                  </tr>
-                ))}
+                {(vista === 'planes' ? visibles : borradores).map((p) => {
+                  const est = ESTADOS[p.estado] || ESTADOS.guardada
+                  return (
+                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td className="px-3 py-2 whitespace-nowrap"><strong>@{sinArroba(usuarioDe(p.account_id))}</strong></td>
+                      <td className="px-3 py-2 whitespace-nowrap">{fmtExacta(p.created_at)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{nombreDe(p.responsable_id || p.created_by)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span style={{ color: est[1] }}>{est[0]}</span>
+                        {p.estado === 'enviada' && p.enviado_at && <span className="text-xs block" style={{ color: 'var(--text-muted)' }}>{fmtExacta(p.enviado_at)}</span>}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <button className="text-xs underline mr-3" onClick={() => abrir(p)}>Abrir / editar</button>
+                        <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(textoPlan(p, usuarioDe(p.account_id))).catch(() => {}); setMsg(''); alert('Texto copiado.') }}>Copiar texto</button>
+                        {p.estado === 'enviada' && <button className="text-xs underline mr-3" onClick={() => retirar(p)}>Retirar</button>}
+                        <button className="text-xs underline mr-3" onClick={() => duplicarEstructura(p)}>Duplicar estructura</button>
+                        {puedeBorrar && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(p)}>Borrar</button>}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

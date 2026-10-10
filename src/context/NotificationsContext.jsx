@@ -16,6 +16,7 @@ export function NotificationsProvider({ children }) {
   const { profile, hasAnyRole } = useAuth()
   const activo = !!profile && hasAnyRole(['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'])
   const gestiona = hasAnyRole(['admin', 'manager', 'ig_manager'])
+  const esModelo = hasAnyRole(['modelo'])
   const [items, setItems] = useState([])
   const [leidas, setLeidas] = useState(() => new Set())
   const [cargado, setCargado] = useState(false)
@@ -51,7 +52,7 @@ export function NotificationsProvider({ children }) {
     if (gestiona) {
       consultas.push(
         supabase.from('content_assignments').select('id, titulo, models(stage_name)').lte('enviado_en', hace14dias).is('hecho_en', null).not('enviado_en', 'is', null),
-        supabase.from('profiles').select('id, full_name').eq('password_set', false),
+        supabase.from('profiles').select('id, full_name').eq('password_set', false).lt('created_at', new Date(Date.now() - 86400000).toISOString()), // solo si lleva más de 1 día sin crearla
       )
     }
     const [{ data: notifs }, { data: reads }, r3, r4] = await Promise.all(consultas)
@@ -59,6 +60,18 @@ export function NotificationsProvider({ children }) {
     const lista = (notifs || []).map((n) => ({ key: 'n:' + n.id, tipo: n.tipo, prioridad: n.prioridad, texto: n.texto, ruta: n.ruta, fecha: n.created_at }))
     ;((r3 && r3.data) || []).forEach((c) => lista.push({ key: 'cont:' + c.id, tipo: 'contenido', prioridad: 'alta', texto: `${c.models?.stage_name}: "${c.titulo}" lleva más de 14 días sin entregarse`, ruta: '/contenido', fecha: null }))
     ;((r4 && r4.data) || []).forEach((p) => lista.push({ key: 'pwd:' + p.id, tipo: 'pendiente', prioridad: 'alta', texto: `${p.full_name} todavía no ha creado su contraseña`, ruta: '/equipo', fecha: null }))
+
+    // Planificaciones de reels enviadas a la modelo en los últimos 7 días
+    if (esModelo) {
+      try {
+        const { data: planes } = await supabase.rpc('mis_planificaciones')
+        const desde = Date.now() - 7 * 86400000
+        ;(planes || []).filter((x) => x.enviado_at && new Date(x.enviado_at).getTime() > desde).forEach((x) => lista.push({
+          key: 'plan:' + x.id + ':' + x.enviado_at, tipo: 'planificacion', prioridad: 'alta',
+          texto: `Tienes una planificación de reels nueva para @${String(x.usuario || '').replace(/^@/, '')}`, ruta: '/reels', fecha: x.enviado_at,
+        }))
+      } catch { /* sin planificaciones */ }
+    }
 
     try {
       const f = await datosFechas()
@@ -68,7 +81,7 @@ export function NotificationsProvider({ children }) {
     setItems(lista)
     setLeidas(new Set((reads || []).map((r) => r.clave)))
     setCargado(true)
-  }, [profile, gestiona])
+  }, [profile, gestiona, esModelo])
 
   useEffect(() => {
     if (!activo) return

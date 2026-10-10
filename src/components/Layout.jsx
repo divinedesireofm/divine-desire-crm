@@ -10,7 +10,8 @@ import NotificationBell from './NotificationBell'
 import NotificationPopup from './NotificationPopup'
 import { NotificationsProvider } from '../context/NotificationsContext'
 import ThemeToggle from './ThemeToggle'
-import { SECTIONS, buscarItem } from '../lib/navigation'
+import { SECTIONS, buscarItem, aplicarOrden } from '../lib/navigation'
+import { supabase } from '../lib/supabase'
 import { Panel } from './ui'
 
 const ROLE_LABELS = {
@@ -32,9 +33,13 @@ const SECCION_FIJA_POR_ROL = {
 }
 
 export default function Layout() {
-  const { profile, roles, puedeVer, signOut } = useAuth()
+  const { profile, roles, puedeVer, signOut, hasRole } = useAuth()
+  const esAdmin = hasRole('admin')
   const [collapsed, setCollapsed] = useState({})
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [ordenCfg, setOrdenCfg] = useState(null)      // orden del menú guardado por el admin
+  const [editandoMenu, setEditandoMenu] = useState(false)
+  const [errMenu, setErrMenu] = useState('')
   const mainRef = useRef(null)
   const location = useLocation()
 
@@ -43,9 +48,45 @@ export default function Layout() {
     setMobileOpen(false)
   }, [location.pathname])
 
-  const visibleSections = SECTIONS
+  useEffect(() => {
+    let vivo = true
+    supabase.from('menu_orden').select('valor').eq('clave', 'menu').maybeSingle().then(({ data }) => { if (vivo && data?.valor) setOrdenCfg(data.valor) })
+    return () => { vivo = false }
+  }, [])
+
+  const visibleSections = aplicarOrden(SECTIONS, ordenCfg)
     .map((s) => ({ ...s, items: s.items.filter((item) => puedeVer(item.to, item.roles)) }))
     .filter((s) => s.items.length > 0)
+
+  // ---- Ordenar el menú (solo admin): se guarda para todo el equipo ----
+  async function guardarOrden(estructura) {
+    const cfg = { sections: estructura.map((s) => s.id), items: Object.fromEntries(estructura.map((s) => [s.id, s.items.map((i) => i.to)])) }
+    setOrdenCfg(cfg); setErrMenu('')
+    const { error } = await supabase.from('menu_orden').upsert({ clave: 'menu', valor: cfg, updated_at: new Date().toISOString() }, { onConflict: 'clave' })
+    if (error) setErrMenu('No se pudo guardar el orden. ¿Has ejecutado la migración 52b?')
+  }
+  async function restablecerOrden() {
+    if (!confirm('¿Volver al orden original del menú?')) return
+    setOrdenCfg(null); setErrMenu('')
+    await supabase.from('menu_orden').delete().eq('clave', 'menu')
+  }
+  const copia = () => visibleSections.map((s) => ({ ...s, items: [...s.items] }))
+  function moverSeccion(i, d) {
+    const e = copia(); const j = i + d
+    if (j < 0 || j >= e.length) return
+    ;[e[i], e[j]] = [e[j], e[i]]; guardarOrden(e)
+  }
+  function moverItem(si, ii, d) {
+    const e = copia(); const it = e[si].items; const j = ii + d
+    if (j < 0 || j >= it.length) return
+    ;[it[ii], it[j]] = [it[j], it[ii]]; guardarOrden(e)
+  }
+  function cambiarCategoria(si, ii, destinoId) {
+    const e = copia(); const [item] = e[si].items.splice(ii, 1)
+    const dest = e.find((s) => s.id === destinoId)
+    if (!dest) return
+    dest.items.push(item); guardarOrden(e)
+  }
 
   const itemActual = buscarItem(location.pathname)
   const sinAcceso = itemActual && !puedeVer(itemActual.to, itemActual.roles)
@@ -103,12 +144,21 @@ export default function Layout() {
           </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto">
-          {visibleSections.map((section) => {
+          {visibleSections.map((section, si) => {
             const fija = seccionesFijas.has(section.id)
-            const abierta = fija || !collapsed[section.id]
+            const abierta = editandoMenu || fija || !collapsed[section.id]
             return (
               <div key={section.id}>
-                {section.label && (
+                {editandoMenu && (
+                  <div className="flex items-center justify-between px-2 py-1 mb-1 rounded" style={{ background: 'var(--accent-soft)' }}>
+                    <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--accent)' }}>{section.label || 'Principal'}</span>
+                    <span className="flex gap-1">
+                      <button onClick={() => moverSeccion(si, -1)} disabled={si === 0} className="px-1.5 text-xs disabled:opacity-30" aria-label="Subir categoría">▲</button>
+                      <button onClick={() => moverSeccion(si, 1)} disabled={si === visibleSections.length - 1} className="px-1.5 text-xs disabled:opacity-30" aria-label="Bajar categoría">▼</button>
+                    </span>
+                  </div>
+                )}
+                {!editandoMenu && section.label && (
                   fija ? (
                     <p className="px-2 py-1 mb-1 text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
                       <Icon name={section.icon} size={13} />
@@ -127,7 +177,20 @@ export default function Layout() {
                 )}
                 {abierta && (
                   <div className="space-y-1 animate-in">
-                    {section.items.map((item) => (
+                    {editandoMenu && section.items.map((item, ii) => (
+                      <div key={item.to} className="flex items-center gap-1 px-2 py-1 rounded-md text-sm" style={{ background: 'var(--panel)' }}>
+                        <span className="flex-1 truncate">{item.label}</span>
+                        <select
+                          value={section.id} onChange={(e) => cambiarCategoria(si, ii, e.target.value)} aria-label="Mover a otra categoría"
+                          className="text-[10px] rounded px-0.5 w-16" style={{ background: 'var(--panel-alt)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+                        >
+                          {visibleSections.map((s) => <option key={s.id} value={s.id}>{s.label || 'Principal'}</option>)}
+                        </select>
+                        <button onClick={() => moverItem(si, ii, -1)} disabled={ii === 0} className="px-1 text-xs disabled:opacity-30" aria-label="Subir">▲</button>
+                        <button onClick={() => moverItem(si, ii, 1)} disabled={ii === section.items.length - 1} className="px-1 text-xs disabled:opacity-30" aria-label="Bajar">▼</button>
+                      </div>
+                    ))}
+                    {!editandoMenu && section.items.map((item) => (
                       <NavLink
                         key={item.to}
                         to={item.to}
@@ -151,6 +214,16 @@ export default function Layout() {
         </nav>
 
         <div className="pt-4 mt-4" style={{ borderTop: '1px solid var(--border)' }}>
+          {esAdmin && (
+            <div className="px-2 mb-3">
+              <button onClick={() => setEditandoMenu(!editandoMenu)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
+                {editandoMenu ? '✓ Terminar de ordenar' : '↕ Ordenar menú'}
+              </button>
+              {editandoMenu && ordenCfg && <button onClick={restablecerOrden} className="text-xs hover:underline ml-3" style={{ color: 'var(--text-muted)' }}>Restablecer</button>}
+              {editandoMenu && <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>Sube/baja con ▲▼ o cambia un apartado de categoría con el desplegable. Lo ve todo el equipo.</p>}
+              {errMenu && <p className="text-[10px] mt-1" style={{ color: 'var(--danger)' }}>{errMenu}</p>}
+            </div>
+          )}
           <p className="px-2 text-sm font-medium">{profile?.full_name}</p>
           <p className="px-2 text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
             {etiquetaRoles}

@@ -5,7 +5,7 @@ import { Panel, Button, Input, Select, Table, Td, StatusBadge, PageHeader } from
 import { ModelAvatar } from '../components/ModelAvatar'
 import { reducirImagen, refrescarFotosModelos } from '../lib/modelPhotos'
 
-const STATUS_OPTIONS = ['en_preparacion', 'activa', 'pausada', 'en_negociacion', 'baja']
+const STATUS_OPTIONS = ['en_preparacion', 'activa', 'pausada', 'baja']
 const STATUS_LABELS = { en_preparacion: 'En preparación', activa: 'Activa', pausada: 'Pausada', en_negociacion: 'En negociación', baja: 'Baja' }
 const EMPTY_FORM = { stage_name: '', status: 'en_preparacion', commission_percent: '', email: '', phone: '', notes: '' }
 
@@ -66,7 +66,7 @@ export default function Models() {
     setEditingId(m.id)
     setForm({
       stage_name: m.stage_name || '',
-      status: m.status || 'en_preparacion',
+      status: !m.status || m.status === 'en_negociacion' ? 'en_preparacion' : m.status,
       commission_percent: m.commission_percent ?? '',
       email: m.email || '',
       phone: m.phone || '',

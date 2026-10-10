@@ -12,6 +12,15 @@ export function setSonidoActivo(valor) {
   try { localStorage.setItem(CLAVE, valor ? 'on' : 'off') } catch { /* sin almacenamiento: vale solo para esta sesión */ }
 }
 
+// Volumen general (0-100). Por defecto 80, bastante más alto que antes.
+const CLAVE_VOL = 'dd_volumen_avisos'
+export function volumenAvisos() {
+  try { const v = parseInt(localStorage.getItem(CLAVE_VOL), 10); return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 80 } catch { return 80 }
+}
+export function setVolumenAvisos(v) {
+  try { localStorage.setItem(CLAVE_VOL, String(Math.round(v))) } catch { /* sin almacenamiento: vale solo para esta sesión */ }
+}
+
 function contexto() {
   const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext)
   if (!AC) return null
@@ -54,8 +63,10 @@ export function reproducirAviso(tipo = 'importante', forzar = false) {
   const sonar = () => {
     if (c.state !== 'running') return
     ultimo = Date.now()
-    if (tipo === 'importante') { nota(c, 659.25, 0, 0.45, 0.07); nota(c, 880, 0.14, 0.6, 0.06) }
-    else nota(c, 784, 0, 0.35, 0.035)
+    const vol = volumenAvisos() / 100 // 0 a 1
+    if (vol <= 0) return
+    if (tipo === 'importante') { nota(c, 659.25, 0, 0.45, 0.5 * vol); nota(c, 880, 0.14, 0.6, 0.42 * vol) }
+    else nota(c, 784, 0, 0.35, 0.25 * vol)
   }
   if (c.state === 'suspended') c.resume().then(sonar).catch(() => {})
   else sonar()

@@ -45,12 +45,11 @@ export const SECTIONS = [
     icon: 'camera',
     items: [
       { to: '/instagram', label: 'Cuentas de Instagram', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
-      { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
+      { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant', 'modelo'] },
       { to: '/planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/lo-que-funciona', label: 'Lo que funciona', icon: 'chart', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/reels-referencia', label: 'Reels de referencia', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/trial-reels', label: 'Trial Reels', icon: 'target', roles: ['admin', 'ig_manager'] },
-      { to: '/cuentas-cero', label: 'Cuentas de cero', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/incidencias', label: 'Restricciones y apelaciones', icon: 'alert', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/proxies', label: 'Proxies', icon: 'package', roles: ['admin', 'ig_manager'] },
       { to: '/incentivos-ig', label: 'Incentivos de Instagram', icon: 'dollar', roles: ['admin', 'ig_manager', 'ig_assistant'] },
@@ -90,6 +89,31 @@ export const ROLES_EDITABLES = [
   { id: 'ig_assistant', label: 'Asistente IG' },
   { id: 'modelo', label: 'Modelo' },
 ]
+
+// Aplica el orden que el admin ha guardado desde el propio menú.
+// cfg = { sections: ['general','chatting',…], items: { general: ['/', '/fechas',…], … } }
+// Lo que no esté en cfg (apartados nuevos) se queda en su sitio de siempre, al final de su categoría.
+export function aplicarOrden(sections, cfg) {
+  if (!cfg || typeof cfg !== 'object') return sections
+  const porRuta = {}
+  sections.forEach((s) => s.items.forEach((it) => { porRuta[it.to] = it }))
+  const asignada = {} // ruta -> categoría (primera vez que aparece en cfg)
+  const cfgItems = cfg.items || {}
+  Object.keys(cfgItems).forEach((sid) => {
+    if (!sections.some((s) => s.id === sid)) return
+    ;(cfgItems[sid] || []).forEach((r) => { if (porRuta[r] && !asignada[r]) asignada[r] = sid })
+  })
+  const orden = cfg.sections || []
+  const idx = (id) => { const i = orden.indexOf(id); return i < 0 ? 999 : i }
+  return [...sections]
+    .map((s, n) => ({ s, n }))
+    .sort((a, b) => idx(a.s.id) - idx(b.s.id) || a.n - b.n)
+    .map(({ s }) => {
+      const propios = (cfgItems[s.id] || []).filter((r) => asignada[r] === s.id).map((r) => porRuta[r])
+      const resto = s.items.filter((it) => !asignada[it.to])
+      return { ...s, items: [...propios, ...resto] }
+    })
+}
 
 export function buscarItem(pathname) {
   for (const s of SECTIONS) for (const it of s.items) if (it.to === pathname) return it

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
 import ModelName from '../components/ModelAvatar'
+import ZeroAccounts from './ZeroAccounts'
 
 const STATUS_OPTIONS = ['calentando', 'activa', 'en_revision', 'suspendida', 'baneada']
 
@@ -32,6 +34,9 @@ function diasTranscurridos(fecha) {
 export default function InstagramAccounts() {
   const { hasAnyRole } = useAuth()
   const canEdit = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
+  const canDelete = hasAnyRole(['admin', 'ig_manager'])
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'cero' ? 'cero' : 'cuentas'
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
   const [assistants, setAssistants] = useState([])
@@ -117,6 +122,43 @@ export default function InstagramAccounts() {
     load()
   }
 
+  async function borrarCuenta(a) {
+    if (!confirm(`¿Eliminar la cuenta @${a.username}?\n\nSe borrarán también sus planificaciones, reels ganadores y registros de seguidores. No se puede deshacer.`)) return
+    const { error: err } = await supabase.from('instagram_accounts').delete().eq('id', a.id)
+    if (err) { setError('No se pudo eliminar: ' + err.message); return }
+    if (editingId === a.id) { setShowForm(false); setEditingId(null) }
+    load()
+  }
+
+  const pestanas = (
+    <div className="flex gap-2 mb-5">
+      {[['cuentas', 'Cuentas'], ['cero', 'Cuentas de cero']].map(([id, label]) => (
+        <button
+          key={id}
+          onClick={() => setParams(id === 'cero' ? { tab: 'cero' } : {})}
+          className="px-3 py-1.5 rounded-full text-sm"
+          style={{
+            background: tab === id ? 'var(--accent-soft)' : 'var(--panel-alt)',
+            border: `1px solid ${tab === id ? 'var(--accent)' : 'var(--border)'}`,
+            color: tab === id ? 'var(--accent)' : 'var(--text)',
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (tab === 'cero') {
+    return (
+      <div>
+        <PageHeader title="Cuentas de Instagram" subtitle="Cuentas de cero: seguimiento especial de las cuentas recién creadas, en fase de calentamiento." />
+        {pestanas}
+        <ZeroAccounts embebido />
+      </div>
+    )
+  }
+
   return (
     <div>
       <PageHeader
@@ -128,6 +170,9 @@ export default function InstagramAccounts() {
           </Button>
         )}
       />
+
+      {pestanas}
+      {error && !showForm && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{error}</p>}
 
       {showForm && (
         <Panel className="p-5 mb-6">
@@ -248,11 +293,18 @@ export default function InstagramAccounts() {
                     <Td style={{ color: 'var(--text-muted)' }}>{a.observations || '—'}</Td>
                     <Td style={{ color: 'var(--text-muted)' }}>{a.restrictions || '—'}</Td>
                     <Td>
-                      {canEdit && (
-                        <button onClick={() => startEdit(a)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
-                          Editar
-                        </button>
-                      )}
+                      <div className="flex gap-3 whitespace-nowrap">
+                        {canEdit && (
+                          <button onClick={() => startEdit(a)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
+                            Editar
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button onClick={() => borrarCuenta(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>
+                            Eliminar
+                          </button>
+                        )}
+                      </div>
                     </Td>
                   </tr>
                 ))}

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useNotifications } from '../context/NotificationsContext'
 import Icon from './Icon'
-import { sonidoActivo, setSonidoActivo, reproducirAviso } from '../lib/sonido'
+import { sonidoActivo, setSonidoActivo, reproducirAviso, volumenAvisos, setVolumenAvisos } from '../lib/sonido'
 
 export function hace(fecha) {
   if (!fecha) return ''
@@ -18,6 +18,7 @@ export default function NotificationBell() {
   const nt = useNotifications()
   const [abierto, setAbierto] = useState(false)
   const [sonido, setSonido] = useState(sonidoActivo())
+  const [volumen, setVolumen] = useState(volumenAvisos())
   const ref = useRef(null)
   const navigate = useNavigate()
 
@@ -108,6 +109,20 @@ export default function NotificationBell() {
             <span>{sonido ? '🔊 Sonido de avisos activado' : '🔇 Sonido de avisos desactivado'}</span>
             <button onClick={alternarSonido} className="hover:underline" style={{ color: 'var(--accent)' }}>{sonido ? 'Desactivar' : 'Activar'}</button>
           </div>
+          {sonido && (
+            <div className="px-4 pb-3 flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <span>Volumen</span>
+              <input
+                type="range" min="0" max="100" step="5" value={volumen} aria-label="Volumen de los avisos"
+                onChange={(e) => { const v = Number(e.target.value); setVolumen(v); setVolumenAvisos(v) }}
+                onMouseUp={() => reproducirAviso('importante', true)}
+                onTouchEnd={() => reproducirAviso('importante', true)}
+                onKeyUp={() => reproducirAviso('importante', true)}
+                className="flex-1"
+              />
+              <span className="tabular-nums w-8 text-right">{volumen}%</span>
+            </div>
+          )}
         </div>
       )}
     </div>
