@@ -71,6 +71,32 @@ function genTexto(r) {
   return L.join('\n')
 }
 
+function parseDur(v) {
+  const s = String(v || '')
+  const m = s.match(/(\d+)\s*min/i)
+  const sg = s.match(/(\d+)\s*s(?:eg)?\b/i)
+  return { m: m ? m[1] : '', s: sg ? sg[1] : '' }
+}
+function DuracionSelect({ value, onChange }) {
+  const { m, s } = parseDur(value)
+  function cambiar(nm, ns) {
+    if (nm === '' && ns === '') { onChange(''); return }
+    onChange([nm !== '' ? nm + ' min' : '0 min', ns !== '' && ns !== '0' ? ns + ' s' : ''].filter(Boolean).join(' '))
+  }
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <Select value={m} onChange={(e) => cambiar(e.target.value, s)}>
+        <option value="">Min</option>
+        {Array.from({ length: 121 }, (_, i) => <option key={i} value={i}>{i} min</option>)}
+      </Select>
+      <Select value={s} onChange={(e) => cambiar(m, e.target.value)}>
+        <option value="">Seg</option>
+        {Array.from({ length: 60 }, (_, i) => <option key={i} value={i}>{i} s</option>)}
+      </Select>
+    </div>
+  )
+}
+
 const EMPTY_FORM = { tipo: 'personalizado', modelo: '', fan: '', user_of: '@', precio: '', duracion: '', fecha_entrega: '', idioma: 'español', uso: 'masivo', descripcion: '', imagenesTxt: '' }
 
 export default function Requests() {
@@ -113,7 +139,7 @@ export default function Requests() {
     const user_of = form.user_of.length > 1 ? form.user_of : ''
     const payload = esInterno
       ? { tipo: form.tipo, modelo: form.modelo, uso: form.uso, duracion: form.duracion.trim(), fecha_entrega: entrega, descripcion: form.descripcion.trim(), imagenes }
-      : { tipo: form.tipo, modelo: form.modelo, fan: form.fan.trim(), user_of, precio: form.precio.trim(), duracion: form.duracion.trim(), fecha_entrega: entrega, idioma: form.idioma, descripcion: form.descripcion.trim(), imagenes }
+      : { tipo: form.tipo, modelo: form.modelo, fan: form.fan.trim(), user_of, precio: form.precio.trim() ? '$' + form.precio.trim().replace(/^\$/, '') : '', duracion: form.duracion.trim(), fecha_entrega: entrega, idioma: form.idioma, descripcion: form.descripcion.trim(), imagenes }
     let err
     if (editId) {
       // al cambiar de tipo, limpia los campos que ya no aplican
@@ -133,7 +159,7 @@ export default function Requests() {
     setError('')
     setEditId(r.id)
     setForm({
-      tipo: r.tipo, modelo: r.modelo || '', fan: r.fan || '', user_of: normUser(r.user_of), precio: r.precio || '',
+      tipo: r.tipo, modelo: r.modelo || '', fan: r.fan || '', user_of: normUser(r.user_of), precio: String(r.precio || '').replace(/^\$/, ''),
       duracion: r.duracion || '', fecha_entrega: r.fecha_entrega ? String(r.fecha_entrega).slice(0, 10) : '',
       idioma: r.idioma || 'español', uso: r.uso || 'masivo', descripcion: r.descripcion || '',
       imagenesTxt: (Array.isArray(r.imagenes) ? r.imagenes : []).join('\n'),
@@ -198,15 +224,13 @@ export default function Requests() {
             </Select>
           </div>
           <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Modelo</label>
-            <div className="flex items-center gap-3">
-              {form.modelo && <ModelAvatar name={form.modelo} size={56} />}
-              <div className="flex-1 min-w-0">
-                <Select value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })}>
-                  {modelos.map((m) => <option key={m.id} value={m.stage_name}>{m.stage_name}</option>)}
-                </Select>
-              </div>
-            </div>
+            <label className="text-xs mb-1 flex items-center gap-2 overflow-visible" style={{ color: 'var(--text-muted)', height: 16, lineHeight: '16px' }}>
+              Modelo
+              {form.modelo && <span className="inline-flex items-center gap-1.5"><ModelAvatar name={form.modelo} size={18} /><span style={{ color: 'var(--text)' }}>{form.modelo}</span></span>}
+            </label>
+            <Select value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })}>
+              {modelos.map((m) => <option key={m.id} value={m.stage_name}>{m.stage_name}</option>)}
+            </Select>
           </div>
           {esInterno ? (
             <div>
@@ -227,12 +251,34 @@ export default function Requests() {
           )}
           {!esInterno && (
             <>
-              <Input placeholder="Fan (nombre)" value={form.fan} onChange={(e) => setForm({ ...form, fan: e.target.value })} />
-              <Input placeholder="@usuario" value={form.user_of} onChange={(e) => setForm({ ...form, user_of: normUser(e.target.value) })} />
-              <Input placeholder="Precio acordado ($200)" value={form.precio} onChange={(e) => setForm({ ...form, precio: e.target.value })} />
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Nombre del fan</label>
+                <Input placeholder="Fan (nombre)" value={form.fan} onChange={(e) => setForm({ ...form, fan: e.target.value })} />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Usuario del fan en OnlyFans</label>
+                <Input placeholder="@usuario" value={form.user_of} onChange={(e) => setForm({ ...form, user_of: normUser(e.target.value) })} />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Precio acordado</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none" style={{ color: 'var(--text-muted)' }}>$</span>
+                  <input
+                    inputMode="decimal"
+                    placeholder="200"
+                    value={form.precio}
+                    onChange={(e) => setForm({ ...form, precio: e.target.value.replace(/[^0-9.,]/g, '') })}
+                    className="w-full rounded-md py-2 pr-3 text-sm outline-none focus:ring-1"
+                    style={{ paddingLeft: 26, background: 'var(--panel-alt)', color: 'var(--text)', border: '1px solid var(--border)' }}
+                  />
+                </div>
+              </div>
             </>
           )}
-          <Input placeholder={esInterno ? 'Duración (opcional, ej: 1 min)' : 'Duración (ej: 5 min)'} value={form.duracion} onChange={(e) => setForm({ ...form, duracion: e.target.value })} />
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>{esInterno ? 'Duración (opcional)' : 'Duración'}</label>
+            <DuracionSelect value={form.duracion} onChange={(v) => setForm({ ...form, duracion: v })} />
+          </div>
           <div>
             <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fecha de entrega estimada</label>
             <Input type="date" value={form.fecha_entrega} onChange={(e) => setForm({ ...form, fecha_entrega: e.target.value })} />

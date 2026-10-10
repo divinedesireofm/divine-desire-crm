@@ -12,10 +12,10 @@ export function setSonidoActivo(valor) {
   try { localStorage.setItem(CLAVE, valor ? 'on' : 'off') } catch { /* sin almacenamiento: vale solo para esta sesión */ }
 }
 
-// Volumen general (0-100). Por defecto 80, bastante más alto que antes.
+// Volumen general (0-100). Por defecto 100.
 const CLAVE_VOL = 'dd_volumen_avisos'
 export function volumenAvisos() {
-  try { const v = parseInt(localStorage.getItem(CLAVE_VOL), 10); return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 80 } catch { return 80 }
+  try { const v = parseInt(localStorage.getItem(CLAVE_VOL), 10); return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 100 } catch { return 100 }
 }
 export function setVolumenAvisos(v) {
   try { localStorage.setItem(CLAVE_VOL, String(Math.round(v))) } catch { /* sin almacenamiento: vale solo para esta sesión */ }
@@ -38,16 +38,30 @@ export function instalarDesbloqueo() {
   return () => eventos.forEach((e) => window.removeEventListener(e, abrir))
 }
 
+// Salida común con compresor y ganancia extra: sube el volumen percibido sin que distorsione.
+let cadena = null
+function salida(c) {
+  if (cadena && cadena.ctx === c) return cadena.entrada
+  const comp = c.createDynamicsCompressor()
+  comp.threshold.value = -18
+  comp.ratio.value = 6
+  const extra = c.createGain()
+  extra.gain.value = 2.2
+  comp.connect(extra).connect(c.destination)
+  cadena = { ctx: c, entrada: comp }
+  return comp
+}
+
 function nota(c, freq, inicio, duracion, volumen) {
   const t0 = c.currentTime + inicio
   const osc = c.createOscillator()
   const g = c.createGain()
-  osc.type = 'sine'
+  osc.type = 'triangle' // tiene más armónicos que la onda sinusoidal y se oye bastante más fuerte
   osc.frequency.value = freq
   g.gain.setValueAtTime(0.0001, t0)
   g.gain.exponentialRampToValueAtTime(volumen, t0 + 0.03)
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + duracion)
-  osc.connect(g).connect(c.destination)
+  osc.connect(g).connect(salida(c))
   osc.start(t0)
   osc.stop(t0 + duracion + 0.05)
 }
@@ -65,8 +79,8 @@ export function reproducirAviso(tipo = 'importante', forzar = false) {
     ultimo = Date.now()
     const vol = volumenAvisos() / 100 // 0 a 1
     if (vol <= 0) return
-    if (tipo === 'importante') { nota(c, 659.25, 0, 0.45, 0.5 * vol); nota(c, 880, 0.14, 0.6, 0.42 * vol) }
-    else nota(c, 784, 0, 0.35, 0.25 * vol)
+    if (tipo === 'importante') { nota(c, 659.25, 0, 0.45, 0.9 * vol); nota(c, 880, 0.14, 0.6, 0.8 * vol) }
+    else nota(c, 784, 0, 0.35, 0.45 * vol)
   }
   if (c.state === 'suspended') c.resume().then(sonar).catch(() => {})
   else sonar()

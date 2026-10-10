@@ -48,9 +48,9 @@ export default function Recaptures() {
   const [hasta, setHasta] = useState(hoy())
   const [modelos, setModelos] = useState([])
   const [fModelo, setFModelo] = useState('todos')
-  const [ranking, setRanking] = useState([])
+  const [fChatter, setFChatter] = useState('todos')
+  const [filas, setFilas] = useState([])
   const [cargando, setCargando] = useState(false)
-  const [sinMonto, setSinMonto] = useState(0)
 
   // ---- asignación semanal
   const [semana, setSemana] = useState(lunesDe(hoy()))
@@ -81,7 +81,7 @@ export default function Recaptures() {
     for (let from = 0; ; from += 1000) {
       let q = supabase
         .from('shift_report_details')
-        .select('compras, model_id, models(stage_name), shift_reports!inner(fecha)')
+        .select('compras, model_id, models(stage_name), shift_reports!inner(fecha, chatter_id, profiles(full_name))')
         .gte('shift_reports.fecha', desde)
         .lte('shift_reports.fecha', hasta)
         .range(from, from + 999)
@@ -91,9 +91,21 @@ export default function Recaptures() {
       filas.push(...data)
       if (data.length < 1000) break
     }
+    setFilas(filas)
+    setCargando(false)
+  }
+  useEffect(() => { if (esMgr) cargarRanking() }, [esMgr, desde, hasta, fModelo])
+
+  // El ranking se calcula en el momento con el chatter elegido, sin volver a pedir datos
+  const { ranking, sinMonto, chattersVenta } = useMemo(() => {
     const mapa = new Map()
+    const quienes = new Map()
     let sin = 0
     for (const d of filas) {
+      const chId = d.shift_reports?.chatter_id
+      const chNombre = d.shift_reports?.profiles?.full_name || 'Sin nombre'
+      if (chId) quienes.set(chId, chNombre)
+      if (fChatter !== 'todos' && chId !== fChatter) continue
       const fecha = d.shift_reports?.fecha
       for (const c of d.compras || []) {
         const user = String(c.user || '').trim()
@@ -101,7 +113,8 @@ export default function Recaptures() {
         if (user.length < 2 || !(monto > 0)) { sin++; continue }
         const k = user.toLowerCase()
         let e = mapa.get(k)
-        if (!e) { e = { user, nombre: c.fan, total: 0, ppv: 0, tips: 0, n: 0, ultima: '', modelos: new Set() }; mapa.set(k, e) }
+        if (!e) { e = { user, nombre: c.fan, total: 0, ppv: 0, tips: 0, n: 0, ultima: '', modelos: new Set(), chatters: new Set() }; mapa.set(k, e) }
+        e.chatters.add(chNombre)
         e.total += monto
         if (c.tipo === 'tip') e.tips += monto; else e.ppv += monto
         e.n += 1
@@ -109,16 +122,27 @@ export default function Recaptures() {
         if (d.models?.stage_name) e.modelos.add(d.models.stage_name)
       }
     }
-    setSinMonto(sin)
-    setRanking(Array.from(mapa.values()).sort((a, b) => b.total - a.total))
-    setCargando(false)
-  }
-  useEffect(() => { if (esMgr) cargarRanking() }, [esMgr, desde, hasta, fModelo])
+    return {
+      ranking: Array.from(mapa.values()).sort((a, b) => b.total - a.total),
+      sinMonto: sin,
+      chattersVenta: Array.from(quienes, ([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre)),
+    }
+  }, [filas, fChatter])
 
   // ---- asignaciones de la semana
   async function cargarAsign() {
-    const { data } = await supabase.from('recapture_assignments').select('*, profiles(full_name)').eq('semana', semana).order('gasto', { ascending: false })
-    setAsign(data || [])
+    const { data, error } = await supabase.from('recapture_assignments').select('*').eq('semana', semana).order('gasto', { ascending: false })
+    if (error) { setGenMsg('No se pudo cargar el reparto: ' + error.message); return [] }
+    const filasA = data || []
+    const ids = Array.from(new Set(filasA.map((a) => a.chatter_id)))
+    let nombres = new Map()
+    if (ids.length) {
+      const { data: ps } = await supabase.from('profiles').select('id, full_name').in('id', ids)
+      nombres = new Map((ps || []).map((p) => [p.id, p.full_name]))
+    }
+    const conNombre = filasA.map((a) => ({ ...a, profiles: { full_name: nombres.get(a.chatter_id) || '' } }))
+    setAsign(conNombre)
+    return conNombre
   }
   useEffect(() => { cargarAsign() }, [semana])
 
@@ -133,9 +157,10 @@ export default function Recaptures() {
     if (!chattersElegidos.length) { setGenMsg('Elige al menos un chatter.'); return }
     const k = Math.max(1, parseInt(porChatter, 10) || 0)
     setGenBusy(true)
+    const actuales = await cargarAsign()
     const elegidos = new Set(chattersElegidos)
-    const mantener = asign.filter((a) => a.hecho || !elegidos.has(a.chatter_id))
-    const borrar = asign.filter((a) => !a.hecho && elegidos.has(a.chatter_id))
+    const mantener = actuales.filter((a) => a.hecho || !elegidos.has(a.chatter_id))
+    const borrar = actuales.filter((a) => !a.hecho && elegidos.has(a.chatter_id))
     const excluir = new Set(mantener.map((a) => a.fan_user.toLowerCase()))
     if (noRepetir) {
       const { data: previas } = await supabase.from('recapture_assignments').select('fan_user').gte('semana', sumarDias(semana, -28)).lt('semana', semana)
@@ -158,11 +183,11 @@ export default function Recaptures() {
         }
       }
     }
-    if (borrar.length) await supabase.from('recapture_assignments').delete().in('id', borrar.map((a) => a.id))
     let error = null
-    if (nuevas.length) ({ error } = await supabase.from('recapture_assignments').insert(nuevas))
+    if (borrar.length) ({ error } = await supabase.from('recapture_assignments').delete().in('id', borrar.map((a) => a.id)))
+    if (!error && nuevas.length) ({ error } = await supabase.from('recapture_assignments').insert(nuevas))
     setGenBusy(false)
-    if (error) { setGenMsg('No se pudo guardar la asignación.'); await cargarAsign(); return }
+    if (error) { setGenMsg('No se pudo guardar la asignación: ' + error.message); await cargarAsign(); return }
     const faltan = Array.from(necesita.values()).reduce((a, b) => a + b, 0)
     setGenMsg(nuevas.length
       ? `Asignados ${nuevas.length} fans.${faltan > 0 ? ` No había fans suficientes para completar ${faltan} puestos (prueba con un rango más amplio o quitando el mínimo).` : ''}`
@@ -204,6 +229,7 @@ export default function Recaptures() {
       { label: 'Compras', key: 'n' },
       { label: 'Última compra', get: (r) => fmtF(r.ultima) },
       { label: 'Modelos', get: (r) => Array.from(r.modelos).join(', ') },
+      { label: 'Chatter', get: (r) => Array.from(r.chatters).join(', ') },
     ])
   }
 
@@ -348,6 +374,13 @@ export default function Recaptures() {
                 {modelos.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
               </Select>
             </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Chatter que hizo la venta</label>
+              <Select value={fChatter} onChange={(e) => setFChatter(e.target.value)}>
+                <option value="todos">Todos</option>
+                {chattersVenta.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </Select>
+            </div>
           </div>
 
           {cargando ? (
@@ -364,7 +397,7 @@ export default function Recaptures() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      {['#', 'Usuario', 'Nombre', 'Gasto', 'PPV', 'Tips', 'Compras', 'Última compra', 'Modelos'].map((c) => (
+                      {['#', 'Usuario', 'Nombre', 'Gasto', 'PPV', 'Tips', 'Compras', 'Última compra', 'Modelos', 'Chatter'].map((c) => (
                         <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)', position: 'sticky', top: 0, background: 'var(--panel)' }}>{c}</th>
                       ))}
                     </tr>
@@ -381,6 +414,7 @@ export default function Recaptures() {
                         <td className="px-3 py-2 tabular-nums">{r.n}</td>
                         <td className="px-3 py-2 whitespace-nowrap">{fmtF(r.ultima)}</td>
                         <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{Array.from(r.modelos).join(', ')}</td>
+                        <td className="px-3 py-2">{Array.from(r.chatters).join(', ')}</td>
                       </tr>
                     ))}
                   </tbody>
