@@ -1,209 +1,354 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { Panel, Button, Input, PageHeader } from '../components/ui'
+import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
+import { PAISES, COLOR_MANUAL, COLOR_PERSONA, festividades } from '../lib/festividades'
 
-function proximaOcurrencia(fechaISO, recurrente) {
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-  const f = new Date(fechaISO + 'T00:00:00')
-  if (!recurrente) return f
-  const candidata = new Date(hoy.getFullYear(), f.getMonth(), f.getDate())
-  if (candidata < hoy) candidata.setFullYear(candidata.getFullYear() + 1)
-  return candidata
-}
-function diasHasta(d) {
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-  return Math.round((d - hoy) / (1000 * 60 * 60 * 24))
-}
-function fmtFecha(d) { return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'long' }) }
+// ---------- fechas ----------
+const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+const aDate = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
+const sumarDias = (s, n) => { const d = aDate(s); d.setDate(d.getDate() + n); return iso(d) }
+const difDias = (a, b) => Math.round((aDate(a) - aDate(b)) / 86400000)
+const fmtLargo = (s) => aDate(s).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'long' })
+const NOMBRE_MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+const DIAS_SEM = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+const LS_PAISES = 'dd_paises_fechas'
+const PAISES_DEFECTO = ['es', 've']
 
-// ---------- Festividades importantes ----------
-// Fijas (se repiten cada año) y móviles (se calculan para cada año). Se añaden con el botón «Añadir festividades».
-const FIJAS = [
-  ['01-01', 'Año Nuevo', 'Global'],
-  ['01-06', 'Día de Reyes', 'España'],
-  ['02-14', 'San Valentín', 'Global · fecha clave para promociones y masivos temáticos'],
-  ['03-08', 'Día Internacional de la Mujer', 'Global'],
-  ['03-17', 'San Patricio', 'EE. UU.'],
-  ['03-19', 'Día del Padre', 'España'],
-  ['04-19', 'Declaración de la Independencia de Venezuela', 'Venezuela · festivo, revisar turnos del equipo'],
-  ['05-01', 'Día del Trabajo', 'España y Venezuela · festivo, revisar turnos'],
-  ['05-05', 'Cinco de Mayo', 'EE. UU. y México'],
-  ['06-24', 'Batalla de Carabobo', 'Venezuela · festivo, revisar turnos'],
-  ['07-04', 'Día de la Independencia de EE. UU.', 'EE. UU.'],
-  ['07-05', 'Día de la Independencia de Venezuela', 'Venezuela · festivo, revisar turnos'],
-  ['07-24', 'Natalicio de Simón Bolívar', 'Venezuela · festivo, revisar turnos'],
-  ['08-15', 'Asunción de la Virgen', 'España · festivo'],
-  ['10-12', 'Fiesta Nacional de España / Día de la Resistencia Indígena', 'España y Venezuela · festivo, revisar turnos'],
-  ['10-31', 'Halloween', 'Global · fecha fuerte para contenido temático'],
-  ['11-01', 'Todos los Santos', 'España · festivo'],
-  ['11-11', 'Día del Soltero', 'Global'],
-  ['12-08', 'Inmaculada Concepción', 'España · festivo'],
-  ['12-24', 'Nochebuena', 'Global · revisar turnos'],
-  ['12-25', 'Navidad', 'Global · revisar turnos'],
-  ['12-31', 'Nochevieja', 'Global · revisar turnos'],
-]
-const isoF = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
-// n-ésimo día de la semana (0=dom…6=sáb) de un mes; n=-1 → el último
-function nEsimo(y, m, dow, n) {
-  if (n > 0) { const d = new Date(y, m, 1); d.setDate(1 + ((dow - d.getDay() + 7) % 7) + (n - 1) * 7); return d }
-  const d = new Date(y, m + 1, 0); d.setDate(d.getDate() - ((d.getDay() - dow + 7) % 7)); return d
-}
-// Domingo de Pascua (algoritmo de Meeus/Jones/Butcher)
-function pascua(y) {
-  const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3)
-  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451)
-  const mes = Math.floor((h + l - 7 * m + 114) / 31), dia = ((h + l - 7 * m + 114) % 31) + 1
-  return new Date(y, mes - 1, dia)
-}
-const sumar = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
-function moviles(y) {
-  const p = pascua(y)
-  const accion = nEsimo(y, 10, 4, 4) // 4.º jueves de noviembre
-  return [
-    [isoF(sumar(p, -2)), 'Viernes Santo', 'España · festivo'],
-    [isoF(p), 'Domingo de Pascua', 'Global'],
-    [isoF(nEsimo(y, 4, 0, 1)), 'Día de la Madre (España)', 'España · primer domingo de mayo'],
-    [isoF(nEsimo(y, 4, 0, 2)), 'Día de la Madre (EE. UU. y Venezuela)', 'Segundo domingo de mayo · fecha fuerte'],
-    [isoF(nEsimo(y, 4, 1, -1)), 'Memorial Day', 'EE. UU.'],
-    [isoF(nEsimo(y, 5, 0, 3)), 'Día del Padre (EE. UU.)', 'EE. UU. · tercer domingo de junio'],
-    [isoF(nEsimo(y, 8, 1, 1)), 'Labor Day', 'EE. UU.'],
-    [isoF(accion), 'Acción de Gracias', 'EE. UU.'],
-    [isoF(sumar(accion, 1)), 'Black Friday', 'Global · fecha fuerte para promos'],
-    [isoF(sumar(accion, 4)), 'Cyber Monday', 'Global · fecha fuerte para promos'],
-  ]
-}
-// Lista de festividades que faltan por añadir (solo futuras): fijas una vez (recurrentes) y móviles de este año y el siguiente
-function festividadesPendientes(existentes) {
-  const hoy = new Date(); hoy.setHours(0, 0, 0, 0)
-  const hoyISO = isoF(hoy)
-  const ya = new Set(existentes.map((r) => r.titulo.trim().toLowerCase()))
-  const yaFecha = new Set(existentes.map((r) => r.titulo.trim().toLowerCase() + '|' + r.fecha))
+const TIPOS = { otra: 'Otra fecha', cumpleanos: 'Cumpleaños', aniversario: 'Aniversario' }
+// Festividades que se guardaban con el botón del lote anterior: ahora se generan por país, así que se pueden limpiar
+const LEGACY_TITULOS = new Set(['Acción de Gracias', 'Asunción de la Virgen', 'Año Nuevo', 'Batalla de Carabobo', 'Black Friday', 'Cinco de Mayo', 'Cyber Monday', 'Declaración de la Independencia de Venezuela', 'Domingo de Pascua', 'Día Internacional de la Mujer', 'Día de Reyes', 'Día de la Independencia de EE. UU.', 'Día de la Independencia de Venezuela', 'Día de la Madre (EE. UU. y Venezuela)', 'Día de la Madre (España)', 'Día del Padre', 'Día del Padre (EE. UU.)', 'Día del Soltero', 'Día del Trabajo', 'Fiesta Nacional de España / Día de la Resistencia Indígena', 'Halloween', 'Inmaculada Concepción', 'Labor Day', 'Memorial Day', 'Natalicio de Simón Bolívar', 'Navidad', 'Nochebuena', 'Nochevieja', 'San Patricio', 'San Valentín', 'Todos los Santos', 'Viernes Santo'])
+const LEGACY_NOTAS = new Set(['EE. UU.', 'EE. UU. y México', 'EE. UU. · tercer domingo de junio', 'España', 'España y Venezuela · festivo, revisar turnos', 'España · festivo', 'España · primer domingo de mayo', 'Global', 'Global · fecha clave para promociones y masivos temáticos', 'Global · fecha fuerte para contenido temático', 'Global · fecha fuerte para promos', 'Global · revisar turnos', 'Segundo domingo de mayo · fecha fuerte', 'Venezuela · festivo, revisar turnos', 'Venezuela · festivo, revisar turnos del equipo'])
+const esLegacy = (r) => LEGACY_TITULOS.has(r.titulo) && LEGACY_NOTAS.has(r.notas || '')
+
+const EMPTY = { tipo: 'otra', titulo: '', fecha: '', recurrente: true, notas: '', persona: '' } // persona: 'perfil:<id>' | 'modelo:<id>' | ''
+
+// Una fecha guardada que se repite → su aparición dentro de un rango (puede haber varias si el rango abarca años)
+function ocurrenciasEnRango(e, desde, hasta) {
+  const [y0, m0, d0] = e.fecha.split('-').map(Number)
+  const repite = e.recurrente || e.tipo === 'cumpleanos' || e.tipo === 'aniversario'
+  if (!repite) return e.fecha >= desde && e.fecha <= hasta ? [e.fecha] : []
   const out = []
-  FIJAS.forEach(([md, titulo, notas]) => {
-    if (ya.has(titulo.toLowerCase())) return
-    let y = hoy.getFullYear()
-    if (`${y}-${md}` < hoyISO) y += 1
-    out.push({ titulo, fecha: `${y}-${md}`, recurrente: true, notas })
-  })
-  ;[hoy.getFullYear(), hoy.getFullYear() + 1].forEach((y) => {
-    moviles(y).forEach(([fecha, titulo, notas]) => {
-      if (fecha < hoyISO || yaFecha.has(titulo.toLowerCase() + '|' + fecha)) return
-      out.push({ titulo, fecha, recurrente: false, notas })
-    })
-  })
+  for (let y = Number(desde.slice(0, 4)); y <= Number(hasta.slice(0, 4)); y++) {
+    if (y < y0) continue
+    let d = new Date(y, m0 - 1, d0)
+    if (d.getMonth() !== m0 - 1) d = new Date(y, m0 - 1, 28) // 29 de febrero en año no bisiesto
+    const s = iso(d)
+    if (s >= desde && s <= hasta) out.push(s)
+  }
   return out
 }
-
-const EMPTY = { titulo: '', fecha: '', recurrente: true, notas: '' }
 
 export default function ImportantDates() {
   const { profile, hasAnyRole } = useAuth()
   const puedeGestionar = hasAnyRole(['admin', 'manager', 'ig_manager'])
   const [rows, setRows] = useState([])
+  const [perfiles, setPerfiles] = useState([])
+  const [modelos, setModelos] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
-  const [sembrando, setSembrando] = useState(false)
-  const [aviso, setAviso] = useState('')
+  const [paises, setPaises] = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem(LS_PAISES)); if (Array.isArray(v)) return v } catch { /* sin almacenamiento */ }
+    return PAISES_DEFECTO
+  })
+  const [vista, setVista] = useState('lista')
+  const [verOcultas, setVerOcultas] = useState(false)
+  const [mes, setMes] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
+  const [dia, setDia] = useState(null)
+  const hoy = iso(new Date())
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('important_dates').select('*')
-    setRows(data || [])
+    const [{ data }, { data: pf }, { data: md }] = await Promise.all([
+      supabase.from('important_dates').select('*'),
+      supabase.from('profiles').select('id, full_name, active').order('full_name'),
+      supabase.from('models').select('id, stage_name, status').order('stage_name'),
+    ])
+    setRows(data || []); setPerfiles(pf || []); setModelos(md || [])
     setLoading(false)
   }
   useEffect(() => { load() }, [])
 
+  function alternarPais(id) {
+    setPaises((p) => {
+      const n = p.includes(id) ? p.filter((x) => x !== id) : [...p, id]
+      try { localStorage.setItem(LS_PAISES, JSON.stringify(n)) } catch { /* sin almacenamiento */ }
+      return n
+    })
+  }
+
+  // ¿La persona de esta fecha sigue en el CRM? (perfil activo / modelo que no está de baja)
+  function personaVigente(r) {
+    if (!r.persona_id) return true
+    if (r.persona_tipo === 'modelo') { const m = modelos.find((x) => x.id === r.persona_id); return !!m && m.status !== 'baja' }
+    const p = perfiles.find((x) => x.id === r.persona_id); return !!p && p.active !== false
+  }
+
   async function crear(e) {
     e.preventDefault()
-    if (!form.titulo.trim() || !form.fecha) return
-    await supabase.from('important_dates').insert([{ ...form, titulo: form.titulo.trim(), creado_por: profile.id }])
-    setForm(EMPTY)
-    setShowForm(false)
+    if (!form.fecha) return
+    let titulo = form.titulo.trim(), persona_tipo = null, persona_id = null
+    if (form.tipo !== 'otra' && form.persona) {
+      const [pt, pid] = form.persona.split(':')
+      persona_tipo = pt; persona_id = pid
+      const nombre = pt === 'modelo' ? modelos.find((m) => m.id === pid)?.stage_name : perfiles.find((p) => p.id === pid)?.full_name
+      titulo = `${form.tipo === 'cumpleanos' ? 'Cumpleaños' : 'Aniversario'} de ${nombre}`
+    }
+    if (!titulo) return
+    await supabase.from('important_dates').insert([{
+      titulo, fecha: form.fecha, recurrente: form.tipo === 'otra' ? form.recurrente : true,
+      notas: form.notas.trim() || null, creado_por: profile.id, tipo: form.tipo, persona_tipo, persona_id,
+    }])
+    setForm(EMPTY); setShowForm(false); load()
+  }
+  async function limpiarLegacy() {
+    if (!confirm(`¿Quitar ${legacy.length} festividades añadidas con el botón anterior? Ahora se generan solas al elegir países.`)) return
+    await supabase.from('important_dates').delete().in('id', legacy.map((r) => r.id))
     load()
   }
-
-  async function anadirFestividades() {
-    const nuevas = festividadesPendientes(rows)
-    if (!nuevas.length) { setAviso('Ya tienes todas las festividades añadidas.'); return }
-    setSembrando(true)
-    const { error } = await supabase.from('important_dates').insert(nuevas.map((n) => ({ ...n, creado_por: profile.id })))
-    setSembrando(false)
-    setAviso(error ? 'No se pudieron añadir: ' + error.message : `Se han añadido ${nuevas.length} festividades.`)
-    load()
-  }
-
   async function borrar(r) {
     if (!confirm(`¿Eliminar "${r.titulo}"?`)) return
     await supabase.from('important_dates').delete().eq('id', r.id)
     load()
   }
 
-  const conProxima = rows
-    .map((r) => ({ ...r, _proxima: proximaOcurrencia(r.fecha, r.recurrente), _dias: diasHasta(proximaOcurrencia(r.fecha, r.recurrente)) }))
-    .sort((a, b) => ((a._dias < 0) - (b._dias < 0)) || (a._proxima - b._proxima))
+  // Todo lo que cae en un rango: festividades de los países elegidos + fechas guardadas (con repeticiones)
+  function eventosEnRango(desde, hasta) {
+    const out = []
+    festividades(paises, desde, hasta).forEach((f) => {
+      const p = PAISES.find((x) => x.id === f.pais)
+      out.push({ key: `f-${f.pais}-${f.fecha}-${f.titulo}`, fecha: f.fecha, titulo: f.titulo, color: p.color, etiqueta: p.n, notas: f.tipo === 'celebracion' ? 'Celebración' : 'Festivo', borrable: null })
+    })
+    rows.forEach((r) => {
+      if (!personaVigente(r) || esLegacy(r)) return
+      const esPersona = r.tipo === 'cumpleanos' || r.tipo === 'aniversario'
+      ocurrenciasEnRango(r, desde, hasta).forEach((f) => {
+        const n = Number(f.slice(0, 4)) - Number(r.fecha.slice(0, 4))
+        let extra = ''
+        if (r.tipo === 'cumpleanos' && n > 0 && n < 100) extra = `cumple ${n}`
+        if (r.tipo === 'aniversario' && n > 0) extra = `${n}.º aniversario`
+        out.push({
+          key: `d-${r.id}-${f}`, fecha: f, titulo: r.titulo, color: esPersona ? COLOR_PERSONA : COLOR_MANUAL,
+          etiqueta: esPersona ? TIPOS[r.tipo] : 'Manual', notas: [extra, r.notas].filter(Boolean).join(' · '), borrable: r,
+        })
+      })
+    })
+    return out.sort((a, b) => a.fecha.localeCompare(b.fecha))
+  }
+
+  const proximos = useMemo(() => eventosEnRango(hoy, sumarDias(hoy, 365)), [paises, rows, perfiles, modelos])
+  const legacy = rows.filter(esLegacy)
+  const ocultas = rows.filter((r) => !personaVigente(r))
+  const pasadas = rows.filter((r) => !(r.recurrente || r.tipo !== 'otra') && r.fecha < hoy && personaVigente(r)).sort((a, b) => b.fecha.localeCompare(a.fecha))
+
+  // ---- calendario ----
+  const celdas = useMemo(() => {
+    const primero = new Date(mes.getFullYear(), mes.getMonth(), 1)
+    const lead = (primero.getDay() + 6) % 7
+    const n = new Date(mes.getFullYear(), mes.getMonth() + 1, 0).getDate()
+    const arr = Array(lead).fill(null)
+    for (let i = 1; i <= n; i++) arr.push(iso(new Date(mes.getFullYear(), mes.getMonth(), i)))
+    while (arr.length % 7) arr.push(null)
+    return arr
+  }, [mes])
+  const eventosMes = useMemo(() => {
+    const d0 = iso(new Date(mes.getFullYear(), mes.getMonth(), 1)), d1 = iso(new Date(mes.getFullYear(), mes.getMonth() + 1, 0))
+    const m = {}
+    eventosEnRango(d0, d1).forEach((e) => { (m[e.fecha] = m[e.fecha] || []).push(e) })
+    return m
+  }, [mes, paises, rows, perfiles, modelos])
+
+  const lbl = { color: 'var(--text-muted)' }
+  const Item = ({ e }) => {
+    const dias = difDias(e.fecha, hoy)
+    return (
+      <div className="p-3.5 flex items-center justify-between gap-3" style={{ borderLeft: `4px solid ${e.color}` }}>
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{e.titulo}</p>
+          <p className="text-xs flex items-center gap-1.5 flex-wrap" style={lbl}>
+            <span>{fmtLargo(e.fecha)}{e.fecha.slice(0, 4) !== hoy.slice(0, 4) ? ' ' + e.fecha.slice(0, 4) : ''}</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px]" style={{ background: `${e.color}26`, color: e.color }}>{e.etiqueta}</span>
+            {e.notas && <span>· {e.notas}</span>}
+          </p>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: dias >= 0 && dias <= 7 ? 'var(--danger)22' : 'var(--panel-alt)', color: dias >= 0 && dias <= 7 ? 'var(--danger)' : 'var(--text-muted)' }}>
+            {dias < 0 ? 'pasada' : dias === 0 ? '¡Hoy!' : dias === 1 ? 'Mañana' : `en ${dias} días`}
+          </span>
+          {puedeGestionar && e.borrable && <button onClick={() => borrar(e.borrable)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Borrar</button>}
+        </div>
+      </div>
+    )
+  }
+
+  const personasForm = (
+    <Select value={form.persona} onChange={(e) => setForm({ ...form, persona: e.target.value })}>
+      <option value="">— Otra persona (escribir título) —</option>
+      <optgroup label="Equipo">{perfiles.filter((p) => p.active !== false).map((p) => <option key={p.id} value={`perfil:${p.id}`}>{p.full_name}</option>)}</optgroup>
+      <optgroup label="Modelos">{modelos.filter((m) => m.status !== 'baja').map((m) => <option key={m.id} value={`modelo:${m.id}`}>{m.stage_name}</option>)}</optgroup>
+    </Select>
+  )
 
   return (
     <div>
       <PageHeader
         title="Fechas importantes"
-        subtitle="Cumpleaños, festividades y fechas especiales del equipo o de las modelos."
-        action={puedeGestionar && (
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={anadirFestividades} disabled={sembrando}>{sembrando ? 'Añadiendo…' : '+ Festividades importantes'}</Button>
-            <Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancelar' : '+ Añadir fecha'}</Button>
-          </div>
-        )}
+        subtitle="Elige los países para ver sus festividades. Tus fechas, cumpleaños y aniversarios se muestran con otros colores."
+        action={puedeGestionar && <Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancelar' : '+ Añadir fecha'}</Button>}
       />
 
-      {aviso && <p className="text-sm mb-3" style={{ color: 'var(--text-muted)' }}>{aviso}</p>}
+      {/* Países */}
+      <Panel className="p-4 mb-4">
+        <p className="text-xs mb-2" style={lbl}>Países</p>
+        <div className="flex flex-wrap gap-2">
+          {PAISES.map((p) => {
+            const on = paises.includes(p.id)
+            return (
+              <button key={p.id} onClick={() => alternarPais(p.id)} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm"
+                style={{ background: on ? `${p.color}24` : 'var(--panel-alt)', border: `1px solid ${on ? p.color : 'var(--border)'}`, color: on ? p.color : 'var(--text-muted)' }}>
+                <span style={{ width: 9, height: 9, borderRadius: 5, background: on ? p.color : 'var(--border)' }} />{p.n}
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex flex-wrap gap-4 mt-3 text-xs" style={lbl}>
+          <span className="inline-flex items-center gap-1.5"><span style={{ width: 9, height: 9, borderRadius: 5, background: COLOR_MANUAL }} /> Fechas añadidas a mano</span>
+          <span className="inline-flex items-center gap-1.5"><span style={{ width: 9, height: 9, borderRadius: 5, background: COLOR_PERSONA }} /> Cumpleaños y aniversarios</span>
+        </div>
+      </Panel>
+
+      {puedeGestionar && legacy.length > 0 && (
+        <Panel className="p-4 mb-4" style={{ borderColor: 'var(--accent)' }}>
+          <p className="text-sm">Tienes <strong>{legacy.length}</strong> festividades guardadas a mano con el botón anterior; ahora salen solas por país y aparecerían duplicadas. <button onClick={limpiarLegacy} className="underline ml-1" style={{ color: 'var(--accent)' }}>Quitarlas</button></p>
+        </Panel>
+      )}
+
       {showForm && (
         <Panel className="p-5 mb-6">
           <form onSubmit={crear} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Input placeholder="Título (ej: Cumpleaños de Lily)" value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} />
-            <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
-            <label className="flex items-center gap-2 text-sm sm:col-span-2">
-              <input type="checkbox" checked={form.recurrente} onChange={(e) => setForm({ ...form, recurrente: e.target.checked })} />
-              Se repite cada año (cumpleaños, aniversario...)
-            </label>
-            <Input className="sm:col-span-2" placeholder="Notas (opcional)" value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
+            <div>
+              <label className="text-xs block mb-1" style={lbl}>Tipo</label>
+              <Select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
+                {Object.entries(TIPOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs block mb-1" style={lbl}>{form.tipo === 'cumpleanos' ? 'Fecha de nacimiento' : form.tipo === 'aniversario' ? 'Fecha de inicio (entrada)' : 'Fecha'}</label>
+              <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} required />
+            </div>
+            {form.tipo !== 'otra' && (
+              <div className="sm:col-span-2">
+                <label className="text-xs block mb-1" style={lbl}>Persona (si ya no está en el CRM, la fecha deja de mostrarse)</label>
+                {personasForm}
+              </div>
+            )}
+            {(form.tipo === 'otra' || !form.persona) && (
+              <div className="sm:col-span-2">
+                <label className="text-xs block mb-1" style={lbl}>Título</label>
+                <Input placeholder={form.tipo === 'otra' ? 'Ej: Reunión trimestral' : 'Ej: Cumpleaños de mi hermana'} value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} required />
+              </div>
+            )}
+            {form.tipo === 'otra' ? (
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" checked={form.recurrente} onChange={(e) => setForm({ ...form, recurrente: e.target.checked })} />
+                Se repite cada año
+              </label>
+            ) : <p className="text-xs sm:col-span-2" style={lbl}>Los cumpleaños y aniversarios se repiten automáticamente cada año.</p>}
+            <div className="sm:col-span-2"><Input placeholder="Notas (opcional)" value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} /></div>
             <Button type="submit" className="sm:col-span-2">Guardar</Button>
           </form>
         </Panel>
       )}
 
-      <Panel>
-        {loading ? (
-          <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
-        ) : conProxima.length === 0 ? (
-          <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Sin fechas guardadas todavía.</p>
-        ) : (
-          <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
-            {conProxima.map((r) => (
-              <div key={r.id} className="p-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">{r.titulo}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {fmtFecha(r._proxima)}{r._proxima.getFullYear() !== new Date().getFullYear() ? ' ' + r._proxima.getFullYear() : ''}{r.notas ? ` · ${r.notas}` : ''}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <span
-                    className="text-xs px-2 py-0.5 rounded-full"
-                    style={{ background: r._dias <= 7 ? 'var(--danger)22' : 'var(--panel-alt)', color: r._dias <= 7 ? 'var(--danger)' : 'var(--text-muted)' }}
-                  >
-                    {r._dias < 0 ? 'pasada' : r._dias === 0 ? '¡Hoy!' : r._dias === 1 ? 'Mañana' : `en ${r._dias} días`}
-                  </span>
-                  {puedeGestionar && (
-                    <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Borrar</button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+      <div className="flex items-center gap-2 mb-3">
+        {[['lista', 'Próximas'], ['calendario', 'Calendario']].map(([k, t]) => (
+          <button key={k} onClick={() => setVista(k)} className="px-4 py-1.5 rounded-md text-sm font-medium"
+            style={{ background: vista === k ? 'var(--accent)' : 'var(--panel-alt)', color: vista === k ? '#000' : 'var(--text)', border: '1px solid ' + (vista === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
+        ))}
+        {ocultas.length > 0 && (
+          <button onClick={() => setVerOcultas(!verOcultas)} className="ml-auto text-xs hover:underline" style={lbl}>
+            {verOcultas ? 'Ocultar' : 'Ver'} {ocultas.length} {ocultas.length === 1 ? 'fecha de una persona que ya no está' : 'fechas de personas que ya no están'}
+          </button>
         )}
-      </Panel>
+      </div>
+
+      {loading ? <Panel><p className="p-6 text-sm" style={lbl}>Cargando…</p></Panel> : vista === 'lista' ? (
+        <Panel>
+          {proximos.length === 0 ? (
+            <p className="p-6 text-sm" style={lbl}>No hay fechas en los próximos 12 meses. Elige algún país o añade una fecha.</p>
+          ) : (
+            <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+              {proximos.map((e, i) => {
+                const nuevoMes = i === 0 || e.fecha.slice(0, 7) !== proximos[i - 1].fecha.slice(0, 7)
+                return (
+                  <div key={e.key}>
+                    {nuevoMes && <p className="px-4 pt-3 pb-1 text-xs font-medium uppercase tracking-wide" style={{ ...lbl, background: 'var(--panel-alt)' }}>{NOMBRE_MES[Number(e.fecha.slice(5, 7)) - 1]} {e.fecha.slice(0, 4)}</p>}
+                    <Item e={e} />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Panel>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+          <Panel className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <button onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() - 1, 1))} className="px-2 py-1 rounded hover:opacity-70" aria-label="Mes anterior">←</button>
+              <p className="font-medium">{NOMBRE_MES[mes.getMonth()]} {mes.getFullYear()}</p>
+              <button onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() + 1, 1))} className="px-2 py-1 rounded hover:opacity-70" aria-label="Mes siguiente">→</button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1" style={lbl}>{DIAS_SEM.map((d) => <div key={d}>{d}</div>)}</div>
+            <div className="grid grid-cols-7 gap-1">
+              {celdas.map((s, i) => {
+                if (!s) return <div key={i} />
+                const ev = eventosMes[s] || []
+                const on = dia === s
+                return (
+                  <button key={s} onClick={() => setDia(on ? null : s)} className="rounded-md py-2 text-sm flex flex-col items-center gap-1 min-h-[54px]"
+                    style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : s === hoy ? 'var(--text-muted)' : 'var(--border)'}`, fontWeight: s === hoy ? 700 : 400 }}>
+                    <span>{Number(s.slice(8))}</span>
+                    <span className="flex gap-0.5 flex-wrap justify-center h-2">
+                      {ev.slice(0, 4).map((e) => <span key={e.key} style={{ width: 6, height: 6, borderRadius: 3, background: e.color }} />)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </Panel>
+          <Panel>
+            {dia ? (
+              (eventosMes[dia] || []).length ? <div className="divide-y" style={{ borderColor: 'var(--border)' }}>{eventosMes[dia].map((e) => <Item key={e.key} e={e} />)}</div>
+                : <p className="p-5 text-sm" style={lbl}>Nada el {fmtLargo(dia)}.</p>
+            ) : <p className="p-5 text-sm" style={lbl}>Pulsa un día para ver sus fechas.</p>}
+          </Panel>
+        </div>
+      )}
+
+      {verOcultas && ocultas.length > 0 && (
+        <Panel className="mt-4">
+          <p className="px-4 pt-3 pb-1 text-xs font-medium" style={lbl}>Personas que ya no están en el CRM (no se repiten)</p>
+          {ocultas.map((r) => (
+            <div key={r.id} className="p-3.5 flex items-center justify-between gap-3" style={{ borderTop: '1px solid var(--border)', opacity: 0.7 }}>
+              <span className="text-sm">{r.titulo} <span className="text-xs" style={lbl}>· {aDate(r.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}</span></span>
+              {puedeGestionar && <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Borrar</button>}
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      {pasadas.length > 0 && (
+        <Panel className="mt-4">
+          <p className="px-4 pt-3 pb-1 text-xs font-medium" style={lbl}>Fechas puntuales ya pasadas</p>
+          {pasadas.map((r) => (
+            <div key={r.id} className="p-3.5 flex items-center justify-between gap-3" style={{ borderTop: '1px solid var(--border)', opacity: 0.7 }}>
+              <span className="text-sm">{r.titulo} <span className="text-xs" style={lbl}>· {r.fecha.split('-').reverse().join('/')}</span></span>
+              {puedeGestionar && <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Borrar</button>}
+            </div>
+          ))}
+        </Panel>
+      )}
     </div>
   )
 }
