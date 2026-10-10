@@ -38,6 +38,56 @@ const PRESETS = [
   { id: 0, n: 'Personalizado' },
 ]
 
+async function traerFilas(desde, hasta, modelo) {
+  const filas = []
+  for (let from = 0; ; from += 1000) {
+    let q = supabase
+      .from('shift_report_details')
+      .select('compras, model_id, models(stage_name), shift_reports!inner(fecha, chatter_id, profiles(full_name))')
+      .gte('shift_reports.fecha', desde)
+      .lte('shift_reports.fecha', hasta)
+      .range(from, from + 999)
+    if (modelo && modelo !== 'todos') q = q.eq('model_id', modelo)
+    const { data, error } = await q
+    if (error || !data) break
+    filas.push(...data)
+    if (data.length < 1000) break
+  }
+  return filas
+}
+
+function agregar(filas, fChatter) {
+  const mapa = new Map()
+  const quienes = new Map()
+  let sin = 0
+  for (const d of filas) {
+    const chId = d.shift_reports?.chatter_id
+    const chNombre = d.shift_reports?.profiles?.full_name || 'Sin nombre'
+    if (chId) quienes.set(chId, chNombre)
+    if (fChatter !== 'todos' && chId !== fChatter) continue
+    const fecha = d.shift_reports?.fecha
+    for (const c of d.compras || []) {
+      const user = String(c.user || '').trim()
+      const monto = Number(c.monto) || 0
+      if (user.length < 2 || !(monto > 0)) { sin++; continue }
+      const k = user.toLowerCase()
+      let e = mapa.get(k)
+      if (!e) { e = { user, nombre: c.fan, total: 0, ppv: 0, tips: 0, n: 0, ultima: '', modelos: new Set(), chatters: new Set() }; mapa.set(k, e) }
+      e.chatters.add(chNombre)
+      e.total += monto
+      if (c.tipo === 'tip') e.tips += monto; else e.ppv += monto
+      e.n += 1
+      if (fecha && fecha >= e.ultima) { e.ultima = fecha; e.nombre = c.fan }
+      if (d.models?.stage_name) e.modelos.add(d.models.stage_name)
+    }
+  }
+  return {
+    ranking: Array.from(mapa.values()).sort((a, b) => b.total - a.total),
+    sinMonto: sin,
+    chattersVenta: Array.from(quienes, ([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre)),
+  }
+}
+
 export default function Recaptures() {
   const { profile, hasAnyRole } = useAuth()
   const esMgr = hasAnyRole(['admin', 'manager'])
@@ -62,6 +112,8 @@ export default function Recaptures() {
   const [noRepetir, setNoRepetir] = useState(true)
   const [genBusy, setGenBusy] = useState(false)
   const [genMsg, setGenMsg] = useState('')
+  const [autoDias, setAutoDias] = useState(30)
+  const [pestana, setPestana] = useState('asignados')
 
   useEffect(() => {
     if (!esMgr) return
@@ -77,57 +129,13 @@ export default function Recaptures() {
 
   async function cargarRanking() {
     setCargando(true)
-    const filas = []
-    for (let from = 0; ; from += 1000) {
-      let q = supabase
-        .from('shift_report_details')
-        .select('compras, model_id, models(stage_name), shift_reports!inner(fecha, chatter_id, profiles(full_name))')
-        .gte('shift_reports.fecha', desde)
-        .lte('shift_reports.fecha', hasta)
-        .range(from, from + 999)
-      if (fModelo !== 'todos') q = q.eq('model_id', fModelo)
-      const { data, error } = await q
-      if (error || !data) break
-      filas.push(...data)
-      if (data.length < 1000) break
-    }
-    setFilas(filas)
+    setFilas(await traerFilas(desde, hasta, fModelo))
     setCargando(false)
   }
   useEffect(() => { if (esMgr) cargarRanking() }, [esMgr, desde, hasta, fModelo])
 
   // El ranking se calcula en el momento con el chatter elegido, sin volver a pedir datos
-  const { ranking, sinMonto, chattersVenta } = useMemo(() => {
-    const mapa = new Map()
-    const quienes = new Map()
-    let sin = 0
-    for (const d of filas) {
-      const chId = d.shift_reports?.chatter_id
-      const chNombre = d.shift_reports?.profiles?.full_name || 'Sin nombre'
-      if (chId) quienes.set(chId, chNombre)
-      if (fChatter !== 'todos' && chId !== fChatter) continue
-      const fecha = d.shift_reports?.fecha
-      for (const c of d.compras || []) {
-        const user = String(c.user || '').trim()
-        const monto = Number(c.monto) || 0
-        if (user.length < 2 || !(monto > 0)) { sin++; continue }
-        const k = user.toLowerCase()
-        let e = mapa.get(k)
-        if (!e) { e = { user, nombre: c.fan, total: 0, ppv: 0, tips: 0, n: 0, ultima: '', modelos: new Set(), chatters: new Set() }; mapa.set(k, e) }
-        e.chatters.add(chNombre)
-        e.total += monto
-        if (c.tipo === 'tip') e.tips += monto; else e.ppv += monto
-        e.n += 1
-        if (fecha && fecha >= e.ultima) { e.ultima = fecha; e.nombre = c.fan }
-        if (d.models?.stage_name) e.modelos.add(d.models.stage_name)
-      }
-    }
-    return {
-      ranking: Array.from(mapa.values()).sort((a, b) => b.total - a.total),
-      sinMonto: sin,
-      chattersVenta: Array.from(quienes, ([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre)),
-    }
-  }, [filas, fChatter])
+  const { ranking, sinMonto, chattersVenta } = useMemo(() => agregar(filas, fChatter), [filas, fChatter])
 
   // ---- asignaciones de la semana
   async function cargarAsign() {
@@ -152,10 +160,11 @@ export default function Recaptures() {
     setSelChat(actual.includes(id) ? actual.filter((x) => x !== id) : actual.concat([id]))
   }
 
-  async function generar() {
+  // Reparto común: conserva lo ya marcado, borra lo pendiente de los chatters elegidos y guarda lo nuevo.
+  // modo 'azar': k fans por chatter al azar. modo 'auto': reparte TODOS los fans del periodo a partes iguales.
+  async function repartir(modo, poolBase) {
     setGenMsg('')
     if (!chattersElegidos.length) { setGenMsg('Elige al menos un chatter.'); return }
-    const k = Math.max(1, parseInt(porChatter, 10) || 0)
     setGenBusy(true)
     const actuales = await cargarAsign()
     const elegidos = new Set(chattersElegidos)
@@ -167,32 +176,58 @@ export default function Recaptures() {
       ;(previas || []).forEach((a) => excluir.add(a.fan_user.toLowerCase()))
     }
     const minimo = parseFloat(minGasto) || 0
-    const pool = barajar(ranking.filter((f) => f.total >= minimo && !excluir.has(f.user.toLowerCase())))
-    const necesita = new Map(chattersElegidos.map((id) => [id, Math.max(0, k - mantener.filter((a) => a.chatter_id === id).length)]))
+    const disponibles = poolBase.filter((f) => f.total >= minimo && !excluir.has(f.user.toLowerCase()))
     const nuevas = []
-    let hayMas = true
-    while (hayMas && pool.length) {
-      hayMas = false
-      for (const id of chattersElegidos) {
-        if (!pool.length) break
-        if ((necesita.get(id) || 0) > 0) {
-          const f = pool.pop()
-          nuevas.push({ semana, chatter_id: id, fan_user: f.user, fan_nombre: f.nombre, gasto: Math.round(f.total * 100) / 100, modelos: Array.from(f.modelos).join(', '), ultima_compra: f.ultima || null, asignado_por: profile.id })
-          necesita.set(id, necesita.get(id) - 1)
-          hayMas = true
+    const fila = (id, f) => ({ semana, chatter_id: id, fan_user: f.user, fan_nombre: f.nombre, gasto: Math.round(f.total * 100) / 100, modelos: Array.from(f.modelos).join(', '), ultima_compra: f.ultima || null, asignado_por: profile.id })
+    let faltan = 0
+    if (modo === 'auto') {
+      const n = chattersElegidos.length
+      const M = disponibles.length
+      const cupo = new Map(chattersElegidos.map((id, i) => [id, Math.floor(M / n) + (i < M % n ? 1 : 0)]))
+      const suma = new Map(chattersElegidos.map((id) => [id, 0]))
+      for (const f of disponibles) { // ya vienen de mayor a menor gasto: cada fan va al chatter con menos gasto acumulado
+        const id = chattersElegidos.filter((x) => cupo.get(x) > 0).sort((x, y) => suma.get(x) - suma.get(y))[0]
+        if (!id) break
+        nuevas.push(fila(id, f))
+        cupo.set(id, cupo.get(id) - 1)
+        suma.set(id, suma.get(id) + f.total)
+      }
+    } else {
+      const k = Math.max(1, parseInt(porChatter, 10) || 0)
+      const pool = barajar(disponibles)
+      const necesita = new Map(chattersElegidos.map((id) => [id, Math.max(0, k - mantener.filter((a) => a.chatter_id === id).length)]))
+      let hayMas = true
+      while (hayMas && pool.length) {
+        hayMas = false
+        for (const id of chattersElegidos) {
+          if (!pool.length) break
+          if ((necesita.get(id) || 0) > 0) {
+            nuevas.push(fila(id, pool.pop()))
+            necesita.set(id, necesita.get(id) - 1)
+            hayMas = true
+          }
         }
       }
+      faltan = Array.from(necesita.values()).reduce((a, b) => a + b, 0)
     }
     let error = null
     if (borrar.length) ({ error } = await supabase.from('recapture_assignments').delete().in('id', borrar.map((a) => a.id)))
     if (!error && nuevas.length) ({ error } = await supabase.from('recapture_assignments').insert(nuevas))
     setGenBusy(false)
     if (error) { setGenMsg('No se pudo guardar la asignación: ' + error.message); await cargarAsign(); return }
-    const faltan = Array.from(necesita.values()).reduce((a, b) => a + b, 0)
     setGenMsg(nuevas.length
-      ? `Asignados ${nuevas.length} fans.${faltan > 0 ? ` No había fans suficientes para completar ${faltan} puestos (prueba con un rango más amplio o quitando el mínimo).` : ''}`
+      ? `Asignados ${nuevas.length} fans.${faltan > 0 ? ` No había fans suficientes para completar ${faltan} puestos (prueba con un rango más amplio o quitando el mínimo).` : ''} Míralos en la pestaña "Fans asignados".`
       : 'No hay fans disponibles con estos criterios. Amplía el rango de fechas o baja el mínimo.')
     cargarAsign()
+  }
+  const generar = () => repartir('azar', ranking)
+  async function autoAsignar() {
+    setGenMsg('')
+    setGenBusy(true)
+    const f = await traerFilas(hace(autoDias), hoy(), 'todos')
+    const pool = agregar(f, 'todos').ranking
+    setGenBusy(false)
+    await repartir('auto', pool)
   }
 
   async function marcar(a, hecho) {
@@ -242,7 +277,19 @@ export default function Recaptures() {
         subtitle={esMgr ? 'Ranking de fans por gasto y reparto semanal de fans a recuperar entre los chatters.' : 'Los fans que te tocan esta semana. Marca cada uno cuando le hayas escrito.'}
       />
 
-      {/* ---------- Reparto semanal ---------- */}
+      {esMgr && (
+        <div className="flex gap-2 mb-5">
+          {[['asignados', 'Fans asignados'], ['reparto', 'Reparto y ranking']].map(([id, n]) => (
+            <button key={id} type="button" onClick={() => setPestana(id)} className="px-4 py-2 rounded-md text-sm"
+              style={{ background: pestana === id ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${pestana === id ? 'var(--accent)' : 'var(--border)'}`, color: pestana === id ? 'var(--accent)' : 'var(--text)' }}>
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ---------- Fans asignados (semana) ---------- */}
+      {(!esMgr || pestana === 'asignados') && (
       <Panel className="p-5 mb-6">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <p className="font-medium">Fans asignados · semana del {fmtF(semana)}</p>
@@ -252,47 +299,6 @@ export default function Recaptures() {
             <Button variant="ghost" onClick={() => setSemana(sumarDias(semana, 7))}>→</Button>
           </div>
         </div>
-
-        {esMgr && (
-          <div className="p-4 rounded-md mb-5" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-            <p className="text-sm font-medium mb-3">Repartir fans al azar</p>
-            <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-              Se sortean entre los fans del ranking de abajo (usa el rango de fechas y la modelo que tengas elegidos). Si ya hay reparto esta semana, se sustituyen solo los fans que aún no se han marcado como escritos.
-            </p>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Chatters que participan</label>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {chatters.length === 0 && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>No hay chatters activos.</span>}
-              {chatters.map((c) => {
-                const on = chattersElegidos.includes(c.id)
-                return (
-                  <button key={c.id} type="button" onClick={() => toggleChatter(c.id)} className="px-3 py-1.5 rounded-full text-sm"
-                    style={{ background: on ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}>
-                    {c.full_name}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fans por chatter</label>
-                <Input type="number" min="1" value={porChatter} onChange={(e) => setPorChatter(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Gasto mínimo del fan ($, opcional)</label>
-                <Input type="number" min="0" step="0.01" placeholder="0" value={minGasto} onChange={(e) => setMinGasto(e.target.value)} />
-              </div>
-              <label className="flex items-center gap-2 text-sm self-end pb-2 cursor-pointer">
-                <input type="checkbox" checked={noRepetir} onChange={(e) => setNoRepetir(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--accent)' }} />
-                No repetir fans de las últimas 4 semanas
-              </label>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <Button onClick={generar} disabled={genBusy || cargando}>{genBusy ? 'Repartiendo…' : asign.length ? 'Volver a repartir' : 'Repartir fans'}</Button>
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Fans disponibles en el ranking: {ranking.length}</span>
-            </div>
-            {genMsg && <p className="text-sm mt-3">{genMsg}</p>}
-          </div>
-        )}
 
         {grupos.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -331,7 +337,7 @@ export default function Recaptures() {
                           {a.hecho && a.hecho_en ? ` · escrito el ${new Date(a.hecho_en).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}` : ''}
                         </div>
                       </div>
-                      <CopyButton text={a.fan_user} label="Copiar @" />
+                      <CopyButton text={a.fan_user.replace(/^@+/, '')} label="Copiar usuario" />
                       {esMgr && <button onClick={() => quitar(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar</button>}
                     </div>
                   )
@@ -341,10 +347,78 @@ export default function Recaptures() {
           )
         })}
       </Panel>
+      )}
 
-      {/* ---------- Ranking de fans ---------- */}
-      {esMgr && (
-        <Panel className="p-5">
+      {/* ---------- Reparto y ranking ---------- */}
+      {esMgr && pestana === 'reparto' && (
+      <>
+      <Panel className="p-5 mb-6">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+          <p className="font-medium">Reparto · semana del {fmtF(semana)}</p>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => setSemana(sumarDias(semana, -7))}>←</Button>
+            <Button variant="ghost" onClick={() => setSemana(lunesDe(hoy()))} disabled={esSemanaActual}>Esta semana</Button>
+            <Button variant="ghost" onClick={() => setSemana(sumarDias(semana, 7))}>→</Button>
+          </div>
+        </div>
+        {esMgr && (
+          <div className="p-4 rounded-md mb-5" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+            <p className="text-sm font-medium mb-3">Repartir fans al azar</p>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+              Se sortean entre los fans del ranking de abajo (usa el rango de fechas y la modelo que tengas elegidos). Si ya hay reparto esta semana, se sustituyen solo los fans que aún no se han marcado como escritos.
+            </p>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Chatters que participan</label>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {chatters.length === 0 && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>No hay chatters activos.</span>}
+              {chatters.map((c) => {
+                const on = chattersElegidos.includes(c.id)
+                return (
+                  <button key={c.id} type="button" onClick={() => toggleChatter(c.id)} className="px-3 py-1.5 rounded-full text-sm"
+                    style={{ background: on ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}>
+                    {c.full_name}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fans por chatter</label>
+                <Input type="number" min="1" value={porChatter} onChange={(e) => setPorChatter(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Gasto mínimo del fan ($, opcional)</label>
+                <Input type="number" min="0" step="0.01" placeholder="0" value={minGasto} onChange={(e) => setMinGasto(e.target.value)} />
+              </div>
+              <label className="flex items-center gap-2 text-sm self-end pb-2 cursor-pointer">
+                <input type="checkbox" checked={noRepetir} onChange={(e) => setNoRepetir(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--accent)' }} />
+                No repetir fans de las últimas 4 semanas
+              </label>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button onClick={generar} disabled={genBusy || cargando}>{genBusy ? 'Repartiendo…' : asign.length ? 'Volver a repartir' : 'Repartir fans'}</Button>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Fans disponibles en el ranking: {ranking.length}</span>
+            </div>
+            <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
+              <p className="text-sm font-medium mb-1">Auto-asignación</p>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                Reparte todos los fans que compraron en el periodo elegido a partes iguales entre los chatters marcados arriba, equilibrando también el gasto (respeta el gasto mínimo y la opción de no repetir).
+              </p>
+              <div className="flex items-end gap-3 flex-wrap">
+                <div>
+                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Periodo de compras a repartir</label>
+                  <Select value={autoDias} onChange={(e) => setAutoDias(Number(e.target.value))}>
+                    {PRESETS.filter((p) => p.id > 0).map((p) => <option key={p.id} value={p.id}>{p.n}</option>)}
+                  </Select>
+                </div>
+                <Button onClick={autoAsignar} disabled={genBusy || cargando}>{genBusy ? 'Repartiendo…' : 'Auto-asignar'}</Button>
+              </div>
+            </div>
+            {genMsg && <p className="text-sm mt-3">{genMsg}</p>}
+          </div>
+        )}
+
+      </Panel>
+      <Panel className="p-5">
           <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
             <p className="font-medium">Ranking de fans por gasto</p>
             <Button variant="ghost" onClick={exportar} disabled={!ranking.length}>Exportar a Excel</Button>
@@ -406,7 +480,7 @@ export default function Recaptures() {
                     {ranking.slice(0, 500).map((r, i) => (
                       <tr key={r.user} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
-                        <td className="px-3 py-2"><strong>{r.user}</strong></td>
+                        <td className="px-3 py-2 whitespace-nowrap"><strong>{r.user}</strong> <button type="button" onClick={() => navigator.clipboard.writeText(r.user.replace(/^@+/, '')).catch(() => {})} className="text-xs ml-1 hover:underline" style={{ color: 'var(--accent)' }}>copiar</button></td>
                         <td className="px-3 py-2">{r.nombre}</td>
                         <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--success)' }}><strong>{money(r.total)}</strong></td>
                         <td className="px-3 py-2 tabular-nums">{money(r.ppv)}</td>
@@ -424,6 +498,7 @@ export default function Recaptures() {
             </>
           )}
         </Panel>
+      </>
       )}
     </div>
   )
