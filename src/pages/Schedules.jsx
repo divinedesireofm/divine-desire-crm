@@ -1,4 +1,3 @@
-          <SelectorModelos modelos={modelos} value={edit.modelos} onChange={(v) => setEdit({ ...edit, modelos: v })} />
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -307,14 +306,7 @@ function Grupos({ esMgr }) {
             <Input placeholder="Nombre del grupo" value={edit.nombre} onChange={(e) => setEdit({ ...edit, nombre: e.target.value })} />
             <Input type="number" min="2" max="20" placeholder="¿Para cuántos chatters?" value={edit.nchatters} onChange={(e) => setEdit({ ...edit, nchatters: e.target.value })} />
           </div>
-          <textarea
-            value={edit.modelos}
-            onChange={(e) => setEdit({ ...edit, modelos: e.target.value })}
-            placeholder="Alicia, Violeta, Valen..."
-            rows={3}
-            className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none mb-3"
-            style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
-          />
+          <SelectorModelos modelos={modelos} value={edit.modelos} onChange={(v) => setEdit({ ...edit, modelos: v })} />
           <div className="flex gap-2">
             <Button
               onClick={async () => {
