@@ -13,12 +13,13 @@ export function ModelAvatar({ name, url, size = 22 }) {
   )
 }
 
-// Foto pequeña + nombre, en línea. Úsalo donde antes se escribía solo el nombre.
+// Foto + nombre, en línea. Las fotos se muestran al doble del tamaño base indicado (ESCALA).
+const ESCALA = 2
 export default function ModelName({ name, size = 20, className = '', style, children }) {
   if (!name) return <span className={className} style={style}>{children ?? '—'}</span>
   return (
     <span className={`inline-flex items-center gap-1.5 align-middle ${className}`} style={style}>
-      <ModelAvatar name={name} size={size} />
+      <ModelAvatar name={name} size={Math.round(size * ESCALA)} />
       <span>{children ?? name}</span>
     </span>
   )

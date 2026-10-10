@@ -118,7 +118,7 @@ function MasivosCal() {
                           className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
                           style={{ background: 'var(--panel)', color: 'var(--accent)' }}
                         >
-                          <ModelName name={ev.models?.stage_name} size={14} />
+                          <ModelName name={ev.models?.stage_name} size={10} />
                         </span>
                       ))}
                     </div>

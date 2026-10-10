@@ -17,7 +17,7 @@ export function calcPago(p) {
   return r2(num(p.fact_neta) * num(p.pct) + num(p.bonos) + num(p.adelanto) + num(p.penalizacion) + num(p.deuda))
 }
 
-const VACIO = { account_id: '', fecha: hoyISO(), bruta: '', neta: '', pct: '', bonos: '', adelanto: '', penalizacion: '', deuda: '', notas: '', estado: 'Pendiente' }
+const VACIO = { account_id: '', fecha: hoyISO(), bruta: '', neta: '', pct: '', bonos: '', adelanto: '', penalizacion: '', deuda: '', notas: '', estado: 'Pendiente', cuotasN: 2, adelantoOriginal: 0, selC: [] }
 
 // ---------- calendario de cobros ----------
 // Pago de nómina: un lunes sí y otro no (cada 14 días a partir del último lunes de pago registrado).
@@ -36,6 +36,16 @@ function anclaPagos(pagos) {
   return reales.pop() || todos.pop() || null
 }
 const esDiaPago = (isoStr, ancla) => !!ancla && difDias(isoStr, ancla) % 14 === 0
+// Los n siguientes días de pago de nómina (lunes alternos) POSTERIORES a una fecha; los días de bonos no cuentan.
+function siguientesDiasPago(fecha, ancla, n) {
+  const out = []
+  let d = sumarDias(fecha, 1)
+  for (let i = 0; i < 500 && out.length < n; i++) {
+    if (ancla ? esDiaPago(d, ancla) : (aDate(d).getDay() === 1 && (out.length === 0 || difDias(d, out[out.length - 1]) >= 14))) out.push(d)
+    d = sumarDias(d, 1)
+  }
+  return out
+}
 function proximoBono(desde) {
   let d = desde
   for (let i = 0; i < 40; i++) { if (esDiaBono(d)) return d; d = sumarDias(d, 1) }
@@ -65,16 +75,18 @@ function PagosAdmin() {
   const [vista, setVista] = useState('pagos')   // 'pagos' | 'bonos'
   const [bonos, setBonos] = useState([])
   const [sanciones, setSanciones] = useState([])
+  const [cuotas, setCuotas] = useState([])
 
   async function cargar() {
-    const [{ data: c }, { data: p }, { data: pr }, { data: bn }, { data: sn }] = await Promise.all([
+    const [{ data: c }, { data: p }, { data: pr }, { data: bn }, { data: sn }, { data: cu }] = await Promise.all([
       supabase.from('payout_accounts').select('*').order('created_at'),
       supabase.from('chatter_payouts').select('*').order('fecha', { ascending: false }).limit(5000),
       supabase.from('profiles').select('id, full_name').order('full_name'),
       supabase.from('payout_bonuses').select('*').order('fecha_cobro', { ascending: false }).limit(2000),
       supabase.from('sanctions').select('id, chatter_id, motivo, monto, fecha, payout_id').order('fecha', { ascending: false }).limit(2000),
+      supabase.from('payout_advance_installments').select('*').order('fecha_prevista').limit(2000),
     ])
-    setCuentas(c || []); setPagos(p || []); setPerfiles(pr || []); setBonos(bn || []); setSanciones(sn || []); setCargando(false)
+    setCuentas(c || []); setPagos(p || []); setPerfiles(pr || []); setBonos(bn || []); setSanciones(sn || []); setCuotas(cu || []); setCargando(false)
   }
   useEffect(() => { cargar() }, [])
 
@@ -103,7 +115,8 @@ function PagosAdmin() {
     const ultimo = pagos.filter((p) => p.account_id === accountId && p.id !== pagoId && p.fecha < fecha).map((p) => p.fecha).sort().pop() || ''
     const b = bonos.filter((x) => x.account_id === accountId && (x.aplicado_en === pagoId && pagoId ? true : !x.aplicado_en && x.fecha_cobro <= fecha))
     const s = cuenta?.profile_id ? sanciones.filter((x) => x.chatter_id === cuenta.profile_id && ((pagoId && x.payout_id === pagoId) || (!x.payout_id && x.fecha <= fecha))) : []
-    return { bonos: b, sanciones: s, ultimo }
+    const cu = cuotas.filter((x) => x.account_id === accountId && ((pagoId && x.aplicado_en === pagoId) || (!x.aplicado_en && x.fecha_prevista <= fecha)))
+    return { bonos: b, sanciones: s, cuotas: cu, ultimo }
   }
   function seleccionPorDefecto(accountId, fecha) {
     const pd = pendientesDe(accountId, fecha, null)
@@ -111,7 +124,9 @@ function PagosAdmin() {
     const selS = pd.sanciones.filter((x) => !pd.ultimo || x.fecha > pd.ultimo).map((x) => x.id)
     const sumB = r2(pd.bonos.filter((x) => selB.includes(x.id)).reduce((t, x) => t + num(x.monto), 0))
     const sumS = r2(pd.sanciones.filter((x) => selS.includes(x.id)).reduce((t, x) => t + num(x.monto), 0))
-    return { selB, selS, bonos: sumB || '', penalizacion: sumS || '' }
+    const selC = pd.cuotas.map((x) => x.id)
+    const sumC = r2(pd.cuotas.reduce((t, x) => t + num(x.monto), 0))
+    return { selB, selS, selC, bonos: sumB || '', penalizacion: sumS || '', deuda: sumC || '' }
   }
 
   // ---------- pago ----------
@@ -119,7 +134,7 @@ function PagosAdmin() {
     const c = cuentaId ? cuentaDe(cuentaId) : sel !== 'todas' ? cuentaDe(sel) : cuentas.find((x) => x.activa !== false) || cuentas[0]
     const fecha = fechaIni || hoyISO()
     setEditId(null)
-    setForm({ ...VACIO, fecha, account_id: c?.id || '', pct: c?.pct_defecto ?? 0.15, ...(c ? seleccionPorDefecto(c.id, fecha) : { selB: [], selS: [] }) })
+    setForm({ ...VACIO, fecha, account_id: c?.id || '', pct: c?.pct_defecto ?? 0.15, ...(c ? seleccionPorDefecto(c.id, fecha) : { selB: [], selS: [], selC: [] }) })
     setVista('pagos')
   }
   function editarPago(p) {
@@ -130,6 +145,9 @@ function PagosAdmin() {
       notas: p.notas || '', estado: p.estado,
       selB: bonos.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
       selS: sanciones.filter((x) => x.payout_id === p.id).map((x) => x.id),
+      selC: cuotas.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
+      cuotasN: cuotas.filter((x) => x.origen_id === p.id).length || 2,
+      adelantoOriginal: num(p.adelanto),
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -138,7 +156,7 @@ function PagosAdmin() {
   function alCambiarNeta(v) { setF({ neta: v, bruta: v === '' ? '' : r2(num(v) / OF_NETO) }) }
   function alCambiarCuenta(id) {
     const c = cuentaDe(id)
-    setF({ account_id: id, pct: c?.pct_defecto ?? form.pct, ...(editId ? { selB: [], selS: [] } : seleccionPorDefecto(id, form.fecha)) })
+    setF({ account_id: id, pct: c?.pct_defecto ?? form.pct, ...(editId ? { selB: [], selS: [], selC: [] } : seleccionPorDefecto(id, form.fecha)) })
   }
   function alCambiarFecha(fecha) {
     setF({ fecha, ...(editId ? {} : seleccionPorDefecto(form.account_id, fecha)) })
@@ -151,6 +169,11 @@ function PagosAdmin() {
   function alternarSancion(x) {
     const on = form.selS.includes(x.id)
     setF({ selS: on ? form.selS.filter((i) => i !== x.id) : [...form.selS, x.id], penalizacion: r2(Math.max(0, num(form.penalizacion) + (on ? -1 : 1) * num(x.monto))) || '' })
+  }
+
+  function alternarCuota(x) {
+    const on = form.selC.includes(x.id)
+    setF({ selC: on ? form.selC.filter((i) => i !== x.id) : [...form.selC, x.id], deuda: r2(Math.max(0, num(form.deuda) + (on ? -1 : 1) * num(x.monto))) || '' })
   }
 
   const previo = form ? calcPago({ fact_neta: form.neta, pct: form.pct, bonos: form.bonos, adelanto: form.adelanto, penalizacion: -Math.abs(num(form.penalizacion)), deuda: -Math.abs(num(form.deuda)) }) : 0
@@ -173,14 +196,37 @@ function PagosAdmin() {
     const pid = guardado.id
     const prevB = bonos.filter((x) => x.aplicado_en === pid).map((x) => x.id)
     const prevS = sanciones.filter((x) => x.payout_id === pid).map((x) => x.id)
+    const prevC = cuotas.filter((x) => x.aplicado_en === pid).map((x) => x.id)
     const quitarB = prevB.filter((i) => !form.selB.includes(i)); const quitarS = prevS.filter((i) => !form.selS.includes(i))
+    const quitarC = prevC.filter((i) => !form.selC.includes(i))
     const ops = []
+    if (quitarC.length) ops.push(supabase.from('payout_advance_installments').update({ aplicado_en: null }).in('id', quitarC))
+    if (form.selC.length) ops.push(supabase.from('payout_advance_installments').update({ aplicado_en: pid }).in('id', form.selC))
     if (quitarB.length) ops.push(supabase.from('payout_bonuses').update({ aplicado_en: null }).in('id', quitarB))
     if (quitarS.length) ops.push(supabase.from('sanctions').update({ payout_id: null }).in('id', quitarS))
     if (form.selB.length) ops.push(supabase.from('payout_bonuses').update({ aplicado_en: pid }).in('id', form.selB))
     if (form.selS.length) ops.push(supabase.from('sanctions').update({ payout_id: pid }).in('id', form.selS))
-    const res = await Promise.all(ops)
-    if (res.some((r) => r.error)) setMsg('El pago se guardó, pero no se pudieron enlazar algunos bonos/sanciones: ' + res.find((r) => r.error).error.message)
+    let res = await Promise.all(ops)
+    // Adelanto → se reparte en cuotas en los siguientes días de pago (solo si es nuevo o ha cambiado el importe)
+    const adel = num(form.adelanto)
+    const propias = cuotas.filter((x) => x.origen_id === pid)
+    let avisoAdelanto = ''
+    if (!editId ? adel > 0 : adel !== form.adelantoOriginal) {
+      if (propias.some((x) => x.aplicado_en)) {
+        avisoAdelanto = 'Ojo: alguna cuota de este adelanto ya se descontó en otro pago, así que no se ha recalculado el reparto.'
+      } else {
+        if (propias.length) res.push(await supabase.from('payout_advance_installments').delete().eq('origen_id', pid))
+        if (adel > 0) {
+          const n = Math.min(6, Math.max(1, Math.round(num(form.cuotasN)) || 2))
+          const fechas = siguientesDiasPago(form.fecha, anclaPagos(pagos), n)
+          const primera = r2(adel / n)
+          const filas = fechas.map((fp, i) => ({ account_id: form.account_id, origen_id: pid, num: i + 1, total: n, monto: i === n - 1 ? r2(adel - primera * (n - 1)) : primera, fecha_prevista: fp }))
+          res.push(await supabase.from('payout_advance_installments').insert(filas))
+        }
+      }
+    }
+    if (avisoAdelanto) setMsg(avisoAdelanto)
+    else if (res.some((r) => r.error)) setMsg('El pago se guardó, pero no se pudieron enlazar algunos bonos/sanciones: ' + res.find((r) => r.error).error.message)
     else setMsg('')
     setForm(null); setEditId(null); cargar()
   }
@@ -217,7 +263,7 @@ function PagosAdmin() {
   }
 
   // Notas del pago = lo escrito a mano + bonos aplicados + sanciones aplicadas (con su motivo)
-  const notasDe = (p) => notasCompletas(p, bonos, sanciones)
+  const notasDe = (p) => notasCompletas(p, bonos, sanciones, cuotas)
 
   const cuentaSel = sel !== 'todas' ? cuentaDe(sel) : null
   const lbl = { color: 'var(--text-muted)' }
@@ -233,7 +279,7 @@ function PagosAdmin() {
       {msg && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{msg}</p>}
 
       <div className="flex gap-2 mb-4">
-        {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos']].map(([k, t]) => (
+        {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos'], ['adelantos', 'Adelantos']].map(([k, t]) => (
           <button key={k} onClick={() => setVista(k)} className="px-4 py-1.5 rounded-md text-sm font-medium"
             style={{ background: vista === k ? 'var(--accent)' : 'var(--panel-alt)', color: vista === k ? '#000' : 'var(--text)', border: '1px solid ' + (vista === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
         ))}
@@ -241,8 +287,10 @@ function PagosAdmin() {
 
       {vista === 'bonos' ? (
         <BonosTab cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={cargar} />
+      ) : vista === 'adelantos' ? (
+        <AdelantosTab cuentas={cuentas} cuotas={cuotas} pagos={pagos} onCambio={cargar} />
       ) : vista === 'calendario' ? (
-        <CalendarioTab cuentas={cuentas} pagos={pagos} bonos={bonos} onRegistrar={nuevoPago} onVerPagos={(id) => { setSel(id); setVista('pagos') }} />
+        <CalendarioTab cuentas={cuentas} pagos={pagos} bonos={bonos} cuotas={cuotas} onRegistrar={nuevoPago} onVerPagos={(id) => { setSel(id); setVista('pagos') }} />
       ) : (<>
       {/* Resumen */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
@@ -339,7 +387,14 @@ function PagosAdmin() {
               <div><label className="text-xs block mb-1" style={lbl}>Facturación neta ($) · bruta −20 %</label><Input type="number" step="0.01" value={form.neta} onChange={(e) => alCambiarNeta(e.target.value)} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>% para el chatter (0.15)</label><Input type="number" step="0.01" value={form.pct} onChange={(e) => setF({ pct: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Bonos (+)</label><Input type="number" step="0.01" value={form.bonos} onChange={(e) => setF({ bonos: e.target.value })} /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Adelanto pagado (+)</label><Input type="number" step="0.01" value={form.adelanto} onChange={(e) => setF({ adelanto: e.target.value })} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Adelanto pagado (+)</label><Input type="number" step="0.01" value={form.adelanto} onChange={(e) => setF({ adelanto: e.target.value })} />
+                {num(form.adelanto) > 0 && (!editId || num(form.adelanto) !== form.adelantoOriginal) && (
+                  <p className="text-[11px] mt-1 flex items-center gap-1" style={lbl}>Se descuenta en
+                    <select value={form.cuotasN} onChange={(e) => setF({ cuotasN: e.target.value })} className="rounded px-1 py-0.5 text-[11px]" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+                      {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                    pagos siguientes (sin contar días de bonos)</p>
+                )}</div>
               <div><label className="text-xs block mb-1" style={lbl}>Sanciones (se descuenta)</label><Input type="number" step="0.01" min="0" value={form.penalizacion} onChange={(e) => setF({ penalizacion: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Deuda a descontar (se resta)</label><Input type="number" step="0.01" min="0" value={form.deuda} onChange={(e) => setF({ deuda: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Estado</label>
@@ -349,9 +404,9 @@ function PagosAdmin() {
             </div>
             {(() => {
               const pd = pendientesDe(form.account_id, form.fecha, editId)
-              if (!pd.bonos.length && !pd.sanciones.length) return null
+              if (!pd.bonos.length && !pd.sanciones.length && !pd.cuotas.length) return null
               return (
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="mt-4 grid gap-4 lg:grid-cols-3 sm:grid-cols-2">
                   {pd.bonos.length > 0 && (
                     <div className="rounded-md p-3" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
                       <p className="text-xs font-medium mb-2" style={{ color: 'var(--accent)' }}>Bonos que le corresponden en este pago</p>
@@ -362,6 +417,21 @@ function PagosAdmin() {
                           <strong className="tabular-nums">+{money(b.monto)}</strong>
                         </label>
                       ))}
+                    </div>
+                  )}
+                  {pd.cuotas.length > 0 && (
+                    <div className="rounded-md p-3" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                      <p className="text-xs font-medium mb-2" style={{ color: 'var(--gold)' }}>Cuotas de adelantos a descontar</p>
+                      {pd.cuotas.map((x) => {
+                        const o = pagos.find((p) => p.id === x.origen_id)
+                        return (
+                          <label key={x.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                            <input type="checkbox" checked={form.selC.includes(x.id)} onChange={() => alternarCuota(x)} />
+                            <span className="flex-1">Cuota {x.num}/{x.total}{o ? ` del adelanto del ${fmtF(o.fecha)}` : ''} <span className="text-xs" style={lbl}>· prevista {fmtF(x.fecha_prevista)}</span></span>
+                            <strong className="tabular-nums" style={{ color: 'var(--danger)' }}>−{money(x.monto)}</strong>
+                          </label>
+                        )
+                      })}
                     </div>
                   )}
                   {pd.sanciones.length > 0 && (
@@ -445,9 +515,75 @@ function PagosAdmin() {
 }
 
 // =====================================================================================
+// ADELANTOS: seguimiento de las cuotas pendientes de descontar
+// =====================================================================================
+function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
+  const lbl = { color: 'var(--text-muted)' }
+  const cuentaDe = (id) => cuentas.find((c) => c.id === id)
+  // agrupa las cuotas por pago de origen
+  const grupos = useMemo(() => {
+    const m = {}
+    cuotas.forEach((x) => { (m[x.origen_id] = m[x.origen_id] || []).push(x) })
+    return Object.entries(m).map(([origen, cs]) => {
+      const o = pagos.find((p) => p.id === origen)
+      return { origen, o, cs: cs.sort((a, b) => a.num - b.num), total: r2(cs.reduce((t, x) => t + num(x.monto), 0)) }
+    }).sort((a, b) => (b.o?.fecha || '').localeCompare(a.o?.fecha || ''))
+  }, [cuotas, pagos])
+  const porRecuperar = r2(cuotas.filter((x) => !x.aplicado_en).reduce((t, x) => t + num(x.monto), 0))
+
+  async function cancelarPendientes(g) {
+    if (!confirm('¿Cancelar las cuotas pendientes de este adelanto? Las ya descontadas se mantienen.')) return
+    await supabase.from('payout_advance_installments').delete().eq('origen_id', g.origen).is('aplicado_en', null)
+    onCambio()
+  }
+  async function cambiarFecha(x, fecha) {
+    if (!fecha) return
+    await supabase.from('payout_advance_installments').update({ fecha_prevista: fecha }).eq('id', x.id)
+    onCambio()
+  }
+
+  return (
+    <div>
+      <Panel className="p-4 mb-4">
+        <p className="text-sm" style={lbl}>Cuando guardas un pago con <strong style={{ color: 'var(--text)' }}>Adelanto</strong>, el importe se divide en cuotas que se descuentan en los siguientes días de pago de nómina (lunes alternos, sin contar los días de bonos). Al registrar esos pagos, la cuota aparece marcada en «Deuda» y en las notas.</p>
+        <p className="text-sm mt-2">Pendiente por recuperar: <strong className="gold-text tabular-nums">{money(porRecuperar)}</strong></p>
+      </Panel>
+      {grupos.length === 0 ? <Panel className="p-6 text-sm text-center" style={lbl}>Todavía no hay adelantos con cuotas. Se crean solos al guardar un pago con adelanto.</Panel> : grupos.map((g) => {
+        const pend = g.cs.filter((x) => !x.aplicado_en).length
+        return (
+          <Panel key={g.origen} className="p-4 mb-3">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+              <p className="text-sm"><strong>{cuentaDe(g.cs[0].account_id)?.nombre}</strong> · adelanto de <strong className="tabular-nums">{money(g.total)}</strong> {g.o ? <span style={lbl}>el {fmtF(g.o.fecha)}</span> : null}</p>
+              {pend > 0 && <button onClick={() => cancelarPendientes(g)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Cancelar cuotas pendientes</button>}
+            </div>
+            {g.cs.map((x) => {
+              const ap = x.aplicado_en ? pagos.find((p) => p.id === x.aplicado_en) : null
+              return (
+                <div key={x.id} className="flex items-center gap-3 py-1.5 text-sm" style={{ borderTop: '1px solid var(--border)' }}>
+                  <span style={lbl} className="w-16">Cuota {x.num}/{x.total}</span>
+                  <span className="tabular-nums font-medium w-24">−{money(x.monto)}</span>
+                  {x.aplicado_en
+                    ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--success) 15%, transparent)', color: 'var(--success)' }}>Descontada{ap ? ` · pago ${fmtF(ap.fecha)}` : ''}</span>
+                    : <>
+                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>Pendiente</span>
+                        <span className="text-xs ml-auto flex items-center gap-1" style={lbl}>prevista
+                          <input type="date" value={x.fecha_prevista} onChange={(e) => cambiarFecha(x, e.target.value)} className="rounded px-1.5 py-0.5 text-xs" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+                        </span>
+                      </>}
+                </div>
+              )
+            })}
+          </Panel>
+        )
+      })}
+    </div>
+  )
+}
+
+// =====================================================================================
 // CALENDARIO: próximos pagos (lunes alternos) y cobro de bonos (días 1 y 16)
 // =====================================================================================
-function CalendarioTab({ cuentas, pagos, bonos, onRegistrar, onVerPagos }) {
+function CalendarioTab({ cuentas, pagos, bonos, cuotas, onRegistrar, onVerPagos }) {
   const hoy = hoyISO()
   const ancla = useMemo(() => anclaPagos(pagos), [pagos])
   const [mes, setMes] = useState(() => { const d = aDate(hoy); return new Date(d.getFullYear(), d.getMonth(), 1) })
@@ -488,6 +624,7 @@ function CalendarioTab({ cuentas, pagos, bonos, onRegistrar, onVerPagos }) {
   const det = dia ? tipoDia(dia) : null
   const pagosDia = dia ? pagos.filter((p) => p.fecha === dia) : []
   const bonosDia = dia ? bonos.filter((b) => b.fecha_cobro === dia) : []
+  const cuotasDia = dia ? cuotas.filter((x) => x.fecha_prevista === dia && !x.aplicado_en) : []
 
   return (
     <div>
@@ -556,11 +693,13 @@ function CalendarioTab({ cuentas, pagos, bonos, onRegistrar, onVerPagos }) {
               {activas.map((c) => {
                 const pg = pagosDia.find((p) => p.account_id === c.id)
                 const bs = bonosDia.filter((b) => b.account_id === c.id)
-                if (!pg && !det.pago && !bs.length) return null
+                const cs = cuotasDia.filter((x) => x.account_id === c.id)
+                if (!pg && !det.pago && !bs.length && !cs.length) return null
                 return (
                   <div key={c.id} className="flex items-center gap-2 py-2 text-sm flex-wrap" style={{ borderBottom: '1px solid var(--border)' }}>
                     <span className="font-medium">{c.nombre}</span>
                     {bs.length > 0 && <span className="text-xs" style={lbl}>{bs.map((b) => `${b.nombre} +${money(b.monto)}`).join(', ')}</span>}
+                    {cs.length > 0 && <span className="text-xs" style={{ color: 'var(--gold)' }}>{cs.map((x) => `cuota adelanto −${money(x.monto)}`).join(', ')}</span>}
                     <span className="ml-auto">
                       {pg ? (
                         <button onClick={() => onVerPagos(c.id)} className="text-xs px-2 py-0.5 rounded-full" style={pg.estado === 'Pagado' ? { background: 'color-mix(in srgb, var(--success) 15%, transparent)', color: 'var(--success)' } : { background: 'var(--accent-soft)', color: 'var(--accent)' }}>
@@ -583,13 +722,15 @@ function CalendarioTab({ cuentas, pagos, bonos, onRegistrar, onVerPagos }) {
 }
 
 // Notas del pago = notas escritas + bonos aplicados + sanciones aplicadas
-function notasCompletas(p, bonos, sanciones) {
+function notasCompletas(p, bonos, sanciones, cuotas) {
   const partes = []
   if (p.notas) partes.push(p.notas)
   const b = (bonos || []).filter((x) => x.aplicado_en === p.id)
   if (b.length) partes.push('Bonos: ' + b.map((x) => `${x.nombre} (+${money(x.monto)})`).join(', '))
   const s = (sanciones || []).filter((x) => x.payout_id === p.id)
   if (s.length) partes.push('Sanciones: ' + s.map((x) => `${x.motivo}${num(x.monto) ? ` (−${money(x.monto).replace('−', '')})` : ''}`).join('; '))
+  const c = (cuotas || []).filter((x) => x.aplicado_en === p.id)
+  if (c.length) partes.push('Adelanto: ' + c.map((x) => `cuota ${x.num}/${x.total} (−${money(x.monto)})`).join(', '))
   return partes.join(' · ')
 }
 
@@ -731,12 +872,14 @@ function MisPagos() {
   const [filas, setFilas] = useState(null)
   const [bonos, setBonos] = useState([])
   const [sanciones, setSanciones] = useState([])
+  const [cuotas, setCuotas] = useState([])
   useEffect(() => {
     Promise.all([
       supabase.from('chatter_payouts').select('*').order('fecha', { ascending: false }),
       supabase.from('payout_bonuses').select('*'),
       supabase.from('sanctions').select('id, motivo, monto, fecha, payout_id').not('payout_id', 'is', null),
-    ]).then(([{ data: p }, { data: b }, { data: s }]) => { setFilas(p || []); setBonos(b || []); setSanciones(s || []) })
+      supabase.from('payout_advance_installments').select('*'),
+    ]).then(([{ data: p }, { data: b }, { data: s }, { data: c }]) => { setFilas(p || []); setBonos(b || []); setSanciones(s || []); setCuotas(c || []) })
   }, [])
   const total = (filas || []).filter((p) => p.estado === 'Pagado').reduce((s, p) => s + calcPago(p), 0)
   return (
@@ -763,12 +906,12 @@ function MisPagos() {
                     ['+ Bonos', money(p.bonos)],
                     ['+ Adelanto', money(p.adelanto)],
                     ['− Sanciones', money(p.penalizacion)],
-                    ['− Deuda descontada', money(p.deuda)],
+                    ['− Deuda / cuota de adelanto', money(p.deuda)],
                   ].filter(([, v], i) => i < 2 || v !== '$0.00').map(([k, v]) => (
                     <div key={k} className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>{k}</span><strong>{v}</strong></div>
                   ))}
                 </div>
-                {notasCompletas(p, bonos, sanciones) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones)}</p>}
+                {notasCompletas(p, bonos, sanciones, cuotas) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones, cuotas)}</p>}
               </Panel>
             ))}
           </>

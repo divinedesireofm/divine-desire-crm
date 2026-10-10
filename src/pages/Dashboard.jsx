@@ -63,11 +63,12 @@ function BarraTurno({ enTurno }) {
           ) : enTurno.map((e) => {
             const brk = e.tipo === 'break'
             const color = brk ? 'var(--gold)' : 'var(--success)'
+            const mins = brk && e.created_at ? Math.max(0, Math.round((Date.now() - new Date(e.created_at).getTime()) / 60000)) : null
             return (
-              <span key={e.chatter_id} className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full text-sm" style={{ background: `${color}1f`, color }}>
-                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold" style={{ background: `${color}33` }}>{inicial(e.profiles?.full_name)}</span>
-                {e.profiles?.full_name}
-                <span className="text-xs opacity-75">{TIPOS_ESTADO[e.tipo]}</span>
+              <span key={e.chatter_id} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm" style={{ background: `${color}1a`, color, border: `1px solid ${color}55` }}>
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                <span className="font-medium">{e.profiles?.full_name}</span>
+                <span className="text-xs opacity-80">{brk ? `☕ en break${mins !== null ? ` · ${mins < 60 ? mins + ' min' : Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min'}` : ''}` : 'trabajando'}</span>
               </span>
             )
           })}

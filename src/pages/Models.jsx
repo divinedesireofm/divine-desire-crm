@@ -176,11 +176,11 @@ export default function Models() {
                   <div className="flex items-center gap-3">
                     {canEdit ? (
                       <label className="cursor-pointer relative group" title={m.photo_url ? 'Cambiar foto' : 'Subir foto'} style={{ opacity: subiendo === m.id ? 0.5 : 1 }}>
-                        <ModelAvatar name={m.stage_name} url={m.photo_url || null} size={40} />
+                        <ModelAvatar name={m.stage_name} url={m.photo_url || null} size={56} />
                         <input type="file" accept="image/*" className="hidden" disabled={subiendo === m.id} onChange={(e) => { subirFoto(m, e.target.files[0]); e.target.value = '' }} />
                         <span className="absolute -bottom-1 -right-1 text-[10px] leading-none rounded-full px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'var(--accent)', color: '#000' }}>✎</span>
                       </label>
-                    ) : <ModelAvatar name={m.stage_name} url={m.photo_url || null} size={40} />}
+                    ) : <ModelAvatar name={m.stage_name} url={m.photo_url || null} size={56} />}
                     <div>
                       <p>{m.stage_name}</p>
                       {canEdit && (m.photo_url
