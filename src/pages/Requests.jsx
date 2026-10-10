@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
+import { ModelAvatar } from '../components/ModelAvatar'
 
 const TIPO_META = {
   personalizado: { n: 'Personalizado', cat: 'custom' },
@@ -198,9 +199,14 @@ export default function Requests() {
           </div>
           <div>
             <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Modelo</label>
-            <Select value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })}>
-              {modelos.map((m) => <option key={m.id} value={m.stage_name}>{m.stage_name}</option>)}
-            </Select>
+            <div className="flex items-center gap-3">
+              {form.modelo && <ModelAvatar name={form.modelo} size={56} />}
+              <div className="flex-1 min-w-0">
+                <Select value={form.modelo} onChange={(e) => setForm({ ...form, modelo: e.target.value })}>
+                  {modelos.map((m) => <option key={m.id} value={m.stage_name}>{m.stage_name}</option>)}
+                </Select>
+              </div>
+            </div>
           </div>
           {esInterno ? (
             <div>

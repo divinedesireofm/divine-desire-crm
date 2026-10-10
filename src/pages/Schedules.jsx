@@ -1,8 +1,10 @@
+          <SelectorModelos modelos={modelos} value={edit.modelos} onChange={(v) => setEdit({ ...edit, modelos: v })} />
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
+import { ModelAvatar } from '../components/ModelAvatar'
 
 const TURNOS = [
   { id: 'madrugada', n: 'Madrugada', h: '2:00–10:00' },
@@ -145,7 +147,7 @@ function HorarioSemana({ esMgr }) {
       {add && (
         <Panel className="p-5 mb-6">
           <p className="text-sm font-medium mb-3">Asignar turno</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-2 gap-3 mb-3">
             <Input type="date" value={add.fecha} onChange={(e) => setAdd({ ...add, fecha: e.target.value })} />
             <Select value={add.turno} onChange={(e) => setAdd({ ...add, turno: e.target.value })}>
               {TURNOS.map((t) => <option key={t.id} value={t.id}>{t.n} ({t.h})</option>)}
@@ -176,13 +178,69 @@ function HorarioSemana({ esMgr }) {
   )
 }
 
+// El campo `modelos` del grupo es texto («Alicia, Violeta, Valen»). Se convierte a lista y de vuelta.
+const aLista = (txt) => String(txt || '').split(/[,\n]+/).map((x) => x.trim()).filter(Boolean)
+const normN = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+
+function SelectorModelos({ modelos, value, onChange }) {
+  const [q, setQ] = useState('')
+  const elegidas = aLista(value)
+  const enCRM = new Set(modelos.map((m) => normN(m.stage_name)))
+  const sueltas = elegidas.filter((n) => !enCRM.has(normN(n))) // nombres antiguos que ya no coinciden con ninguna modelo del CRM
+  const estaOn = (nombre) => elegidas.some((n) => normN(n) === normN(nombre))
+  function alternar(nombre) {
+    const nuevo = estaOn(nombre) ? elegidas.filter((n) => normN(n) !== normN(nombre)) : elegidas.concat([nombre])
+    onChange(nuevo.join(', '))
+  }
+  const visibles = modelos.filter((m) => !q.trim() || normN(m.stage_name).includes(normN(q)))
+  return (
+    <div className="mb-3">
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Modelos del grupo · {elegidas.length} seleccionada{elegidas.length === 1 ? '' : 's'}</p>
+        <input
+          value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…"
+          className="px-3 py-1 rounded-md text-xs outline-none"
+          style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', width: 160 }}
+        />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {visibles.map((m) => {
+          const on = estaOn(m.stage_name)
+          return (
+            <button
+              key={m.id} type="button" onClick={() => alternar(m.stage_name)}
+              className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full text-sm"
+              style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}
+            >
+              <ModelAvatar name={m.stage_name} size={26} />
+              {on ? '✓ ' : ''}{m.stage_name}
+            </button>
+          )
+        })}
+        {visibles.length === 0 && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Ninguna modelo coincide.</p>}
+      </div>
+      {sueltas.length > 0 && (
+        <p className="text-xs mt-2" style={{ color: 'var(--gold)' }}>
+          Estos nombres no coinciden con ninguna modelo del CRM: {sueltas.join(', ')}.{' '}
+          <button type="button" className="underline" onClick={() => onChange(elegidas.filter((n) => enCRM.has(normN(n))).join(', '))}>Quitarlos</button>
+        </p>
+      )}
+    </div>
+  )
+}
+
 function Grupos({ esMgr }) {
   const [rows, setRows] = useState([])
   const [edit, setEdit] = useState(null)
+  const [modelos, setModelos] = useState([])
 
   async function load() {
-    const { data } = await supabase.from('shift_groups').select('*').order('esquema').order('nombre')
+    const [{ data }, { data: md }] = await Promise.all([
+      supabase.from('shift_groups').select('*').order('esquema').order('nombre'),
+      supabase.from('models').select('id, stage_name, status').order('stage_name'),
+    ])
     setRows(data || [])
+    setModelos((md || []).filter((m) => m.status !== 'baja'))
   }
   useEffect(() => { load() }, [])
 
@@ -218,11 +276,17 @@ function Grupos({ esMgr }) {
         }).map((esq) => (
           <div key={esq} className="mb-6">
             <p className="text-sm font-medium mb-2">{esq} <span style={{ color: 'var(--text-muted)' }}>({porEsq[esq].length})</span></p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               {porEsq[esq].map((g) => (
                 <Panel key={g.id} className="p-4">
                   <p className="font-medium mb-1">{g.nombre}</p>
-                  <p className="text-xs whitespace-pre-wrap mb-3" style={{ color: 'var(--text-muted)' }}>{g.modelos}</p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-3">
+                    {aLista(g.modelos).map((n) => (
+                      <span key={n} className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                        <ModelAvatar name={modelos.find((m) => normN(m.stage_name) === normN(n))?.stage_name || n} size={22} />{n}
+                      </span>
+                    ))}
+                  </div>
                   {esMgr && (
                     <div className="flex gap-2">
                       <button onClick={() => setEdit({ ...g, nchatters: parseInt((g.esquema.match(/\d+/) || [3])[0]) })} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar</button>
@@ -239,7 +303,7 @@ function Grupos({ esMgr }) {
       {edit && (
         <Panel className="p-5 mt-4">
           <p className="text-sm font-medium mb-3">{edit.id ? 'Editar grupo' : 'Nuevo grupo'}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-2 gap-3 mb-3">
             <Input placeholder="Nombre del grupo" value={edit.nombre} onChange={(e) => setEdit({ ...edit, nombre: e.target.value })} />
             <Input type="number" min="2" max="20" placeholder="¿Para cuántos chatters?" value={edit.nchatters} onChange={(e) => setEdit({ ...edit, nchatters: e.target.value })} />
           </div>

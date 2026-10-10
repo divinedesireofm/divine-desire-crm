@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Table, Td, PageHeader } from '../components/ui'
+import { ModelAvatar } from '../components/ModelAvatar'
 
 const TURNOS = [
   { id: 'madrugada', n: 'Madrugada' },
@@ -15,7 +16,7 @@ function TurnoChips({ selected, onChange }) {
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : selected.concat([id]))
   }
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex gap-1.5">
       {TURNOS.map((t) => {
         const on = selected.includes(t.id)
         return (
@@ -25,6 +26,29 @@ function TurnoChips({ selected, onChange }) {
             style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}
           >
             {t.n}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function ModeloChips({ modelos, selected, onChange }) {
+  function toggle(id) {
+    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : selected.concat([id]))
+  }
+  if (!modelos.length) return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>No hay modelos en el CRM.</span>
+  return (
+    <div className="flex flex-wrap gap-1.5 max-w-[420px]">
+      {modelos.map((m) => {
+        const on = selected.includes(m.id)
+        return (
+          <button
+            key={m.id} type="button" onClick={() => toggle(m.id)}
+            className="inline-flex items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 rounded-full text-xs"
+            style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}
+          >
+            <ModelAvatar name={m.stage_name} size={22} />{on ? '✓ ' : ''}{m.stage_name}
           </button>
         )
       })}
@@ -42,14 +66,19 @@ export default function Chatters() {
   const [shiftDrafts, setShiftDrafts] = useState({})
   const [editando, setEditando] = useState(null) // id del chatter que se está editando
   const [editTurnos, setEditTurnos] = useState([])
+  const [editModelos, setEditModelos] = useState([])
+  const [modelos, setModelos] = useState([])
+  const [errorGuardar, setErrorGuardar] = useState('')
 
   async function load() {
     setLoading(true)
-    const [{ data: existing }, allChatterProfiles] = await Promise.all([
+    const [{ data: existing }, allChatterProfiles, { data: md }] = await Promise.all([
       supabase.from('chatters').select('*, profiles(full_name)'),
       getProfilesByRoles(['chatter', 'manager']),
+      supabase.from('models').select('id, stage_name, status').order('stage_name'),
     ])
     setChatters(existing || [])
+    setModelos((md || []).filter((m) => m.status !== 'baja'))
     const existingIds = new Set((existing || []).map((c) => c.id))
     setUnlinkedProfiles(allChatterProfiles.filter((p) => !existingIds.has(p.id)))
 
@@ -73,10 +102,13 @@ export default function Chatters() {
   function startEdit(c) {
     setEditando(c.id)
     setEditTurnos((c.shift || '').split(',').map((s) => s.trim()).filter(Boolean))
+    setEditModelos(c.models_assigned || [])
+    setErrorGuardar('')
   }
 
   async function guardarEdicion(id) {
-    await supabase.from('chatters').update({ shift: editTurnos.join(',') }).eq('id', id)
+    const { error } = await supabase.from('chatters').update({ shift: editTurnos.join(','), models_assigned: editModelos }).eq('id', id)
+    if (error) { setErrorGuardar('No se pudo guardar: ' + error.message); return }
     setEditando(null)
     load()
   }
@@ -85,9 +117,10 @@ export default function Chatters() {
     <div>
       <PageHeader
         title="Chatters"
-        subtitle="Equipo de chat activo, turno y modelos asignados."
+        subtitle="Equipo de chat activo, turno y modelos asignados. Pulsa «Editar» para cambiar el turno y las modelos de cada chatter."
       />
 
+      {errorGuardar && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{errorGuardar}</p>}
       <Panel className="mb-6">
         {loading ? (
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
@@ -115,7 +148,17 @@ export default function Chatters() {
                     )}
                   </Td>
                   <Td>{c.active ? 'Activo' : 'Inactivo'}</Td>
-                  <Td>{c.models_assigned?.length || 0}</Td>
+                  <Td>
+                    {editando === c.id ? (
+                      <ModeloChips modelos={modelos} selected={editModelos} onChange={setEditModelos} />
+                    ) : (c.models_assigned?.length ? (
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        {c.models_assigned.map((id) => modelos.find((m) => m.id === id)).filter(Boolean).map((m) => (
+                          <span key={m.id} className="inline-flex items-center gap-1.5 text-xs"><ModelAvatar name={m.stage_name} size={22} />{m.stage_name}</span>
+                        ))}
+                      </div>
+                    ) : <span style={{ color: 'var(--text-muted)' }}>Sin asignar</span>)}
+                  </Td>
                   <Td>
                     {canEdit && (
                       editando === c.id ? (
@@ -142,7 +185,7 @@ export default function Chatters() {
           </p>
           <div className="space-y-3">
             {unlinkedProfiles.map((p) => (
-              <div key={p.id} className="flex flex-wrap items-center gap-3">
+              <div key={p.id} className="flex items-center gap-3">
                 <span className="flex-1 text-sm">{p.full_name}</span>
                 <TurnoChips
                   selected={shiftDrafts[p.id] || []}

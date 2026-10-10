@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader, DeltaBadge } from '../components/ui'
 import { iaCallJSON, getVoiceGuide, withVoiceGuide } from '../lib/ai'
+import { exportarFichasChatters } from '../lib/excelExport'
 import { leerLibro, parsearChatters, norm, fmtF, lunesDe, tiempoASegundos, segundosATexto } from '../lib/excelImport'
 
 const REGLAS_CHATTER = `Eres el analista de rendimiento del equipo de chat de la agencia Divine Desire. Analizas la evolución semanal de un chatter concreto con las mismas métricas del Excel de seguimiento de chatters. Ten en cuenta:
@@ -103,6 +104,7 @@ export default function ChatterMetrics() {
   const [impMsg, setImpMsg] = useState('')
   const [impErr, setImpErr] = useState('')
 
+  const [exportando, setExportando] = useState(false)
   const [analisis, setAnalisis] = useState(null)
   const [iaBusy, setIaBusy] = useState(false)
   const [iaErr, setIaErr] = useState('')
@@ -137,6 +139,23 @@ export default function ChatterMetrics() {
     () => stats.filter((r) => r.week_start === semanaEquipo).map(enriquecer).sort((a, b) => (Number(b.ventas_total) || 0) - (Number(a.ventas_total) || 0)),
     [stats, semanaEquipo],
   )
+
+  // ---------- exportar a Excel (mismo formato que SEGUIMIENTO_CHATTERS.xlsx) ----------
+  async function exportar(todos) {
+    const ids = todos ? [...new Set(stats.map((r) => r.chatter_id))] : [selectedChatter]
+    const fichas = ids
+      .map((id) => ({ nombre: nombreDe(id), semanas: stats.filter((r) => r.chatter_id === id) }))
+      .filter((f) => f.semanas.length)
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    if (!fichas.length) return
+    setExportando(true)
+    try {
+      await exportarFichasChatters(fichas, todos ? 'SEGUIMIENTO_CHATTERS.xlsx' : `SEGUIMIENTO_${fichas[0].nombre.replace(/[^\p{L}\p{N}]+/gu, '_')}.xlsx`)
+    } catch (e) {
+      alert('No se pudo crear el Excel: ' + (e.message || e))
+    }
+    setExportando(false)
+  }
 
   // ---------- alta / edición manual ----------
   const semana = form.week_start ? lunesDe(form.week_start) : ''
@@ -385,6 +404,12 @@ export default function ChatterMetrics() {
               {semanasDisponibles.map((s) => <option key={s} value={s}>Semana del {fmtF(s)}</option>)}
             </Select>
           </div>
+        )}
+        {canEdit && vista === 'chatter' && (
+          <>
+            <Button variant="ghost" onClick={() => exportar(false)} disabled={exportando || !filas.length}>{exportando ? 'Creando Excel…' : '⬇ Exportar ficha (Excel)'}</Button>
+            <Button variant="ghost" onClick={() => exportar(true)} disabled={exportando || !stats.length}>⬇ Exportar todos (una hoja por chatter)</Button>
+          </>
         )}
         <button className="text-sm underline ml-auto" style={{ color: 'var(--text-muted)' }} onClick={() => setVerGuia(!verGuia)}>{verGuia ? 'Ocultar guía de métricas' : 'Qué significa cada métrica'}</button>
       </div>

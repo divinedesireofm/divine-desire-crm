@@ -2,42 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
-import { PAISES, COLOR_MANUAL, COLOR_PERSONA, festividades } from '../lib/festividades'
+import { PAISES, COLOR_MANUAL, COLOR_PERSONA } from '../lib/festividades'
+import { iso, aDate, sumarDias, difDias, TIPOS, esLegacy, calcularEventos } from '../lib/fechasEventos'
 
-// ---------- fechas ----------
-const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
-const aDate = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
-const sumarDias = (s, n) => { const d = aDate(s); d.setDate(d.getDate() + n); return iso(d) }
-const difDias = (a, b) => Math.round((aDate(a) - aDate(b)) / 86400000)
 const fmtLargo = (s) => aDate(s).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'long' })
 const NOMBRE_MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 const DIAS_SEM = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const LS_PAISES = 'dd_paises_fechas'
 const PAISES_DEFECTO = ['es', 've']
+const COLORES_SUGERIDOS = ['#ec4899', '#22d3ee', '#a3e635', '#fb923c', '#f472b6', '#60a5fa']
 
-const TIPOS = { otra: 'Otra fecha', cumpleanos: 'Cumpleaños', aniversario: 'Aniversario' }
-// Festividades que se guardaban con el botón del lote anterior: ahora se generan por país, así que se pueden limpiar
-const LEGACY_TITULOS = new Set(['Acción de Gracias', 'Asunción de la Virgen', 'Año Nuevo', 'Batalla de Carabobo', 'Black Friday', 'Cinco de Mayo', 'Cyber Monday', 'Declaración de la Independencia de Venezuela', 'Domingo de Pascua', 'Día Internacional de la Mujer', 'Día de Reyes', 'Día de la Independencia de EE. UU.', 'Día de la Independencia de Venezuela', 'Día de la Madre (EE. UU. y Venezuela)', 'Día de la Madre (España)', 'Día del Padre', 'Día del Padre (EE. UU.)', 'Día del Soltero', 'Día del Trabajo', 'Fiesta Nacional de España / Día de la Resistencia Indígena', 'Halloween', 'Inmaculada Concepción', 'Labor Day', 'Memorial Day', 'Natalicio de Simón Bolívar', 'Navidad', 'Nochebuena', 'Nochevieja', 'San Patricio', 'San Valentín', 'Todos los Santos', 'Viernes Santo'])
-const LEGACY_NOTAS = new Set(['EE. UU.', 'EE. UU. y México', 'EE. UU. · tercer domingo de junio', 'España', 'España y Venezuela · festivo, revisar turnos', 'España · festivo', 'España · primer domingo de mayo', 'Global', 'Global · fecha clave para promociones y masivos temáticos', 'Global · fecha fuerte para contenido temático', 'Global · fecha fuerte para promos', 'Global · revisar turnos', 'Segundo domingo de mayo · fecha fuerte', 'Venezuela · festivo, revisar turnos', 'Venezuela · festivo, revisar turnos del equipo'])
-const esLegacy = (r) => LEGACY_TITULOS.has(r.titulo) && LEGACY_NOTAS.has(r.notas || '')
-
-const EMPTY = { tipo: 'otra', titulo: '', fecha: '', recurrente: true, notas: '', persona: '' } // persona: 'perfil:<id>' | 'modelo:<id>' | ''
-
-// Una fecha guardada que se repite → su aparición dentro de un rango (puede haber varias si el rango abarca años)
-function ocurrenciasEnRango(e, desde, hasta) {
-  const [y0, m0, d0] = e.fecha.split('-').map(Number)
-  const repite = e.recurrente || e.tipo === 'cumpleanos' || e.tipo === 'aniversario'
-  if (!repite) return e.fecha >= desde && e.fecha <= hasta ? [e.fecha] : []
-  const out = []
-  for (let y = Number(desde.slice(0, 4)); y <= Number(hasta.slice(0, 4)); y++) {
-    if (y < y0) continue
-    let d = new Date(y, m0 - 1, d0)
-    if (d.getMonth() !== m0 - 1) d = new Date(y, m0 - 1, 28) // 29 de febrero en año no bisiesto
-    const s = iso(d)
-    if (s >= desde && s <= hasta) out.push(s)
-  }
-  return out
-}
+const EMPTY = { tipo: 'otra', titulo: '', fecha: '', recurrente: true, notas: '', persona: '', pais_id: '' } // persona: 'perfil:<id>' | 'modelo:<id>' | ''
 
 export default function ImportantDates() {
   const { profile, hasAnyRole } = useAuth()
@@ -45,44 +20,81 @@ export default function ImportantDates() {
   const [rows, setRows] = useState([])
   const [perfiles, setPerfiles] = useState([])
   const [modelos, setModelos] = useState([])
+  const [custom, setCustom] = useState([])          // países creados por el equipo
+  const [paisesEquipo, setPaisesEquipo] = useState(PAISES_DEFECTO) // los que usan los avisos de la campana
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(EMPTY)
-  const [paises, setPaises] = useState(() => {
-    try { const v = JSON.parse(localStorage.getItem(LS_PAISES)); if (Array.isArray(v)) return v } catch { /* sin almacenamiento */ }
-    return PAISES_DEFECTO
-  })
+  const [paises, setPaises] = useState(null) // selección de esta persona (null = aún sin cargar)
+  const [selector, setSelector] = useState(false)
+  const [nuevoPais, setNuevoPais] = useState(null) // { nombre, color }
   const [vista, setVista] = useState('lista')
   const [verOcultas, setVerOcultas] = useState(false)
   const [mes, setMes] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [dia, setDia] = useState(null)
+  const [msg, setMsg] = useState('')
   const hoy = iso(new Date())
 
   async function load() {
     setLoading(true)
-    const [{ data }, { data: pf }, { data: md }] = await Promise.all([
-      supabase.from('important_dates').select('*'),
-      supabase.from('profiles').select('id, full_name, active').order('full_name'),
-      supabase.from('models').select('id, stage_name, status').order('stage_name'),
-    ])
-    setRows(data || []); setPerfiles(pf || []); setModelos(md || [])
+    const consultas = [
+      supabase.rpc('fechas_visibles'),
+      supabase.from('paises_fechas').select('id, nombre, color').order('nombre'),
+      supabase.from('fechas_config').select('valor').eq('clave', 'paises').maybeSingle(),
+    ]
+    if (puedeGestionar) {
+      consultas.push(
+        supabase.from('profiles').select('id, full_name, active').order('full_name'),
+        supabase.from('models').select('id, stage_name, status').order('stage_name'),
+      )
+    }
+    const [r1, r2, r3, r4, r5] = await Promise.all(consultas)
+    if (r1.error) setError('No se pudieron cargar las fechas: ' + r1.error.message + ' (¿has ejecutado la migración 51?)')
+    else setError('')
+    setRows(r1.data || [])
+    setCustom(r2.data || [])
+    const equipo = Array.isArray(r3.data?.valor) ? r3.data.valor : PAISES_DEFECTO
+    setPaisesEquipo(equipo)
+    setPerfiles((r4 && r4.data) || []); setModelos((r5 && r5.data) || [])
+    // Primera carga: la selección guardada en este navegador, o si no hay, la del equipo
+    setPaises((p) => {
+      if (p) return p
+      try { const v = JSON.parse(localStorage.getItem(LS_PAISES)); if (Array.isArray(v)) return v } catch { /* sin almacenamiento */ }
+      return equipo
+    })
     setLoading(false)
   }
   useEffect(() => { load() }, [])
 
-  function alternarPais(id) {
-    setPaises((p) => {
-      const n = p.includes(id) ? p.filter((x) => x !== id) : [...p, id]
-      try { localStorage.setItem(LS_PAISES, JSON.stringify(n)) } catch { /* sin almacenamiento */ }
-      return n
-    })
+  function guardarLocal(n) {
+    setPaises(n)
+    try { localStorage.setItem(LS_PAISES, JSON.stringify(n)) } catch { /* sin almacenamiento */ }
   }
+  const alternarPais = (id) => guardarLocal(paises.includes(id) ? paises.filter((x) => x !== id) : [...paises, id])
 
-  // ¿La persona de esta fecha sigue en el CRM? (perfil activo / modelo que no está de baja)
-  function personaVigente(r) {
-    if (!r.persona_id) return true
-    if (r.persona_tipo === 'modelo') { const m = modelos.find((x) => x.id === r.persona_id); return !!m && m.status !== 'baja' }
-    const p = perfiles.find((x) => x.id === r.persona_id); return !!p && p.active !== false
+  async function aplicarAlEquipo() {
+    const { error: err } = await supabase.from('fechas_config').upsert({ clave: 'paises', valor: paises, updated_at: new Date().toISOString() }, { onConflict: 'clave' })
+    if (err) { setMsg('No se pudo guardar: ' + err.message); return }
+    setPaisesEquipo(paises)
+    setMsg('Listo: los avisos de la campana de todo el equipo usarán estos países.')
+    setTimeout(() => setMsg(''), 6000)
+  }
+  async function crearPais(e) {
+    e.preventDefault()
+    const nombre = nuevoPais.nombre.trim()
+    if (!nombre) return
+    const { data, error: err } = await supabase.from('paises_fechas').insert([{ nombre, color: nuevoPais.color, creado_por: profile.id }]).select('id, nombre, color').single()
+    if (err) { setMsg('No se pudo crear: ' + err.message); return }
+    setCustom((c) => [...c, data].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')))
+    guardarLocal([...paises, 'c:' + data.id])
+    setNuevoPais(null)
+  }
+  async function borrarPais(c) {
+    if (!confirm(`¿Eliminar "${c.nombre}" y todas las fechas que tiene guardadas?`)) return
+    await supabase.from('paises_fechas').delete().eq('id', c.id)
+    guardarLocal(paises.filter((x) => x !== 'c:' + c.id))
+    load()
   }
 
   async function crear(e) {
@@ -96,10 +108,13 @@ export default function ImportantDates() {
       titulo = `${form.tipo === 'cumpleanos' ? 'Cumpleaños' : 'Aniversario'} de ${nombre}`
     }
     if (!titulo) return
-    await supabase.from('important_dates').insert([{
+    const { error: err } = await supabase.from('important_dates').insert([{
       titulo, fecha: form.fecha, recurrente: form.tipo === 'otra' ? form.recurrente : true,
       notas: form.notas.trim() || null, creado_por: profile.id, tipo: form.tipo, persona_tipo, persona_id,
+      pais_id: form.tipo === 'otra' && form.pais_id ? form.pais_id : null,
     }])
+    if (err) { setMsg('No se pudo guardar: ' + err.message); return }
+    if (form.tipo === 'otra' && form.pais_id && !paises.includes('c:' + form.pais_id)) guardarLocal([...paises, 'c:' + form.pais_id])
     setForm(EMPTY); setShowForm(false); load()
   }
   async function limpiarLegacy() {
@@ -113,34 +128,12 @@ export default function ImportantDates() {
     load()
   }
 
-  // Todo lo que cae en un rango: festividades de los países elegidos + fechas guardadas (con repeticiones)
-  function eventosEnRango(desde, hasta) {
-    const out = []
-    festividades(paises, desde, hasta).forEach((f) => {
-      const p = PAISES.find((x) => x.id === f.pais)
-      out.push({ key: `f-${f.pais}-${f.fecha}-${f.titulo}`, fecha: f.fecha, titulo: f.titulo, color: p.color, etiqueta: p.n, notas: f.tipo === 'celebracion' ? 'Celebración' : 'Festivo', borrable: null })
-    })
-    rows.forEach((r) => {
-      if (!personaVigente(r) || esLegacy(r)) return
-      const esPersona = r.tipo === 'cumpleanos' || r.tipo === 'aniversario'
-      ocurrenciasEnRango(r, desde, hasta).forEach((f) => {
-        const n = Number(f.slice(0, 4)) - Number(r.fecha.slice(0, 4))
-        let extra = ''
-        if (r.tipo === 'cumpleanos' && n > 0 && n < 100) extra = `cumple ${n}`
-        if (r.tipo === 'aniversario' && n > 0) extra = `${n}.º aniversario`
-        out.push({
-          key: `d-${r.id}-${f}`, fecha: f, titulo: r.titulo, color: esPersona ? COLOR_PERSONA : COLOR_MANUAL,
-          etiqueta: esPersona ? TIPOS[r.tipo] : 'Manual', notas: [extra, r.notas].filter(Boolean).join(' · '), borrable: r,
-        })
-      })
-    })
-    return out.sort((a, b) => a.fecha.localeCompare(b.fecha))
-  }
-
-  const proximos = useMemo(() => eventosEnRango(hoy, sumarDias(hoy, 365)), [paises, rows, perfiles, modelos])
+  const sel = paises || []
+  const eventosEnRango = (desde, hasta) => calcularEventos({ rows, paises: sel, custom, desde, hasta })
+  const proximos = useMemo(() => eventosEnRango(hoy, sumarDias(hoy, 365)), [paises, rows, custom])
   const legacy = rows.filter(esLegacy)
-  const ocultas = rows.filter((r) => !personaVigente(r))
-  const pasadas = rows.filter((r) => !(r.recurrente || r.tipo !== 'otra') && r.fecha < hoy && personaVigente(r)).sort((a, b) => b.fecha.localeCompare(a.fecha))
+  const ocultas = rows.filter((r) => r.vigente === false)
+  const pasadas = rows.filter((r) => !(r.recurrente || r.tipo !== 'otra') && r.fecha < hoy && r.vigente !== false).sort((a, b) => b.fecha.localeCompare(a.fecha))
 
   // ---- calendario ----
   const celdas = useMemo(() => {
@@ -157,7 +150,7 @@ export default function ImportantDates() {
     const m = {}
     eventosEnRango(d0, d1).forEach((e) => { (m[e.fecha] = m[e.fecha] || []).push(e) })
     return m
-  }, [mes, paises, rows, perfiles, modelos])
+  }, [mes, paises, rows, custom])
 
   const lbl = { color: 'var(--text-muted)' }
   const Item = ({ e }) => {
@@ -190,32 +183,87 @@ export default function ImportantDates() {
     </Select>
   )
 
+  // Chips de países ya elegidos y lista de los que se pueden añadir
+  const fichaPais = (id) => {
+    if (id.startsWith('c:')) { const c = custom.find((x) => x.id === id.slice(2)); return c ? { id, n: c.nombre, color: c.color, propio: c } : null }
+    const p = PAISES.find((x) => x.id === id); return p ? { id, n: p.n, color: p.color } : null
+  }
+  const elegidos = sel.map(fichaPais).filter(Boolean)
+  const disponibles = [...PAISES.map((p) => p.id), ...custom.map((c) => 'c:' + c.id)].filter((id) => !sel.includes(id)).map(fichaPais).filter(Boolean)
+  const mismoQueEquipo = sel.length === paisesEquipo.length && sel.every((x) => paisesEquipo.includes(x))
+  const nombresEquipo = paisesEquipo.map(fichaPais).filter(Boolean).map((p) => p.n).join(', ') || 'ninguno'
+
   return (
     <div>
       <PageHeader
         title="Fechas importantes"
-        subtitle="Elige los países para ver sus festividades. Tus fechas, cumpleaños y aniversarios se muestran con otros colores."
+        subtitle="Festividades por país, fechas del equipo, cumpleaños y aniversarios. Todo el equipo y las modelos reciben un aviso 1 semana, 2 días, 1 día antes y el mismo día."
         action={puedeGestionar && <Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancelar' : '+ Añadir fecha'}</Button>}
       />
 
+      {error && <Panel className="p-4 mb-4"><p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p></Panel>}
+      {msg && <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>{msg}</p>}
+
       {/* Países */}
       <Panel className="p-4 mb-4">
-        <p className="text-xs mb-2" style={lbl}>Países</p>
-        <div className="flex flex-wrap gap-2">
-          {PAISES.map((p) => {
-            const on = paises.includes(p.id)
-            return (
-              <button key={p.id} onClick={() => alternarPais(p.id)} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm"
-                style={{ background: on ? `${p.color}24` : 'var(--panel-alt)', border: `1px solid ${on ? p.color : 'var(--border)'}`, color: on ? p.color : 'var(--text-muted)' }}>
-                <span style={{ width: 9, height: 9, borderRadius: 5, background: on ? p.color : 'var(--border)' }} />{p.n}
-              </button>
-            )
-          })}
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <p className="text-xs" style={lbl}>Países que estás viendo</p>
+          <button onClick={() => setSelector(!selector)} className="text-xs px-3 py-1 rounded-full" style={{ border: '1px solid var(--accent)', color: 'var(--accent)' }}>
+            {selector ? 'Cerrar' : '+ Añadir país'}
+          </button>
         </div>
+        <div className="flex flex-wrap gap-2">
+          {elegidos.length === 0 && <span className="text-sm" style={lbl}>Ningún país elegido: solo verás las fechas del equipo.</span>}
+          {elegidos.map((p) => (
+            <button key={p.id} onClick={() => alternarPais(p.id)} title="Quitar de la vista" className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm"
+              style={{ background: `${p.color}24`, border: `1px solid ${p.color}`, color: p.color }}>
+              <span style={{ width: 9, height: 9, borderRadius: 5, background: p.color }} />{p.n}<span style={{ opacity: 0.7 }}>✕</span>
+            </button>
+          ))}
+        </div>
+
+        {selector && (
+          <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+            <p className="text-xs mb-2" style={lbl}>Pulsa un país para añadirlo</p>
+            <div className="flex flex-wrap gap-2">
+              {disponibles.map((p) => (
+                <span key={p.id} className="inline-flex items-center">
+                  <button onClick={() => alternarPais(p.id)} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm"
+                    style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 5, background: p.color }} />{p.n}
+                  </button>
+                  {puedeGestionar && p.propio && <button onClick={() => borrarPais(p.propio)} className="text-xs ml-1" style={{ color: 'var(--danger)' }} title="Eliminar este país">✕</button>}
+                </span>
+              ))}
+              {disponibles.length === 0 && <span className="text-sm" style={lbl}>Ya has añadido todos.</span>}
+            </div>
+            {puedeGestionar && (
+              nuevoPais ? (
+                <form onSubmit={crearPais} className="flex flex-wrap items-center gap-2 mt-3">
+                  <div className="min-w-[200px]"><Input placeholder="Nombre (ej: Panamá, o «Cumples del equipo»)" value={nuevoPais.nombre} onChange={(e) => setNuevoPais({ ...nuevoPais, nombre: e.target.value })} required /></div>
+                  <input type="color" value={nuevoPais.color} onChange={(e) => setNuevoPais({ ...nuevoPais, color: e.target.value })} aria-label="Color" style={{ width: 40, height: 36, background: 'none', border: 'none' }} />
+                  <Button type="submit">Crear</Button>
+                  <Button type="button" variant="ghost" onClick={() => setNuevoPais(null)}>Cancelar</Button>
+                </form>
+              ) : (
+                <button onClick={() => setNuevoPais({ nombre: '', color: COLORES_SUGERIDOS[custom.length % COLORES_SUGERIDOS.length] })} className="text-xs underline mt-3" style={{ color: 'var(--accent)' }}>
+                  ¿Tu país no está en la lista? Crea uno propio (le pones el nombre, el color y sus fechas)
+                </button>
+              )
+            )}
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-4 mt-3 text-xs" style={lbl}>
-          <span className="inline-flex items-center gap-1.5"><span style={{ width: 9, height: 9, borderRadius: 5, background: COLOR_MANUAL }} /> Fechas añadidas a mano</span>
+          <span className="inline-flex items-center gap-1.5"><span style={{ width: 9, height: 9, borderRadius: 5, background: COLOR_MANUAL }} /> Fechas del equipo</span>
           <span className="inline-flex items-center gap-1.5"><span style={{ width: 9, height: 9, borderRadius: 5, background: COLOR_PERSONA }} /> Cumpleaños y aniversarios</span>
         </div>
+        <p className="text-xs mt-2" style={lbl}>
+          Los avisos de la campana usan los países del equipo: <strong>{nombresEquipo}</strong>.
+          {puedeGestionar && !mismoQueEquipo && (
+            <button onClick={aplicarAlEquipo} className="underline ml-1" style={{ color: 'var(--accent)' }}>Usar mi selección actual para los avisos de todos</button>
+          )}
+        </p>
       </Panel>
 
       {puedeGestionar && legacy.length > 0 && (
@@ -249,6 +297,15 @@ export default function ImportantDates() {
                 <Input placeholder={form.tipo === 'otra' ? 'Ej: Reunión trimestral' : 'Ej: Cumpleaños de mi hermana'} value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} required />
               </div>
             )}
+            {form.tipo === 'otra' && custom.length > 0 && (
+              <div className="sm:col-span-2">
+                <label className="text-xs block mb-1" style={lbl}>País propio (opcional)</label>
+                <Select value={form.pais_id} onChange={(e) => setForm({ ...form, pais_id: e.target.value })}>
+                  <option value="">— Ninguno: fecha del equipo, siempre visible —</option>
+                  {custom.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </Select>
+              </div>
+            )}
             {form.tipo === 'otra' ? (
               <label className="flex items-center gap-2 text-sm sm:col-span-2">
                 <input type="checkbox" checked={form.recurrente} onChange={(e) => setForm({ ...form, recurrente: e.target.checked })} />
@@ -266,7 +323,7 @@ export default function ImportantDates() {
           <button key={k} onClick={() => setVista(k)} className="px-4 py-1.5 rounded-md text-sm font-medium"
             style={{ background: vista === k ? 'var(--accent)' : 'var(--panel-alt)', color: vista === k ? '#000' : 'var(--text)', border: '1px solid ' + (vista === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
         ))}
-        {ocultas.length > 0 && (
+        {puedeGestionar && ocultas.length > 0 && (
           <button onClick={() => setVerOcultas(!verOcultas)} className="ml-auto text-xs hover:underline" style={lbl}>
             {verOcultas ? 'Ocultar' : 'Ver'} {ocultas.length} {ocultas.length === 1 ? 'fecha de una persona que ya no está' : 'fechas de personas que ya no están'}
           </button>
@@ -276,7 +333,7 @@ export default function ImportantDates() {
       {loading ? <Panel><p className="p-6 text-sm" style={lbl}>Cargando…</p></Panel> : vista === 'lista' ? (
         <Panel>
           {proximos.length === 0 ? (
-            <p className="p-6 text-sm" style={lbl}>No hay fechas en los próximos 12 meses. Elige algún país o añade una fecha.</p>
+            <p className="p-6 text-sm" style={lbl}>No hay fechas en los próximos 12 meses. Añade algún país{puedeGestionar ? ' o una fecha' : ''}.</p>
           ) : (
             <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
               {proximos.map((e, i) => {
@@ -326,13 +383,13 @@ export default function ImportantDates() {
         </div>
       )}
 
-      {verOcultas && ocultas.length > 0 && (
+      {puedeGestionar && verOcultas && ocultas.length > 0 && (
         <Panel className="mt-4">
           <p className="px-4 pt-3 pb-1 text-xs font-medium" style={lbl}>Personas que ya no están en el CRM (no se repiten)</p>
           {ocultas.map((r) => (
             <div key={r.id} className="p-3.5 flex items-center justify-between gap-3" style={{ borderTop: '1px solid var(--border)', opacity: 0.7 }}>
               <span className="text-sm">{r.titulo} <span className="text-xs" style={lbl}>· {aDate(r.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}</span></span>
-              {puedeGestionar && <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Borrar</button>}
+              <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Borrar</button>
             </div>
           ))}
         </Panel>

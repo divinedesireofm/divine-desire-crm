@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 import { reproducirAviso, instalarDesbloqueo } from '../lib/sonido'
+import { avisosDeFechas, iso } from '../lib/fechasEventos'
 
 const DIAS_ALERTA_CONTENIDO = 14
 const Ctx = createContext(null)
@@ -9,10 +10,11 @@ const Ctx = createContext(null)
 // Reúne en una sola lista:
 //  - los avisos guardados en la base de datos (reportes, sanciones, nuevos compañeros, entradas/salidas)
 //  - los avisos calculados al vuelo para quien gestiona (contenido atrasado, contraseña sin crear)
+//  - los avisos de fechas importantes para TODO el mundo, también modelos (1 semana, 2 días, 1 día y el mismo día)
 // Cada aviso tiene una clave; al marcarlo como leído se guarda esa clave y desaparece para esa persona.
 export function NotificationsProvider({ children }) {
   const { profile, hasAnyRole } = useAuth()
-  const activo = !!profile && hasAnyRole(['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'])
+  const activo = !!profile && hasAnyRole(['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'])
   const gestiona = hasAnyRole(['admin', 'manager', 'ig_manager'])
   const [items, setItems] = useState([])
   const [leidas, setLeidas] = useState(() => new Set())
@@ -20,6 +22,22 @@ export function NotificationsProvider({ children }) {
   const leidasRef = useRef(leidas)
   const vistosRef = useRef(null) // claves ya conocidas; null hasta la primera carga
   leidasRef.current = leidas
+  const fechasRef = useRef({ t: 0, rows: [], paises: ['es', 've'], custom: [] }) // datos de fechas, se refrescan cada 10 min
+
+  async function datosFechas() {
+    const f = fechasRef.current
+    if (Date.now() - f.t < 600000) return f
+    f.t = Date.now() // aunque falle, no se reintenta en cada refresco
+    const [r1, r2, r3] = await Promise.all([
+      supabase.rpc('fechas_visibles'),
+      supabase.from('paises_fechas').select('id, nombre, color'),
+      supabase.from('fechas_config').select('valor').eq('clave', 'paises').maybeSingle(),
+    ])
+    f.rows = r1.data || []
+    f.custom = r2.data || []
+    f.paises = Array.isArray(r3.data?.valor) ? r3.data.valor : ['es', 've']
+    return f
+  }
 
   const cargar = useCallback(async () => {
     if (!profile) return
@@ -41,6 +59,11 @@ export function NotificationsProvider({ children }) {
     const lista = (notifs || []).map((n) => ({ key: 'n:' + n.id, tipo: n.tipo, prioridad: n.prioridad, texto: n.texto, ruta: n.ruta, fecha: n.created_at }))
     ;((r3 && r3.data) || []).forEach((c) => lista.push({ key: 'cont:' + c.id, tipo: 'contenido', prioridad: 'alta', texto: `${c.models?.stage_name}: "${c.titulo}" lleva más de 14 días sin entregarse`, ruta: '/contenido', fecha: null }))
     ;((r4 && r4.data) || []).forEach((p) => lista.push({ key: 'pwd:' + p.id, tipo: 'pendiente', prioridad: 'alta', texto: `${p.full_name} todavía no ha creado su contraseña`, ruta: '/equipo', fecha: null }))
+
+    try {
+      const f = await datosFechas()
+      avisosDeFechas({ rows: f.rows, paises: f.paises, custom: f.custom, hoy: iso(new Date()) }).forEach((a) => lista.push(a))
+    } catch { /* si fallan las fechas, el resto de avisos sigue funcionando */ }
 
     setItems(lista)
     setLeidas(new Set((reads || []).map((r) => r.clave)))
