@@ -5,6 +5,7 @@ import { getProfilesByRoles } from '../lib/roles'
 import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
+import ImportarInflow from '../components/ImportarInflow'
 
 const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 const hoy = () => iso(new Date())
@@ -88,6 +89,28 @@ function agregar(filas, fChatter) {
   }
 }
 
+// Une los fans importados de Inflow con los del ranking de reportes (si están en ambos, gana el gasto mayor)
+function fusionar(rank, imp) {
+  const mapa = new Map(rank.map((r) => [r.user.toLowerCase(), { ...r, origen: 'Reportes' }]))
+  for (const f of imp) {
+    const k = f.fan_user.toLowerCase()
+    const e = mapa.get(k)
+    const g = Number(f.gasto) || 0
+    const mods = String(f.modelos || '').split(',').map((x) => x.trim()).filter(Boolean)
+    if (!e) {
+      mapa.set(k, { user: f.fan_user, nombre: f.fan_nombre || '', total: g, ppv: Number(f.ppv) || 0, tips: Number(f.tips) || 0, n: f.compras || 0, ultima: f.ultima_compra || '', modelos: new Set(mods), chatters: new Set(), origen: 'Inflow' })
+    } else {
+      e.origen = 'Reportes + Inflow'
+      if (g > e.total) { e.total = g; e.ppv = Number(f.ppv) || e.ppv; e.tips = Number(f.tips) || e.tips }
+      if (f.compras > e.n) e.n = f.compras
+      if (f.ultima_compra && f.ultima_compra > e.ultima) e.ultima = f.ultima_compra
+      e.modelos = new Set([...e.modelos, ...mods])
+      if (!e.nombre && f.fan_nombre) e.nombre = f.fan_nombre
+    }
+  }
+  return Array.from(mapa.values()).sort((a, b) => b.total - a.total)
+}
+
 export default function Recaptures() {
   const { profile, hasAnyRole } = useAuth()
   const esMgr = hasAnyRole(['admin', 'manager'])
@@ -112,7 +135,8 @@ export default function Recaptures() {
   const [noRepetir, setNoRepetir] = useState(true)
   const [genBusy, setGenBusy] = useState(false)
   const [genMsg, setGenMsg] = useState('')
-  const [autoDias, setAutoDias] = useState(30)
+  const [importados, setImportados] = useState([])
+  const [incluirImp, setIncluirImp] = useState(true)
   const [pestana, setPestana] = useState('asignados')
 
   useEffect(() => {
@@ -120,6 +144,12 @@ export default function Recaptures() {
     supabase.from('models').select('id, stage_name').order('stage_name').then(({ data }) => setModelos(data || []))
     getProfilesByRoles(['chatter'], { onlyActive: true }).then((cs) => setChatters(cs || []))
   }, [esMgr])
+
+  async function cargarImportados() {
+    const { data } = await supabase.from('recapture_fans').select('*').limit(20000)
+    setImportados(data || [])
+  }
+  useEffect(() => { if (esMgr) cargarImportados() }, [esMgr])
 
   function cambiarPreset(v) {
     const n = Number(v)
@@ -135,7 +165,12 @@ export default function Recaptures() {
   useEffect(() => { if (esMgr) cargarRanking() }, [esMgr, desde, hasta, fModelo])
 
   // El ranking se calcula en el momento con el chatter elegido, sin volver a pedir datos
-  const { ranking, sinMonto, chattersVenta } = useMemo(() => agregar(filas, fChatter), [filas, fChatter])
+  const base = useMemo(() => agregar(filas, fChatter), [filas, fChatter])
+  const usaImp = incluirImp && fModelo === 'todos'
+  const { sinMonto, chattersVenta } = base
+  const ranking = useMemo(() => fusionar(base.ranking, usaImp && fChatter === 'todos' ? importados : []), [base, importados, usaImp, fChatter])
+  // Fans que se pueden repartir: siempre los de todos los chatters (el filtro de chatter es solo para ver el ranking)
+  const poolFans = useMemo(() => (fChatter === 'todos' ? ranking : fusionar(agregar(filas, 'todos').ranking, usaImp ? importados : [])), [ranking, filas, importados, usaImp, fChatter])
 
   // ---- asignaciones de la semana
   async function cargarAsign() {
@@ -162,7 +197,7 @@ export default function Recaptures() {
 
   // Reparto común: conserva lo ya marcado, borra lo pendiente de los chatters elegidos y guarda lo nuevo.
   // modo 'azar': k fans por chatter al azar. modo 'auto': reparte TODOS los fans del periodo a partes iguales.
-  async function repartir(modo, poolBase) {
+  async function repartir(modo) {
     setGenMsg('')
     if (!chattersElegidos.length) { setGenMsg('Elige al menos un chatter.'); return }
     setGenBusy(true)
@@ -170,13 +205,18 @@ export default function Recaptures() {
     const elegidos = new Set(chattersElegidos)
     const mantener = actuales.filter((a) => a.hecho || !elegidos.has(a.chatter_id))
     const borrar = actuales.filter((a) => !a.hecho && elegidos.has(a.chatter_id))
+    if (borrar.length) {
+      const hechos = actuales.filter((a) => a.hecho).length
+      const ok = confirm(`La recaptación anterior no se ha completado: quedan ${borrar.length} fans sin escribir (${hechos} ya escritos de ${actuales.length} asignados esta semana).\n\nSi continúas, esos ${borrar.length} fans pendientes se sustituyen por otros nuevos.\n\n¿Seguro que quieres hacer una nueva asignación?`)
+      if (!ok) { setGenBusy(false); setGenMsg('Asignación cancelada, no se ha cambiado nada.'); return }
+    }
     const excluir = new Set(mantener.map((a) => a.fan_user.toLowerCase()))
     if (noRepetir) {
       const { data: previas } = await supabase.from('recapture_assignments').select('fan_user').gte('semana', sumarDias(semana, -28)).lt('semana', semana)
       ;(previas || []).forEach((a) => excluir.add(a.fan_user.toLowerCase()))
     }
     const minimo = parseFloat(minGasto) || 0
-    const disponibles = poolBase.filter((f) => f.total >= minimo && !excluir.has(f.user.toLowerCase()))
+    const disponibles = poolFans.filter((f) => f.total >= minimo && !excluir.has(f.user.toLowerCase()))
     const nuevas = []
     const fila = (id, f) => ({ semana, chatter_id: id, fan_user: f.user, fan_nombre: f.nombre, gasto: Math.round(f.total * 100) / 100, modelos: Array.from(f.modelos).join(', '), ultima_compra: f.ultima || null, asignado_por: profile.id })
     let faltan = 0
@@ -220,15 +260,8 @@ export default function Recaptures() {
       : 'No hay fans disponibles con estos criterios. Amplía el rango de fechas o baja el mínimo.')
     cargarAsign()
   }
-  const generar = () => repartir('azar', ranking)
-  async function autoAsignar() {
-    setGenMsg('')
-    setGenBusy(true)
-    const f = await traerFilas(hace(autoDias), hoy(), 'todos')
-    const pool = agregar(f, 'todos').ranking
-    setGenBusy(false)
-    await repartir('auto', pool)
-  }
+  const generar = () => repartir('azar')
+  const autoAsignar = () => repartir('auto')
 
   async function marcar(a, hecho) {
     setAsign((rs) => rs.map((x) => (x.id === a.id ? { ...x, hecho, hecho_en: hecho ? new Date().toISOString() : null } : x)))
@@ -265,21 +298,52 @@ export default function Recaptures() {
       { label: 'Última compra', get: (r) => fmtF(r.ultima) },
       { label: 'Modelos', get: (r) => Array.from(r.modelos).join(', ') },
       { label: 'Chatter', get: (r) => Array.from(r.chatters).join(', ') },
+      { label: 'Origen', key: 'origen' },
     ])
   }
 
   const esSemanaActual = semana === lunesDe(hoy())
 
+  const barraPeriodo = (
+    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+      <div>
+        <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Periodo de compras</label>
+        <Select value={preset} onChange={(e) => cambiarPreset(e.target.value)}>
+          {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.n}</option>)}
+        </Select>
+      </div>
+      {preset === 0 && (
+        <>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Desde</label>
+            <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Hasta</label>
+            <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+          </div>
+        </>
+      )}
+      <div>
+        <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Modelo</label>
+        <Select value={fModelo} onChange={(e) => setFModelo(e.target.value)}>
+          <option value="todos">Todas</option>
+          {modelos.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
+        </Select>
+      </div>
+    </div>
+  )
+
   return (
     <div>
       <PageHeader
         title="Recaptaciones"
-        subtitle={esMgr ? 'Ranking de fans por gasto y reparto semanal de fans a recuperar entre los chatters.' : 'Los fans que te tocan esta semana. Marca cada uno cuando le hayas escrito.'}
+        subtitle={esMgr ? 'Reparto semanal de fans a recuperar entre los chatters y ranking de fans por gasto.' : 'Los fans que te tocan esta semana. Marca cada uno cuando le hayas escrito.'}
       />
 
       {esMgr && (
         <div className="flex gap-2 mb-5">
-          {[['asignados', 'Fans asignados'], ['reparto', 'Reparto y ranking']].map(([id, n]) => (
+          {[['asignados', 'Fans asignados'], ['reparto', 'Repartir fans'], ['ranking', 'Ranking de fans']].map(([id, n]) => (
             <button key={id} type="button" onClick={() => setPestana(id)} className="px-4 py-2 rounded-md text-sm"
               style={{ background: pestana === id ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${pestana === id ? 'var(--accent)' : 'var(--border)'}`, color: pestana === id ? 'var(--accent)' : 'var(--text)' }}>
               {n}
@@ -351,7 +415,6 @@ export default function Recaptures() {
 
       {/* ---------- Reparto y ranking ---------- */}
       {esMgr && pestana === 'reparto' && (
-      <>
       <Panel className="p-5 mb-6">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <p className="font-medium">Reparto · semana del {fmtF(semana)}</p>
@@ -361,11 +424,17 @@ export default function Recaptures() {
             <Button variant="ghost" onClick={() => setSemana(sumarDias(semana, 7))}>→</Button>
           </div>
         </div>
+        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Los fans a repartir salen de las compras de este periodo (el mismo que usa el ranking):</p>
+        {barraPeriodo}
+        <label className="flex items-center gap-2 text-sm mb-4 cursor-pointer">
+          <input type="checkbox" checked={incluirImp} onChange={(e) => setIncluirImp(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--accent)' }} />
+          Incluir los {importados.length} fans importados de Inflow {fModelo !== 'todos' ? '(se ignoran al filtrar por modelo)' : ''}
+        </label>
         {esMgr && (
           <div className="p-4 rounded-md mb-5" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
             <p className="text-sm font-medium mb-3">Repartir fans al azar</p>
             <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-              Se sortean entre los fans del ranking de abajo (usa el rango de fechas y la modelo que tengas elegidos). Si ya hay reparto esta semana, se sustituyen solo los fans que aún no se han marcado como escritos.
+              Se sortean entre los fans del periodo elegido arriba. Si ya hay reparto esta semana, se sustituyen solo los fans que aún no se han marcado como escritos.
             </p>
             <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Chatters que participan</label>
             <div className="flex flex-wrap gap-2 mb-3">
@@ -396,20 +465,14 @@ export default function Recaptures() {
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <Button onClick={generar} disabled={genBusy || cargando}>{genBusy ? 'Repartiendo…' : asign.length ? 'Volver a repartir' : 'Repartir fans'}</Button>
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Fans disponibles en el ranking: {ranking.length}</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Fans disponibles en el periodo: {poolFans.length}</span>
             </div>
             <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
               <p className="text-sm font-medium mb-1">Auto-asignación</p>
               <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-                Reparte todos los fans que compraron en el periodo elegido a partes iguales entre los chatters marcados arriba, equilibrando también el gasto (respeta el gasto mínimo y la opción de no repetir).
+                Reparte todos los fans del periodo elegido arriba a partes iguales entre los chatters marcados arriba, equilibrando también el gasto (respeta el gasto mínimo y la opción de no repetir).
               </p>
               <div className="flex items-end gap-3 flex-wrap">
-                <div>
-                  <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Periodo de compras a repartir</label>
-                  <Select value={autoDias} onChange={(e) => setAutoDias(Number(e.target.value))}>
-                    {PRESETS.filter((p) => p.id > 0).map((p) => <option key={p.id} value={p.id}>{p.n}</option>)}
-                  </Select>
-                </div>
                 <Button onClick={autoAsignar} disabled={genBusy || cargando}>{genBusy ? 'Repartiendo…' : 'Auto-asignar'}</Button>
               </div>
             </div>
@@ -418,6 +481,12 @@ export default function Recaptures() {
         )}
 
       </Panel>
+      )}
+
+      {/* ---------- Ranking de fans ---------- */}
+      {esMgr && pestana === 'ranking' && (
+      <>
+      <ImportarInflow profileId={profile.id} cuantos={importados.length} onDone={cargarImportados} />
       <Panel className="p-5">
           <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
             <p className="font-medium">Ranking de fans por gasto</p>
@@ -426,28 +495,8 @@ export default function Recaptures() {
           <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
             Se calcula con las compras anotadas en los reportes de turno (nombre, @usuario, cantidad y tipo). Los reportes anteriores a que se anotaran las cantidades no cuentan.
           </p>
+          {barraPeriodo}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
-            <div>
-              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Periodo</label>
-              <Select value={preset} onChange={(e) => cambiarPreset(e.target.value)}>
-                {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.n}</option>)}
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Desde</label>
-              <Input type="date" value={desde} onChange={(e) => { setDesde(e.target.value); setPreset(0) }} />
-            </div>
-            <div>
-              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Hasta</label>
-              <Input type="date" value={hasta} onChange={(e) => { setHasta(e.target.value); setPreset(0) }} />
-            </div>
-            <div>
-              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Modelo</label>
-              <Select value={fModelo} onChange={(e) => setFModelo(e.target.value)}>
-                <option value="todos">Todas</option>
-                {modelos.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
-              </Select>
-            </div>
             <div>
               <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Chatter que hizo la venta</label>
               <Select value={fChatter} onChange={(e) => setFChatter(e.target.value)}>
@@ -455,6 +504,10 @@ export default function Recaptures() {
                 {chattersVenta.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </Select>
             </div>
+            <label className="flex items-center gap-2 text-sm self-end pb-2 cursor-pointer sm:col-span-2">
+              <input type="checkbox" checked={incluirImp} onChange={(e) => setIncluirImp(e.target.checked)} style={{ width: 18, height: 18, accentColor: 'var(--accent)' }} />
+              Incluir fans importados de Inflow
+            </label>
           </div>
 
           {cargando ? (
@@ -471,7 +524,7 @@ export default function Recaptures() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      {['#', 'Usuario', 'Nombre', 'Gasto', 'PPV', 'Tips', 'Compras', 'Última compra', 'Modelos', 'Chatter'].map((c) => (
+                      {['#', 'Usuario', 'Nombre', 'Gasto', 'PPV', 'Tips', 'Compras', 'Última compra', 'Modelos', 'Chatter', 'Origen'].map((c) => (
                         <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)', position: 'sticky', top: 0, background: 'var(--panel)' }}>{c}</th>
                       ))}
                     </tr>
@@ -489,6 +542,7 @@ export default function Recaptures() {
                         <td className="px-3 py-2 whitespace-nowrap">{fmtF(r.ultima)}</td>
                         <td className="px-3 py-2" style={{ color: 'var(--text-muted)' }}>{Array.from(r.modelos).join(', ')}</td>
                         <td className="px-3 py-2">{Array.from(r.chatters).join(', ')}</td>
+                        <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{r.origen}</td>
                       </tr>
                     ))}
                   </tbody>
