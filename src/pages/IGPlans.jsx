@@ -22,7 +22,7 @@ const fmtExacta = (ts) => (ts ? new Date(ts).toLocaleString('es-ES', { day: '2-d
 const aIso = (t) => { const m = String(t || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '' }
 const deIso = (i) => { const m = String(i || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '' }
 const tituloHoy = () => new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
-const ESTADOS = { borrador: ['Borrador', 'var(--gold)'], guardada: ['Guardada', 'var(--text-muted)'], enviada: ['Enviada a la modelo', 'var(--success)'] }
+const ESTADOS = { borrador: ['Borrador', 'var(--gold)'], guardada: ['Guardada', 'var(--text-muted)'] }
 
 // ---- Texto listo para copiar y pegar a la chica ----
 function bloqueReel(r) {
@@ -198,18 +198,12 @@ export default function IGPlans() {
     setDias((ds) => ds.filter((_, i) => i !== di))
   }
 
-  // destino: 'borrador' | 'guardada' | 'enviada'
+  // destino: 'borrador' | 'guardada'
   async function guardar(destino = 'guardada') {
     setErr(''); setMsg('')
     if (!ed.account_id) { setErr('Elige la cuenta de Instagram.'); return }
-    if (destino === 'enviada') {
-      const c = cuenta(ed.account_id)
-      if (!c?.model_id) { setErr('Esa cuenta no tiene modelo asignada: asígnala en «Cuentas de Instagram» para poder enviarle la planificación.'); return }
-      if (!confirm(`¿Enviar esta planificación a ${c.models?.stage_name || 'la modelo'}? Le saldrá en su apartado «Envío de reels».`)) return
-    }
     if (ocupadoRef.current) { setErr('Se está autoguardando; vuelve a pulsar en un segundo.'); return }
     setGuardando(true)
-    const ahora = new Date().toISOString()
     const payload = {
       account_id: ed.account_id,
       // La planificación se identifica por su fecha exacta de creación (ya no por la semana)
@@ -217,8 +211,6 @@ export default function IGPlans() {
       reglas: ed.reglas.trim(), mostrar_resumen: ed.mostrar_resumen, dias: ed.dias,
       estado: destino, responsable_id: ed.responsable_id || profile?.id || null,
     }
-    if (destino === 'enviada') { payload.enviado_at = ahora; payload.enviado_por = profile?.id || null }
-    else if (ed.estado === 'enviada') { payload.enviado_at = null; payload.enviado_por = null } // al guardar de nuevo sin enviar, se retira
     const { data, error } = ed.id
       ? await supabase.from('ig_plans').update(payload).eq('id', ed.id).select().single()
       : await supabase.from('ig_plans').insert([payload]).select().single()
@@ -226,14 +218,15 @@ export default function IGPlans() {
     if (error) { setErr(error.message.includes('does not exist') || error.message.includes('column') ? 'Falta ejecutar la migración 52b en Supabase.' : 'No se pudo guardar. Revisa que tengas acceso a esa cuenta.'); return }
     baseRef.current = instantanea({ ...ed, titulo: data.titulo }); setAuto({ estado: '', hora: '' })
     setEd((e) => ({ ...e, id: data.id, titulo: data.titulo, estado: data.estado, created_at: data.created_at }))
-    setMsg(destino === 'borrador' ? 'Guardada como borrador.' : destino === 'enviada' ? 'Enviada a la modelo.' : ed.estado === 'enviada' ? 'Guardada. Ya no la ve la modelo: pulsa «Enviar a la modelo» para que vea los cambios.' : 'Guardada.')
+    setMsg(destino === 'borrador' ? 'Guardada como borrador.' : 'Guardada.')
     cargar()
   }
-  async function retirar(p) {
-    if (!confirm('¿Retirar esta planificación de la modelo? Dejará de verla y pasa a «Guardada».')) return
-    const { error } = await supabase.from('ig_plans').update({ estado: 'guardada', enviado_at: null, enviado_por: null }).eq('id', p.id)
-    if (error) { alert('No se pudo retirar.'); return }
-    cargar()
+  // Marca manual de «ya la he enviado»: solo deja constancia en esta pantalla, no envía nada a ningún sitio
+  async function marcarEnviada(p, marcar) {
+    if (!marcar && !confirm('¿Quitar la marca de enviada de esta planificación?')) return
+    const { error } = await supabase.from('ig_plans').update(marcar ? { enviado_at: new Date().toISOString(), enviado_por: profile?.id || null } : { enviado_at: null, enviado_por: null }).eq('id', p.id)
+    if (error) { alert('No se pudo guardar la marca.'); return }
+    cargar(true)
   }
   async function borrar(p) {
     if (!confirm(`¿Borrar la planificación «${p.titulo}» de @${sinArroba(usuarioDe(p.account_id))}? No se puede deshacer.`)) return
@@ -373,13 +366,12 @@ export default function IGPlans() {
               {err && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{err}</p>}
               {msg && <p className="text-sm mt-3" style={{ color: 'var(--success)' }}>{msg}</p>}
               <div className="flex flex-wrap gap-2 mt-4">
-                <Button onClick={() => guardar('enviada')} disabled={guardando}>{guardando ? 'Guardando…' : '📤 Enviar a la modelo'}</Button>
-                <Button variant="ghost" onClick={() => guardar('guardada')} disabled={guardando}>Guardar</Button>
+                <Button onClick={() => guardar('guardada')} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
                 <Button variant="ghost" onClick={() => guardar('borrador')} disabled={guardando}>Guardar como borrador</Button>
                 <Button variant="ghost" onClick={volver}>Cerrar</Button>
               </div>
               <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                «Enviar a la modelo» hace que la vea en su apartado «Envío de reels». Un borrador no lo ve nadie fuera del equipo: queda en la pestaña «Borradores» para revisarlo antes.
+                Cuando ya se la hayas pasado a la modelo, márcala como enviada desde la lista principal (es solo una marca, no se envía nada). Los borradores quedan en la pestaña «Borradores» para revisarlos antes.
               </p>
             </Panel>
           </div>
@@ -427,13 +419,15 @@ export default function IGPlans() {
                       <td className="px-3 py-2 whitespace-nowrap">{nombreDe(p.responsable_id || p.created_by)}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span style={{ color: est[1] }}>{est[0]}</span>
-                        {p.estado === 'enviada' && p.enviado_at && <span className="text-xs block" style={{ color: 'var(--text-muted)' }}>{fmtExacta(p.enviado_at)}</span>}
+                        {p.estado !== 'borrador' && p.enviado_at && <span className="text-xs block" style={{ color: 'var(--success)' }}>✓ Enviada · {fmtExacta(p.enviado_at)}</span>}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         <button className="text-xs underline mr-3" onClick={() => abrir(p)}>Abrir / editar</button>
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(textoPlan(p, usuarioDe(p.account_id))).catch(() => {}); setMsg(''); alert('Texto copiado.') }}>Copiar texto</button>
-                        {p.estado === 'enviada' && <button className="text-xs underline mr-3" onClick={() => retirar(p)}>Retirar</button>}
+                        {p.estado !== 'borrador' && (p.enviado_at
+                          ? <button className="text-xs underline mr-3" onClick={() => marcarEnviada(p, false)}>Quitar marca de enviada</button>
+                          : <button className="text-xs underline mr-3" style={{ color: 'var(--success)' }} onClick={() => marcarEnviada(p, true)}>✓ Marcar como enviada</button>)}
                         <button className="text-xs underline mr-3" onClick={() => duplicarEstructura(p)}>Duplicar estructura</button>
                         {puedeBorrar && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(p)}>Borrar</button>}
                       </td>
