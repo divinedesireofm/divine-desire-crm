@@ -205,12 +205,15 @@ export default function Recaptures() {
     setGenBusy(true)
     const actuales = await cargarAsign()
     const elegidos = new Set(chattersElegidos)
-    const cerrado = (a) => a.hecho || a.desaparecido
-    const mantener = actuales.filter((a) => cerrado(a) || !elegidos.has(a.chatter_id))
-    const borrar = actuales.filter((a) => !cerrado(a) && elegidos.has(a.chatter_id))
+    // Una nueva repartición BORRA la anterior de los chatters elegidos (escrita o no). Solo se conservan
+    // los fans marcados como desaparecidos (para no volver a repartirlos) y lo de chatters que no participan.
+    const mantener = actuales.filter((a) => a.desaparecido || !elegidos.has(a.chatter_id))
+    const borrar = actuales.filter((a) => !a.desaparecido && elegidos.has(a.chatter_id))
     if (borrar.length) {
-      const hechos = actuales.filter(cerrado).length
-      const ok = confirm(`La recaptación anterior no se ha completado: quedan ${borrar.length} fans sin escribir (${hechos} ya escritos de ${actuales.length} asignados esta semana).\n\nSi continúas, esos ${borrar.length} fans pendientes se sustituyen por otros nuevos.\n\n¿Seguro que quieres hacer una nueva asignación?`)
+      const hechos = borrar.filter((a) => a.hecho).length
+      const pend = borrar.length - hechos
+      const estado = pend > 0 ? `La recaptación anterior no se ha completado: quedan ${pend} fans sin escribir (${hechos} ya escritos de ${borrar.length}).` : `La recaptación anterior está completada (${hechos} fans escritos).`
+      const ok = confirm(`${estado}\n\nSi continúas, se BORRARÁ esa repartición y se hará una nueva.\n\n¿Seguro que quieres hacer una nueva asignación?`)
       if (!ok) { setGenBusy(false); setGenMsg('Asignación cancelada, no se ha cambiado nada.'); return }
     }
     const excluir = new Set(mantener.map((a) => a.fan_user.toLowerCase()))
@@ -240,7 +243,7 @@ export default function Recaptures() {
     } else {
       const k = Math.max(1, parseInt(porChatter, 10) || 0)
       const pool = barajar(disponibles)
-      const necesita = new Map(chattersElegidos.map((id) => [id, Math.max(0, k - mantener.filter((a) => a.chatter_id === id).length)]))
+      const necesita = new Map(chattersElegidos.map((id) => [id, Math.max(0, k - mantener.filter((a) => a.chatter_id === id && !a.desaparecido).length)]))
       let hayMas = true
       while (hayMas && pool.length) {
         hayMas = false
@@ -492,7 +495,7 @@ export default function Recaptures() {
           <div className="p-4 rounded-md mb-5" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
             <p className="text-sm font-medium mb-3">Repartir fans al azar</p>
             <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-              Se sortean entre los fans del periodo elegido arriba. Si ya hay reparto esta semana, se sustituyen solo los fans que aún no se han marcado como escritos.
+              Se sortean entre los fans del periodo elegido arriba. Si ya hay reparto esta semana, se borra el anterior (de los chatters marcados) y se hace uno nuevo.
             </p>
             <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Chatters que participan</label>
             <div className="flex flex-wrap gap-2 mb-3">

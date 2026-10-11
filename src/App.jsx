@@ -7,7 +7,6 @@ import Home from './pages/Home'
 import Models from './pages/Models'
 import InstagramAccounts from './pages/InstagramAccounts'
 import Reels from './pages/Reels'
-import ZeroAccounts from './pages/ZeroAccounts'
 import IGReports from './pages/IGReports'
 import WhatWorks from './pages/WhatWorks'
 import ReferenceReels from './pages/ReferenceReels'
@@ -44,6 +43,7 @@ import ImportantDates from './pages/ImportantDates'
 import ContentAssignments from './pages/ContentAssignments'
 import ModelRequests from './pages/ModelRequests'
 import Resources from './pages/Resources'
+import Rules from './pages/Rules'
 import ChatterMetrics from './pages/ChatterMetrics'
 import Requests from './pages/Requests'
 import Recaptures from './pages/Recaptures'
@@ -100,7 +100,7 @@ function AppRoutes() {
         <Route path="chatters" element={<Chatters />} />
         <Route path="instagram" element={<InstagramAccounts />} />
         <Route path="reels" element={<Reels />} />
-        <Route path="cuentas-cero" element={<ZeroAccounts />} />
+        <Route path="cuentas-cero" element={<Navigate to="/instagram?tab=cero" replace />} />
         <Route path="reportes-ig" element={<IGReports />} />
         <Route path="lo-que-funciona" element={<WhatWorks />} />
         <Route path="reels-referencia" element={<ReferenceReels />} />
@@ -134,6 +134,7 @@ function AppRoutes() {
         <Route path="contenido" element={<ContentAssignments />} />
         <Route path="solicitudes-modelos" element={<ModelRequests />} />
         <Route path="recursos" element={<Resources />} />
+        <Route path="normas" element={<Rules />} />
         <Route path="metricas-chatters" element={<ChatterMetrics />} />
         <Route path="solicitudes" element={<Requests />} />
         <Route path="recaptaciones" element={<Recaptures />} />

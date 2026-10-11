@@ -10,7 +10,7 @@ const TIPOS = [{ id: 'sugerente', n: 'Sugerente' }, { id: 'marca_personal', n: '
 const nOrigen = (id) => ORIGENES.find((o) => o.id === id)?.n || id
 const nTipo = (id) => TIPOS.find((t) => t.id === id)?.n || id
 
-const reelVacio = (i = 0) => ({ origen: 'nuevo', tipo: i % 2 === 0 ? 'sugerente' : 'marca_personal', link: '', gancho: '', texto: '' })
+const reelVacio = (i = 0) => ({ origen: 'nuevo', tipo: i % 2 === 0 ? 'sugerente' : 'marca_personal', link: '', gancho: '', texto: '', tematica: '' })
 const estructura = (dias, porDia) => Array.from({ length: dias }, () => ({ reels: Array.from({ length: porDia }, (_, i) => reelVacio(i)) }))
 const VACIA = { id: null, account_id: '', titulo: '', reglas: '', mostrar_resumen: true, estado: 'guardada', responsable_id: '', created_at: null, dias: estructura(7, 2) }
 
@@ -25,6 +25,7 @@ const ESTADOS = { borrador: ['Borrador', 'var(--gold)'], guardada: ['Guardada', 
 // ---- Texto listo para copiar y pegar a la chica ----
 function bloqueReel(r) {
   const l = [`${nOrigen(r.origen).toUpperCase()} ${nTipo(r.tipo).toUpperCase()}`]
+  if (r.tematica?.trim()) l.push(`🎯 Temática: ${r.tematica.trim()}`)
   if (r.link?.trim()) l.push(`🔗 ${r.link.trim()}`)
   if (r.gancho?.trim()) l.push(`🎣 ${r.gancho.trim()}`)
   if (r.texto?.trim()) l.push(`📝 ${r.texto.trim()}`)
@@ -92,9 +93,22 @@ export default function IGPlans() {
   const texto = useMemo(() => (ed ? textoPlan(ed, usuarioDe(ed.account_id) || 'cuenta') : ''), [ed, cuentas])
   const totalReels = (p) => (p.dias || []).reduce((a, d) => a + (d.reels?.length || 0), 0)
 
+  // Avisos y reglas: se reutilizan los de la última planificación guardada (de la misma cuenta si la hay)
+  function ultimasReglas(accountId) {
+    const con = planes.filter((p) => typeof p.reglas === 'string')
+    return (con.find((p) => p.account_id === accountId) || con[0])?.reglas || ''
+  }
+  function cambiarCuenta(id) {
+    setEd((e) => {
+      const sinTocar = !e.id && e.reglas === ultimasReglas(e.account_id)
+      return { ...e, account_id: id, reglas: sinTocar ? ultimasReglas(id) : e.reglas }
+    })
+  }
+
   function nueva() {
     setMsg(''); setErr('')
-    setEd({ ...VACIA, account_id: filtro !== 'todas' ? filtro : (cuentas[0]?.id || ''), responsable_id: profile?.id || '', dias: estructura(7, 2) })
+    const acc = filtro !== 'todas' ? filtro : (cuentas[0]?.id || '')
+    setEd({ ...VACIA, account_id: acc, titulo: tituloHoy(), reglas: ultimasReglas(acc), responsable_id: profile?.id || '', dias: estructura(7, 2) })
     setNDias(7); setNPorDia(2)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -107,8 +121,8 @@ export default function IGPlans() {
   function duplicarEstructura(p) {
     setMsg(''); setErr('')
     setEd({
-      id: null, account_id: p.account_id, titulo: '', reglas: p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: 'guardada', responsable_id: profile?.id || '', created_at: null,
-      dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '' })) })),
+      id: null, account_id: p.account_id, titulo: tituloHoy(), reglas: ultimasReglas(p.account_id) || p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: 'guardada', responsable_id: profile?.id || '', created_at: null,
+      dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '', tematica: '' })) })),
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -144,7 +158,7 @@ export default function IGPlans() {
       account_id: ed.account_id,
       // La planificación se identifica por su fecha exacta de creación (ya no por la semana)
       titulo: ed.titulo.trim() || tituloHoy(),
-      reglas: ed.reglas.trim() || null, mostrar_resumen: ed.mostrar_resumen, dias: ed.dias,
+      reglas: ed.reglas.trim(), mostrar_resumen: ed.mostrar_resumen, dias: ed.dias,
       estado: destino, responsable_id: ed.responsable_id || profile?.id || null,
     }
     if (destino === 'enviada') { payload.enviado_at = ahora; payload.enviado_por = profile?.id || null }
@@ -188,7 +202,7 @@ export default function IGPlans() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Cuenta de Instagram</label>
-                  <Select value={ed.account_id} onChange={(e) => setEd({ ...ed, account_id: e.target.value })}>
+                  <Select value={ed.account_id} onChange={(e) => cambiarCuenta(e.target.value)}>
                     <option value="">— Elegir cuenta —</option>
                     {cuentas.map((c) => <option key={c.id} value={c.id}>@{sinArroba(c.username)}{c.models?.stage_name ? ` · ${c.models.stage_name}` : ''}</option>)}
                   </Select>
@@ -197,19 +211,24 @@ export default function IGPlans() {
                   <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Responsable</label>
                   <Select value={ed.responsable_id} onChange={(e) => setEd({ ...ed, responsable_id: e.target.value })}>
                     <option value="">— Sin responsable —</option>
+                    {!equipo.some((x) => x.id === profile?.id) && profile?.id && <option value={profile.id}>{profile.full_name}</option>}
                     {equipo.map((x) => <option key={x.id} value={x.id}>{x.full_name}</option>)}
                   </Select>
                 </div>
+                <div>
+                  <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Fecha de la planificación (puedes cambiarla)</label>
+                  <Input value={ed.titulo} onChange={(e) => setEd({ ...ed, titulo: e.target.value })} placeholder={tituloHoy()} />
+                </div>
                 <div className="sm:col-span-2 text-xs flex flex-wrap items-center gap-x-4 gap-y-1" style={{ color: 'var(--text-muted)' }}>
-                  <span>{ed.created_at ? `Creada el ${fmtExacta(ed.created_at)}` : `Se creará con la fecha exacta al guardar (${tituloHoy()})`}</span>
+                  <span>{ed.created_at ? `Creada el ${fmtExacta(ed.created_at)}` : 'Se registra quién la crea y la hora exacta al guardar'}</span>
                   <span className="px-2 py-0.5 rounded-full" style={{ background: 'var(--panel-alt)', color: ESTADOS[ed.estado]?.[1] }}>{ESTADOS[ed.estado]?.[0] || ed.estado}</span>
                 </div>
               </div>
               <div className="mb-3">
-                <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Avisos y reglas (salen debajo del resumen; déjalo vacío si no hay)</label>
+                <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Avisos y reglas (salen debajo del resumen; se guardan y se te proponen en tus próximas planificaciones, puedes modificarlos)</label>
                 <textarea
                   value={ed.reglas} onChange={(e) => setEd({ ...ed, reglas: e.target.value })} rows={3}
-                  placeholder={'🔴NADA EN ROPA INTERIOR🔴\n💡CADA 2 REELS CAMBIA DE ROPA💡'}
+                  placeholder="Escribe aquí tus avisos y reglas (opcional)"
                   className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none"
                   style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
                 />
@@ -244,13 +263,14 @@ export default function IGPlans() {
                 <div className="space-y-3">
                   {d.reels.map((r, ri) => (
                     <div key={ri} className="p-3 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-                      <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
                         <Select value={r.origen} onChange={(e) => setReel(di, ri, 'origen', e.target.value)}>
                           {ORIGENES.map((o) => <option key={o.id} value={o.id}>{o.n}</option>)}
                         </Select>
                         <Select value={r.tipo} onChange={(e) => setReel(di, ri, 'tipo', e.target.value)}>
                           {TIPOS.map((t) => <option key={t.id} value={t.id}>{t.n}</option>)}
                         </Select>
+                        <Input placeholder="🎯 Temática (opcional)" value={r.tematica || ''} onChange={(e) => setReel(di, ri, 'tematica', e.target.value)} />
                       </div>
                       <div className="space-y-2">
                         <Input placeholder="🔗 Enlace del reel de referencia" value={r.link} onChange={(e) => setReel(di, ri, 'link', e.target.value)} />
