@@ -25,7 +25,7 @@ export function AuthProvider({ children }) {
     ])
     loadPerms()
     if (!error) {
-      if (data.active === false) {
+      if (data.active === false || data.extrabajador === true) {
         setDeactivatedMsg('Tu cuenta ha sido desactivada. Contacta con tu administrador.')
         await supabase.auth.signOut()
         setProfile(null)
@@ -58,6 +58,22 @@ export function AuthProvider({ children }) {
 
     return () => listener.subscription.unsubscribe()
   }, [])
+
+  // Si un admin da de baja o desactiva a alguien mientras está dentro, se le echa en menos de un minuto
+  useEffect(() => {
+    if (!profile?.id) return undefined
+    async function comprobar() {
+      const { data, error } = await supabase.from('profiles').select('active, extrabajador').eq('id', profile.id).single()
+      if (error && (error.code === 'PGRST116' || error.status === 401 || error.status === 403)) { await supabase.auth.signOut(); return }
+      if (data && (data.active === false || data.extrabajador === true)) {
+        setDeactivatedMsg('Tu cuenta ha sido desactivada. Contacta con tu administrador.')
+        await supabase.auth.signOut()
+      }
+    }
+    const t = setInterval(comprobar, 45000)
+    window.addEventListener('focus', comprobar)
+    return () => { clearInterval(t); window.removeEventListener('focus', comprobar) }
+  }, [profile?.id])
 
   function hasRole(r) {
     return roles.includes(r)

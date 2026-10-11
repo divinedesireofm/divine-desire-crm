@@ -37,11 +37,15 @@ export function textoPlan(p, usuario) {
   const todos = (p.dias || []).flatMap((d) => d.reels || [])
   const partes = [`REELS ${sinArroba(usuario)} ${String(p.titulo || tituloHoy()).toUpperCase()}`.trim()]
   if (p.mostrar_resumen) {
-    const mp = todos.filter((r) => r.tipo === 'marca_personal').length
-    const ga = todos.filter((r) => r.origen === 'ganador').length
+    // Una línea por cada combinación que realmente haya en la planificación (origen + tipo)
+    const cuenta = (o, t) => todos.filter((r) => r.origen === o && r.tipo === t).length
     const resumen = []
-    if (mp) resumen.push(plural(mp, 'reel marca personal', 'reels marca personal'))
-    if (ga) resumen.push(plural(ga, 'reel ganador adaptado', 'reels ganadores adaptados'))
+    const nS = cuenta('nuevo', 'sugerente'), nM = cuenta('nuevo', 'marca_personal')
+    const gS = cuenta('ganador', 'sugerente'), gM = cuenta('ganador', 'marca_personal')
+    if (nS) resumen.push(plural(nS, 'reel nuevo sugerente', 'reels nuevos sugerentes'))
+    if (nM) resumen.push(plural(nM, 'reel nuevo marca personal', 'reels nuevos marca personal'))
+    if (gS) resumen.push(plural(gS, 'reel ganador sugerente adaptado', 'reels ganadores sugerentes adaptados'))
+    if (gM) resumen.push(plural(gM, 'reel ganador marca personal adaptado', 'reels ganadores marca personal adaptados'))
     if (resumen.length) partes.push('\n' + resumen.join('\n'))
   }
   if (p.reglas?.trim()) partes.push('\n' + p.reglas.trim())
@@ -212,7 +216,7 @@ export default function IGPlans() {
               </div>
               <label className="flex items-center gap-2 text-sm mb-4">
                 <input type="checkbox" checked={ed.mostrar_resumen} onChange={(e) => setEd({ ...ed, mostrar_resumen: e.target.checked })} />
-                Incluir el resumen («N reels marca personal / N reels ganadores adaptados»), calculado solo
+                Incluir el resumen (cuántos reels hay de cada tipo: nuevo / ganador × sugerente / marca personal), calculado solo con lo que has puesto
               </label>
               <div className="p-3 rounded-md flex flex-wrap items-end gap-3" style={{ background: 'var(--panel-alt)' }}>
                 <div className="w-24">

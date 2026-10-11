@@ -42,6 +42,7 @@ export default function Team() {
   const asignables = rolesAsignables(roles)
   const visibles = rolesVisibles(roles)
   const [rows, setRows] = useState([])
+  const [exRows, setExRows] = useState([])
   const [rolesPorUsuario, setRolesPorUsuario] = useState({}) // { userId: ['chatter', 'manager'] }
   const [loading, setLoading] = useState(true)
   const [nuevo, setNuevo] = useState(null)
@@ -55,9 +56,10 @@ export default function Team() {
     const byUser = {}
     ;(ur || []).forEach((r) => { (byUser[r.user_id] = byUser[r.user_id] || []).push(r.role) })
     setRolesPorUsuario(byUser)
-    if (!ids.length) { setRows([]); setLoading(false); return }
+    if (!ids.length) { setRows([]); setExRows([]); setLoading(false); return }
     const { data } = await supabase.from('profiles').select('*').in('id', ids).order('full_name')
-    setRows(data || [])
+    setRows((data || []).filter((u) => !u.extrabajador))
+    setExRows((data || []).filter((u) => u.extrabajador).sort((a, b) => String(b.baja_en || '').localeCompare(String(a.baja_en || ''))))
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -85,9 +87,18 @@ export default function Team() {
 
   async function borrar(u) {
     if (u.id === profile.id) { alert('No puedes borrarte a ti mismo.'); return }
-    if (!confirm(`¿Eliminar definitivamente a ${u.full_name}? Esta acción no se puede deshacer.`)) return
-    const { error } = await supabase.functions.invoke('team-admin', { body: { action: 'delete', user_id: u.id } })
-    if (error) { alert('No se pudo eliminar: ' + error.message); return }
+    if (!confirm(`¿Dar de baja a ${u.full_name}?\n\nSe conservan todos sus reportes y lo que haya hecho en el CRM (aparecerá como «${u.full_name} (extrabajador)»), ya no podrá entrar y pasará a la pestaña Extrabajadores, desde donde podrás reactivarlo.`)) return
+    const { data, error } = await supabase.functions.invoke('team-admin', { body: { action: 'delete', user_id: u.id } })
+    if (error) { alert('No se pudo dar de baja: ' + (await readFunctionError(error))); return }
+    if (data?.error) { alert('No se pudo dar de baja: ' + data.error); return }
+    load()
+  }
+
+  async function reactivar(u) {
+    if (!confirm(`¿Reactivar a ${u.full_name.replace(/\s*\(extrabajador\)\s*$/i, '')}? Volverá a poder entrar con sus roles anteriores.`)) return
+    const { data, error } = await supabase.functions.invoke('team-admin', { body: { action: 'reactivate', user_id: u.id } })
+    if (error) { alert('No se pudo reactivar: ' + (await readFunctionError(error))); return }
+    if (data?.error) { alert('No se pudo reactivar: ' + data.error); return }
     load()
   }
 
@@ -110,9 +121,9 @@ export default function Team() {
         )}
       />
 
-      {esAdmin && (
+      {(esAdmin || asignables.length > 0) && (
         <div className="flex gap-2 mb-4">
-          {[['miembros', 'Miembros'], ['permisos', 'Permisos por rol']].map(([id, label]) => (
+          {[['miembros', 'Miembros'], ['extrabajadores', `Extrabajadores (${exRows.length})`], ...(esAdmin ? [['permisos', 'Permisos por rol']] : [])].map(([id, label]) => (
             <button
               key={id}
               onClick={() => setVista(id)}
@@ -125,7 +136,42 @@ export default function Team() {
         </div>
       )}
 
-      {esAdmin && vista === 'permisos' ? <PermissionsMatrix /> : (<>
+      {vista === 'extrabajadores' ? (
+        <Panel>
+          {exRows.length === 0 ? (
+            <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>No hay extrabajadores. Cuando des de baja a alguien, aparecerá aquí con todo su historial intacto.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    {['Nombre', 'Roles', 'Baja el', ''].map((c) => <th key={c} className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-muted)' }}>{c}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {exRows.map((u) => {
+                    const rs = rolesPorUsuario[u.id] || [u.role]
+                    return (
+                      <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td className="px-4 py-3"><strong>{u.full_name}</strong></td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {rs.map((r) => <span key={r} className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{ROLE_LABEL[r] || r}</span>)}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">{u.baja_en ? new Date(u.baja_en).toLocaleDateString('es-ES') : '—'}</td>
+                        <td className="px-4 py-3 text-right">
+                          {puedeGestionar(roles, rs) && <Button variant="ghost" onClick={() => reactivar(u)}>Reactivar</Button>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+      ) : esAdmin && vista === 'permisos' ? <PermissionsMatrix /> : (<>
       <Panel>
         {loading ? (
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
@@ -180,7 +226,7 @@ export default function Team() {
                             </button>
                           )}
                           {u.id !== profile.id && (
-                            <button onClick={() => borrar(u)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>
+                            <button onClick={() => borrar(u)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Dar de baja</button>
                           )}
                         </>
                       )}
