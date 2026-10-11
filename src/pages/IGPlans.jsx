@@ -117,10 +117,15 @@ export default function IGPlans() {
   const instantanea = (e) => JSON.stringify({ a: e.account_id, t: e.titulo, r: e.reglas, m: e.mostrar_resumen, p: e.responsable_id, d: e.dias })
   const tieneContenido = (e) => e.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.tematica || r.prueba))
   // Una planificación nueva o que ya es borrador se autoguarda; las guardadas/enviadas no (no se les cambia el estado sin querer)
-  const autoguardable = (e) => !!e && !!e.account_id && (e.id ? e.estado === 'borrador' : tieneContenido(e))
+  const autoguardable = (e) => !!e && !!e.account_id && (e.id ? e.estado === 'borrador' : true)
+
+  const pendRef = useRef(null)   // último estado que no pudo guardarse porque había otro guardado en curso
+  const edRef = useRef(null)     // siempre el estado más reciente (para guardar al salir)
+  const autoRef = useRef(null)
+  edRef.current = ed
 
   async function autoGuardar(e) {
-    if (ocupadoRef.current) return
+    if (ocupadoRef.current) { pendRef.current = e; return }
     ocupadoRef.current = true
     const payload = {
       account_id: e.account_id, titulo: e.titulo.trim() || tituloHoy(), reglas: e.reglas.trim(), mostrar_resumen: e.mostrar_resumen,
@@ -132,6 +137,11 @@ export default function IGPlans() {
     ocupadoRef.current = false
     if (error) { setAuto({ estado: 'error', hora: '' }); return false }
     baseRef.current = instantanea(e)
+    if (pendRef.current) { // había cambios nuevos mientras se guardaba: se guardan también (ya con el id)
+      const n = pendRef.current
+      pendRef.current = null
+      if (instantanea(n) !== baseRef.current) autoGuardar({ ...n, id: n.id || data.id })
+    }
     setEd((x) => (x && (x.id === e.id || (!x.id && !e.id)) ? { ...x, id: data.id, estado: 'borrador', created_at: data.created_at } : x))
     setAuto({ estado: 'ok', hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) })
     cargar(true)
@@ -144,7 +154,7 @@ export default function IGPlans() {
     if (snap === baseRef.current) return undefined
     if (!autoguardable(ed)) { if (ed.id) setAuto((a) => (a.estado === 'pendiente' ? a : { estado: 'pendiente', hora: '' })); return undefined }
     setAuto((a) => (a.estado === 'pendiente' ? a : { estado: 'pendiente', hora: '' }))
-    const t = setTimeout(() => { autoGuardar(ed) }, 2500)
+    const t = setTimeout(() => { autoGuardar(ed) }, 1500)
     return () => clearTimeout(t)
   }, [ed])
 
@@ -156,12 +166,33 @@ export default function IGPlans() {
     setEd(null)
   }
 
+  // Si se abandona el apartado de golpe (otro menú, cambio de pestaña o cierre), se guarda el borrador al instante
+  autoRef.current = autoGuardar
+  useEffect(() => {
+    function guardarYa() {
+      const e = edRef.current
+      if (e && instantanea(e) !== baseRef.current && autoguardable(e)) autoRef.current(e)
+    }
+    const alOcultar = () => { if (document.visibilityState === 'hidden') guardarYa() }
+    document.addEventListener('visibilitychange', alOcultar)
+    window.addEventListener('pagehide', guardarYa)
+    window.addEventListener('beforeunload', guardarYa)
+    return () => {
+      document.removeEventListener('visibilitychange', alOcultar)
+      window.removeEventListener('pagehide', guardarYa)
+      window.removeEventListener('beforeunload', guardarYa)
+      guardarYa() // al salir de esta pantalla
+    }
+  }, [])
+
   function nueva() {
     setMsg(''); setErr('')
     const acc = filtro !== 'todas' ? filtro : (cuentas[0]?.id || '')
-    setEd({ ...VACIA, account_id: acc, titulo: tituloHoy(), reglas: ultimasReglas(acc), responsable_id: profile?.id || '', dias: estructura(7, 2) })
+    const inicial = { ...VACIA, account_id: acc, titulo: tituloHoy(), reglas: ultimasReglas(acc), responsable_id: profile?.id || '', dias: estructura(7, 2) }
+    baseRef.current = instantanea(inicial)
+    setEd(inicial)
     setNDias(7); setNPorDia(2)
-    baseRef.current = ''; setAuto({ estado: '', hora: '' })
+    setAuto({ estado: '', hora: '' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   function abrir(p) {
@@ -174,11 +205,13 @@ export default function IGPlans() {
   // Mismo esquema (días, reels, nuevo/ganador y tipo) pero sin enlaces ni textos: punto de partida de la semana siguiente
   function duplicarEstructura(p) {
     setMsg(''); setErr('')
-    baseRef.current = ''; setAuto({ estado: '', hora: '' })
-    setEd({
+    setAuto({ estado: '', hora: '' })
+    const copia = {
       id: null, account_id: p.account_id, titulo: tituloHoy(), reglas: ultimasReglas(p.account_id) || p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: 'guardada', responsable_id: profile?.id || '', created_at: null,
       dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '', tematica: '', prueba: false })) })),
-    })
+    }
+    baseRef.current = instantanea(copia)
+    setEd(copia)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -248,7 +281,7 @@ export default function IGPlans() {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <Button variant="ghost" onClick={volver}>← Volver a las planificaciones</Button>
           <span className="text-xs" style={{ color: auto.estado === 'error' ? 'var(--danger)' : 'var(--text-muted)' }}>
-            {auto.estado === 'pendiente' ? 'Cambios sin guardar…' : auto.estado === 'ok' ? `Borrador guardado automáticamente a las ${auto.hora}` : auto.estado === 'error' ? 'No se pudo autoguardar: guarda a mano' : (ed.id && ed.estado !== 'borrador' ? 'Las planificaciones ya guardadas o enviadas no se autoguardan: usa «Guardar»' : 'Se guarda sola como borrador mientras escribes')}
+            {auto.estado === 'pendiente' ? 'Cambios sin guardar…' : auto.estado === 'ok' ? `Borrador guardado automáticamente a las ${auto.hora}` : auto.estado === 'error' ? 'No se pudo autoguardar: guarda a mano' : (ed.id && ed.estado !== 'borrador' ? 'Las planificaciones ya guardadas o enviadas no se autoguardan: usa «Guardar»' : 'Se guarda sola como borrador mientras escribes y al salir')}
           </span>
         </div>
       )}
