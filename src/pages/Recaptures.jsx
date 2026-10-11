@@ -203,14 +203,17 @@ export default function Recaptures() {
     setGenBusy(true)
     const actuales = await cargarAsign()
     const elegidos = new Set(chattersElegidos)
-    const mantener = actuales.filter((a) => a.hecho || !elegidos.has(a.chatter_id))
-    const borrar = actuales.filter((a) => !a.hecho && elegidos.has(a.chatter_id))
+    const cerrado = (a) => a.hecho || a.desaparecido
+    const mantener = actuales.filter((a) => cerrado(a) || !elegidos.has(a.chatter_id))
+    const borrar = actuales.filter((a) => !cerrado(a) && elegidos.has(a.chatter_id))
     if (borrar.length) {
-      const hechos = actuales.filter((a) => a.hecho).length
+      const hechos = actuales.filter(cerrado).length
       const ok = confirm(`La recaptación anterior no se ha completado: quedan ${borrar.length} fans sin escribir (${hechos} ya escritos de ${actuales.length} asignados esta semana).\n\nSi continúas, esos ${borrar.length} fans pendientes se sustituyen por otros nuevos.\n\n¿Seguro que quieres hacer una nueva asignación?`)
       if (!ok) { setGenBusy(false); setGenMsg('Asignación cancelada, no se ha cambiado nada.'); return }
     }
     const excluir = new Set(mantener.map((a) => a.fan_user.toLowerCase()))
+    const { data: perdidos } = await supabase.from('recapture_assignments').select('fan_user').eq('desaparecido', true)
+    ;(perdidos || []).forEach((a) => excluir.add(a.fan_user.toLowerCase())) // un fan desaparecido no se vuelve a repartir
     if (noRepetir) {
       const { data: previas } = await supabase.from('recapture_assignments').select('fan_user').gte('semana', sumarDias(semana, -28)).lt('semana', semana)
       ;(previas || []).forEach((a) => excluir.add(a.fan_user.toLowerCase()))
@@ -268,6 +271,12 @@ export default function Recaptures() {
     const { error } = await supabase.from('recapture_assignments').update({ hecho, hecho_en: hecho ? new Date().toISOString() : null, hecho_por: hecho ? profile.id : null }).eq('id', a.id)
     if (error) { alert('No se pudo guardar.'); cargarAsign() }
   }
+  async function desaparecido(a, valor) {
+    const ahora = valor ? new Date().toISOString() : null
+    setAsign((rs) => rs.map((x) => (x.id === a.id ? { ...x, desaparecido: valor, desaparecido_en: ahora, ...(valor ? { hecho: false, hecho_en: null } : {}) } : x)))
+    const { error } = await supabase.from('recapture_assignments').update({ desaparecido: valor, desaparecido_en: ahora, desaparecido_por: valor ? profile.id : null, ...(valor ? { hecho: false, hecho_en: null, hecho_por: null } : {}) }).eq('id', a.id)
+    if (error) { alert('No se pudo guardar: ' + error.message); cargarAsign() }
+  }
   async function quitar(a) {
     if (!confirm(`¿Quitar a ${a.fan_user} de la lista de esta semana?`)) return
     await supabase.from('recapture_assignments').delete().eq('id', a.id)
@@ -309,8 +318,9 @@ export default function Recaptures() {
       <div>
         <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Periodo de compras</label>
         <Select value={preset} onChange={(e) => cambiarPreset(e.target.value)}>
-          {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.n}</option>)}
+          {PRESETS.map((p) => <option key={p.id} value={p.id}>{p.id > 0 ? `${p.n} (${fmtF(hace(p.id)).slice(0, 5)} – ${fmtF(hoy()).slice(0, 5)})` : p.n}</option>)}
         </Select>
+        {preset > 0 && <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Del {fmtF(desde)} al {fmtF(hasta)}</p>}
       </div>
       {preset === 0 && (
         <>
@@ -369,13 +379,13 @@ export default function Recaptures() {
             {esMgr ? 'Aún no hay fans repartidos esta semana.' : 'Todavía no te han asignado fans esta semana.'}
           </p>
         ) : grupos.map((g) => {
-          const hechos = g.items.filter((a) => a.hecho).length
+          const hechos = g.items.filter((a) => a.hecho || a.desaparecido).length
           return (
             <div key={g.id} className="mb-5">
               <div className="flex items-center gap-3 mb-2">
                 <strong>{g.id === profile.id ? 'Mis fans' : g.nombre}</strong>
                 <span className="text-xs px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: hechos === g.items.length ? 'var(--success)22' : 'var(--accent-soft)', color: hechos === g.items.length ? 'var(--success)' : 'var(--accent)' }}>
-                  {hechos}/{g.items.length} escritos
+                  {hechos}/{g.items.length} resueltos
                 </span>
                 <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
                   <div style={{ width: `${(100 * hechos) / g.items.length}%`, height: '100%', background: 'var(--success)' }} />
@@ -385,23 +395,27 @@ export default function Recaptures() {
                 {g.items.map((a) => {
                   const puedeMarcar = esMgr || a.chatter_id === profile.id
                   return (
-                    <div key={a.id} className="flex items-center gap-3 px-3 py-2 rounded-md text-sm" style={{ background: a.hecho ? 'var(--success)11' : 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                    <div key={a.id} className="flex items-center gap-3 px-3 py-2 rounded-md text-sm" style={{ background: a.desaparecido ? 'var(--danger)11' : a.hecho ? 'var(--success)11' : 'var(--panel-alt)', border: '1px solid var(--border)' }}>
                       <input
                         type="checkbox"
                         checked={!!a.hecho}
-                        disabled={!puedeMarcar}
+                        disabled={!puedeMarcar || !!a.desaparecido}
                         onChange={(e) => marcar(a, e.target.checked)}
                         aria-label={`Ya he escrito a ${a.fan_user}`}
                         style={{ width: 22, height: 22, accentColor: 'var(--success)', flex: 'none' }}
                       />
-                      <div className="min-w-0 flex-1" style={{ opacity: a.hecho ? 0.65 : 1 }}>
+                      <div className="min-w-0 flex-1" style={{ opacity: a.hecho || a.desaparecido ? 0.65 : 1, textDecoration: a.desaparecido ? 'line-through' : 'none' }}>
                         <div className="truncate"><strong>{a.fan_user}</strong> {a.fan_nombre && <span style={{ color: 'var(--text-muted)' }}>{a.fan_nombre}</span>}</div>
                         <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                           Gastó {money(a.gasto)}{a.modelos ? ` · ${a.modelos}` : ''}{a.ultima_compra ? ` · última compra ${fmtF(a.ultima_compra)}` : ''}
+                          {a.desaparecido ? ' · FAN DESAPARECIDO' : ''}
                           {a.hecho && a.hecho_en ? ` · escrito el ${new Date(a.hecho_en).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}` : ''}
                         </div>
                       </div>
                       <CopyButton text={a.fan_user.replace(/^@+/, '')} label="Copiar usuario" />
+                      {puedeMarcar && (a.desaparecido
+                        ? <button onClick={() => desaparecido(a, false)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Deshacer</button>
+                        : <button onClick={() => { if (confirm(`¿Marcar a ${a.fan_user} como desaparecido (no se encuentra, te bloqueó o borró la cuenta)? No se le volverá a repartir.`)) desaparecido(a, true) }} className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}>Fan desaparecido</button>)}
                       {esMgr && <button onClick={() => quitar(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar</button>}
                     </div>
                   )

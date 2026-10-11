@@ -46,13 +46,15 @@ export default function NotificationPopup() {
         </div>
         <div className="overflow-y-auto">
           {importantes.map((a) => (
-            <div key={a.key} className="px-5 py-3 text-sm" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div key={a.key} className="px-5 py-3 text-sm cursor-pointer hover:bg-[var(--panel-alt)]" style={{ borderBottom: '1px solid var(--border)' }}
+              role="link" tabIndex={0}
+              onClick={() => { cerrar(); navigate(a.ruta || '/') }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { cerrar(); navigate(a.ruta || '/') } }}>
               <p>{a.texto}</p>
               <div className="flex items-center justify-between mt-2">
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{hace(a.fecha)}</span>
                 <div className="flex gap-3">
-                  <button onClick={() => { cerrar(); navigate(a.ruta || '/') }} className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}>Ir</button>
-                  <button onClick={() => nt.marcarLeidas([a.key])} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Marcar como leída</button>
+                  <button onClick={(e) => { e.stopPropagation(); nt.marcarLeidas([a.key]) }} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Marcar como leída</button>
                 </div>
               </div>
             </div>
