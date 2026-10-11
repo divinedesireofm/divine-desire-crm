@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
@@ -10,7 +10,7 @@ const TIPOS = [{ id: 'sugerente', n: 'Sugerente' }, { id: 'marca_personal', n: '
 const nOrigen = (id) => ORIGENES.find((o) => o.id === id)?.n || id
 const nTipo = (id) => TIPOS.find((t) => t.id === id)?.n || id
 
-const reelVacio = (i = 0) => ({ origen: 'nuevo', tipo: i % 2 === 0 ? 'sugerente' : 'marca_personal', link: '', gancho: '', texto: '', tematica: '' })
+const reelVacio = (i = 0) => ({ origen: 'nuevo', tipo: i % 2 === 0 ? 'sugerente' : 'marca_personal', link: '', gancho: '', texto: '', tematica: '', prueba: false })
 const estructura = (dias, porDia) => Array.from({ length: dias }, () => ({ reels: Array.from({ length: porDia }, (_, i) => reelVacio(i)) }))
 const VACIA = { id: null, account_id: '', titulo: '', reglas: '', mostrar_resumen: true, estado: 'guardada', responsable_id: '', created_at: null, dias: estructura(7, 2) }
 
@@ -19,12 +19,15 @@ const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`
 const fmtTS = (ts) => (ts ? new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '')
 // Fecha exacta de creación: «10/10/2026 23:53»
 const fmtExacta = (ts) => (ts ? new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
+const aIso = (t) => { const m = String(t || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '' }
+const deIso = (i) => { const m = String(i || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '' }
 const tituloHoy = () => new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
 const ESTADOS = { borrador: ['Borrador', 'var(--gold)'], guardada: ['Guardada', 'var(--text-muted)'], enviada: ['Enviada a la modelo', 'var(--success)'] }
 
 // ---- Texto listo para copiar y pegar a la chica ----
 function bloqueReel(r) {
   const l = [`${nOrigen(r.origen).toUpperCase()} ${nTipo(r.tipo).toUpperCase()}`]
+  if (r.prueba) l.push('🧪 REEL DE PRUEBA')
   if (r.tematica?.trim()) l.push(`🎯 Temática: ${r.tematica.trim()}`)
   if (r.link?.trim()) l.push(`🔗 ${r.link.trim()}`)
   if (r.gancho?.trim()) l.push(`🎣 ${r.gancho.trim()}`)
@@ -47,6 +50,8 @@ export function textoPlan(p, usuario) {
     if (nM) resumen.push(plural(nM, 'reel nuevo marca personal', 'reels nuevos marca personal'))
     if (gS) resumen.push(plural(gS, 'reel ganador sugerente adaptado', 'reels ganadores sugerentes adaptados'))
     if (gM) resumen.push(plural(gM, 'reel ganador marca personal adaptado', 'reels ganadores marca personal adaptados'))
+    const pr = todos.filter((r) => r.prueba).length
+    if (pr) resumen.push(plural(pr, 'reel de prueba', 'reels de prueba'))
     if (resumen.length) partes.push('\n' + resumen.join('\n'))
   }
   if (p.reglas?.trim()) partes.push('\n' + p.reglas.trim())
@@ -70,8 +75,8 @@ export default function IGPlans() {
   const [vista, setVista] = useState('planes') // planes | borradores
   const [equipo, setEquipo] = useState([])
 
-  async function cargar() {
-    setLoading(true)
+  async function cargar(silencioso = false) {
+    if (!silencioso) setLoading(true)
     const [{ data: c }, { data: p }, eq] = await Promise.all([
       supabase.from('instagram_accounts').select('id, username, model_id, models(stage_name)').order('username'),
       supabase.from('ig_plans').select('*').order('created_at', { ascending: false }).limit(300),
@@ -105,24 +110,74 @@ export default function IGPlans() {
     })
   }
 
+  // ---- Autoguardado como borrador ----
+  const [auto, setAuto] = useState({ estado: '', hora: '' }) // '' | pendiente | ok | error
+  const baseRef = useRef('')
+  const ocupadoRef = useRef(false)
+  const instantanea = (e) => JSON.stringify({ a: e.account_id, t: e.titulo, r: e.reglas, m: e.mostrar_resumen, p: e.responsable_id, d: e.dias })
+  const tieneContenido = (e) => e.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.tematica || r.prueba))
+  // Una planificación nueva o que ya es borrador se autoguarda; las guardadas/enviadas no (no se les cambia el estado sin querer)
+  const autoguardable = (e) => !!e && !!e.account_id && (e.id ? e.estado === 'borrador' : tieneContenido(e))
+
+  async function autoGuardar(e) {
+    if (ocupadoRef.current) return
+    ocupadoRef.current = true
+    const payload = {
+      account_id: e.account_id, titulo: e.titulo.trim() || tituloHoy(), reglas: e.reglas.trim(), mostrar_resumen: e.mostrar_resumen,
+      dias: e.dias, estado: 'borrador', responsable_id: e.responsable_id || profile?.id || null,
+    }
+    const { data, error } = e.id
+      ? await supabase.from('ig_plans').update(payload).eq('id', e.id).select().single()
+      : await supabase.from('ig_plans').insert([payload]).select().single()
+    ocupadoRef.current = false
+    if (error) { setAuto({ estado: 'error', hora: '' }); return false }
+    baseRef.current = instantanea(e)
+    setEd((x) => (x && (x.id === e.id || (!x.id && !e.id)) ? { ...x, id: data.id, estado: 'borrador', created_at: data.created_at } : x))
+    setAuto({ estado: 'ok', hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) })
+    cargar(true)
+    return true
+  }
+
+  useEffect(() => {
+    if (!ed) return undefined
+    const snap = instantanea(ed)
+    if (snap === baseRef.current) return undefined
+    if (!autoguardable(ed)) { if (ed.id) setAuto((a) => (a.estado === 'pendiente' ? a : { estado: 'pendiente', hora: '' })); return undefined }
+    setAuto((a) => (a.estado === 'pendiente' ? a : { estado: 'pendiente', hora: '' }))
+    const t = setTimeout(() => { autoGuardar(ed) }, 2500)
+    return () => clearTimeout(t)
+  }, [ed])
+
+  async function volver() {
+    if (ed && instantanea(ed) !== baseRef.current) {
+      if (autoguardable(ed)) await autoGuardar(ed)
+      else if (!confirm('Tienes cambios sin guardar en esta planificación. ¿Salir sin guardar?')) return
+    }
+    setEd(null)
+  }
+
   function nueva() {
     setMsg(''); setErr('')
     const acc = filtro !== 'todas' ? filtro : (cuentas[0]?.id || '')
     setEd({ ...VACIA, account_id: acc, titulo: tituloHoy(), reglas: ultimasReglas(acc), responsable_id: profile?.id || '', dias: estructura(7, 2) })
     setNDias(7); setNPorDia(2)
+    baseRef.current = ''; setAuto({ estado: '', hora: '' })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   function abrir(p) {
     setMsg(''); setErr('')
-    setEd({ id: p.id, account_id: p.account_id, titulo: p.titulo, reglas: p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: p.estado || 'guardada', responsable_id: p.responsable_id || '', created_at: p.created_at, dias: JSON.parse(JSON.stringify(p.dias || [])) })
+    const abierta = { id: p.id, account_id: p.account_id, titulo: p.titulo, reglas: p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: p.estado || 'guardada', responsable_id: p.responsable_id || '', created_at: p.created_at, dias: JSON.parse(JSON.stringify(p.dias || [])) }
+    baseRef.current = instantanea(abierta); setAuto({ estado: '', hora: '' })
+    setEd(abierta)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   // Mismo esquema (días, reels, nuevo/ganador y tipo) pero sin enlaces ni textos: punto de partida de la semana siguiente
   function duplicarEstructura(p) {
     setMsg(''); setErr('')
+    baseRef.current = ''; setAuto({ estado: '', hora: '' })
     setEd({
       id: null, account_id: p.account_id, titulo: tituloHoy(), reglas: ultimasReglas(p.account_id) || p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: 'guardada', responsable_id: profile?.id || '', created_at: null,
-      dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '', tematica: '' })) })),
+      dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '', tematica: '', prueba: false })) })),
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -152,6 +207,7 @@ export default function IGPlans() {
       if (!c?.model_id) { setErr('Esa cuenta no tiene modelo asignada: asígnala en «Cuentas de Instagram» para poder enviarle la planificación.'); return }
       if (!confirm(`¿Enviar esta planificación a ${c.models?.stage_name || 'la modelo'}? Le saldrá en su apartado «Envío de reels».`)) return
     }
+    if (ocupadoRef.current) { setErr('Se está autoguardando; vuelve a pulsar en un segundo.'); return }
     setGuardando(true)
     const ahora = new Date().toISOString()
     const payload = {
@@ -168,6 +224,7 @@ export default function IGPlans() {
       : await supabase.from('ig_plans').insert([payload]).select().single()
     setGuardando(false)
     if (error) { setErr(error.message.includes('does not exist') || error.message.includes('column') ? 'Falta ejecutar la migración 52b en Supabase.' : 'No se pudo guardar. Revisa que tengas acceso a esa cuenta.'); return }
+    baseRef.current = instantanea({ ...ed, titulo: data.titulo }); setAuto({ estado: '', hora: '' })
     setEd((e) => ({ ...e, id: data.id, titulo: data.titulo, estado: data.estado, created_at: data.created_at }))
     setMsg(destino === 'borrador' ? 'Guardada como borrador.' : destino === 'enviada' ? 'Enviada a la modelo.' : ed.estado === 'enviada' ? 'Guardada. Ya no la ve la modelo: pulsa «Enviar a la modelo» para que vea los cambios.' : 'Guardada.')
     cargar()
@@ -195,6 +252,14 @@ export default function IGPlans() {
       />
 
       {ed && (
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <Button variant="ghost" onClick={volver}>← Volver a las planificaciones</Button>
+          <span className="text-xs" style={{ color: auto.estado === 'error' ? 'var(--danger)' : 'var(--text-muted)' }}>
+            {auto.estado === 'pendiente' ? 'Cambios sin guardar…' : auto.estado === 'ok' ? `Borrador guardado automáticamente a las ${auto.hora}` : auto.estado === 'error' ? 'No se pudo autoguardar: guarda a mano' : (ed.id && ed.estado !== 'borrador' ? 'Las planificaciones ya guardadas o enviadas no se autoguardan: usa «Guardar»' : 'Se guarda sola como borrador mientras escribes')}
+          </span>
+        </div>
+      )}
+      {ed && (
         <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_1fr] gap-6 mb-8 items-start">
           <div>
             <Panel className="p-5 mb-4">
@@ -216,8 +281,8 @@ export default function IGPlans() {
                   </Select>
                 </div>
                 <div>
-                  <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Fecha de la planificación (puedes cambiarla)</label>
-                  <Input value={ed.titulo} onChange={(e) => setEd({ ...ed, titulo: e.target.value })} placeholder={tituloHoy()} />
+                  <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Fecha de la planificación</label>
+                  <Input type="date" value={aIso(ed.titulo)} onChange={(e) => setEd({ ...ed, titulo: deIso(e.target.value) || tituloHoy() })} />
                 </div>
                 <div className="sm:col-span-2 text-xs flex flex-wrap items-center gap-x-4 gap-y-1" style={{ color: 'var(--text-muted)' }}>
                   <span>{ed.created_at ? `Creada el ${fmtExacta(ed.created_at)}` : 'Se registra quién la crea y la hora exacta al guardar'}</span>
@@ -272,6 +337,10 @@ export default function IGPlans() {
                         </Select>
                         <Input placeholder="🎯 Temática (opcional)" value={r.tematica || ''} onChange={(e) => setReel(di, ri, 'tematica', e.target.value)} />
                       </div>
+                      <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
+                        <input type="checkbox" checked={!!r.prueba} onChange={(e) => setReel(di, ri, 'prueba', e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} />
+                        🧪 Reel de prueba <span className="text-xs" style={{ color: 'var(--text-muted)' }}>(opcional)</span>
+                      </label>
                       <div className="space-y-2">
                         <Input placeholder="🔗 Enlace del reel de referencia" value={r.link} onChange={(e) => setReel(di, ri, 'link', e.target.value)} />
                         <Input placeholder="🎣 Gancho" value={r.gancho} onChange={(e) => setReel(di, ri, 'gancho', e.target.value)} />
@@ -307,7 +376,7 @@ export default function IGPlans() {
                 <Button onClick={() => guardar('enviada')} disabled={guardando}>{guardando ? 'Guardando…' : '📤 Enviar a la modelo'}</Button>
                 <Button variant="ghost" onClick={() => guardar('guardada')} disabled={guardando}>Guardar</Button>
                 <Button variant="ghost" onClick={() => guardar('borrador')} disabled={guardando}>Guardar como borrador</Button>
-                <Button variant="ghost" onClick={() => setEd(null)}>Cerrar</Button>
+                <Button variant="ghost" onClick={volver}>Cerrar</Button>
               </div>
               <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
                 «Enviar a la modelo» hace que la vea en su apartado «Envío de reels». Un borrador no lo ve nadie fuera del equipo: queda en la pestaña «Borradores» para revisarlo antes.
