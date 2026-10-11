@@ -138,6 +138,8 @@ export default function Recaptures() {
   const [importados, setImportados] = useState([])
   const [incluirImp, setIncluirImp] = useState(true)
   const [pestana, setPestana] = useState('asignados')
+  const [desaps, setDesaps] = useState([])
+  const [fModDesap, setFModDesap] = useState('todos')
 
   useEffect(() => {
     if (!esMgr) return
@@ -277,6 +279,39 @@ export default function Recaptures() {
     const { error } = await supabase.from('recapture_assignments').update({ desaparecido: valor, desaparecido_en: ahora, desaparecido_por: valor ? profile.id : null, ...(valor ? { hecho: false, hecho_en: null, hecho_por: null } : {}) }).eq('id', a.id)
     if (error) { alert('No se pudo guardar: ' + error.message); cargarAsign() }
   }
+  async function cargarDesaps() {
+    const { data, error } = await supabase.from('recapture_assignments').select('*').eq('desaparecido', true).order('desaparecido_en', { ascending: false })
+    if (error) { setDesaps([]); return }
+    const ids = Array.from(new Set((data || []).flatMap((a) => [a.chatter_id, a.desaparecido_por]).filter(Boolean)))
+    let nombres = new Map()
+    if (ids.length) {
+      const { data: ps } = await supabase.from('profiles').select('id, full_name').in('id', ids)
+      nombres = new Map((ps || []).map((x) => [x.id, x.full_name]))
+    }
+    setDesaps((data || []).map((a) => ({ ...a, chatterNombre: nombres.get(a.chatter_id) || '', marcadoPor: nombres.get(a.desaparecido_por) || '' })))
+  }
+  useEffect(() => { if (esMgr && pestana === 'desaparecidos') cargarDesaps() }, [esMgr, pestana])
+  async function revertirDesap(a) {
+    if (!confirm(`¿Revertir? ${a.fan_user} dejará de estar como desaparecido y podrá volver a repartirse.`)) return
+    const { error } = await supabase.from('recapture_assignments').update({ desaparecido: false, desaparecido_en: null, desaparecido_por: null }).eq('id', a.id)
+    if (error) { alert('No se pudo revertir: ' + error.message); return }
+    cargarDesaps()
+    cargarAsign()
+  }
+  const desapsPorModelo = useMemo(() => {
+    const g = new Map()
+    for (const a of desaps) {
+      const mods = String(a.modelos || '').split(',').map((x) => x.trim()).filter(Boolean)
+      for (const m of mods.length ? mods : ['Sin modelo']) {
+        if (fModDesap !== 'todos' && m !== fModDesap) continue
+        if (!g.has(m)) g.set(m, [])
+        g.get(m).push(a)
+      }
+    }
+    return Array.from(g, ([modelo, items]) => ({ modelo, items })).sort((x, y) => x.modelo.localeCompare(y.modelo))
+  }, [desaps, fModDesap])
+  const modelosDesap = useMemo(() => Array.from(new Set(desaps.flatMap((a) => String(a.modelos || '').split(',').map((x) => x.trim()).filter(Boolean)))).sort(), [desaps])
+
   async function quitar(a) {
     if (!confirm(`¿Quitar a ${a.fan_user} de la lista de esta semana?`)) return
     await supabase.from('recapture_assignments').delete().eq('id', a.id)
@@ -353,7 +388,7 @@ export default function Recaptures() {
 
       {esMgr && (
         <div className="flex gap-2 mb-5">
-          {[['asignados', 'Fans asignados'], ['reparto', 'Repartir fans'], ['ranking', 'Ranking de fans']].map(([id, n]) => (
+          {[['asignados', 'Fans asignados'], ['reparto', 'Repartir fans'], ['ranking', 'Ranking de fans'], ['desaparecidos', 'Fans desaparecidos']].map(([id, n]) => (
             <button key={id} type="button" onClick={() => setPestana(id)} className="px-4 py-2 rounded-md text-sm"
               style={{ background: pestana === id ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${pestana === id ? 'var(--accent)' : 'var(--border)'}`, color: pestana === id ? 'var(--accent)' : 'var(--text)' }}>
               {n}
@@ -404,6 +439,18 @@ export default function Recaptures() {
                         aria-label={`Ya he escrito a ${a.fan_user}`}
                         style={{ width: 22, height: 22, accentColor: 'var(--success)', flex: 'none' }}
                       />
+                      <button
+                        type="button"
+                        disabled={!puedeMarcar}
+                        aria-label={a.desaparecido ? `Revertir: ${a.fan_user} no ha desaparecido` : `Marcar a ${a.fan_user} como fan desaparecido`}
+                        title={a.desaparecido ? 'Fan desaparecido (pulsa para revertir)' : 'Fan desaparecido: no se encuentra, te bloqueó o borró la cuenta'}
+                        onClick={() => {
+                          if (a.desaparecido) { if (confirm(`¿Revertir? ${a.fan_user} volverá a contar como fan normal.`)) desaparecido(a, false); return }
+                          if (confirm(`¿Marcar a ${a.fan_user} como FAN DESAPARECIDO?\n\nUsa esta opción solo si ya no puedes encontrarlo o escribirle (te bloqueó, borró la cuenta, cambió de usuario...). No es lo mismo que "ya le he escrito" (la casilla verde).\n\nNo se le volverá a repartir, y podrás revisarlo y revertirlo en la pestaña "Fans desaparecidos".`)) desaparecido(a, true)
+                        }}
+                        className="inline-flex items-center justify-center rounded text-sm font-bold"
+                        style={{ width: 22, height: 22, flex: 'none', cursor: puedeMarcar ? 'pointer' : 'default', border: '2px solid var(--danger)', background: a.desaparecido ? 'var(--danger)' : 'transparent', color: a.desaparecido ? '#fff' : 'var(--danger)', lineHeight: 1 }}
+                      >✕</button>
                       <div className="min-w-0 flex-1" style={{ opacity: a.hecho || a.desaparecido ? 0.65 : 1, textDecoration: a.desaparecido ? 'line-through' : 'none' }}>
                         <div className="truncate"><strong>{a.fan_user}</strong> {a.fan_nombre && <span style={{ color: 'var(--text-muted)' }}>{a.fan_nombre}</span>}</div>
                         <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
@@ -413,9 +460,6 @@ export default function Recaptures() {
                         </div>
                       </div>
                       <CopyButton text={a.fan_user.replace(/^@+/, '')} label="Copiar usuario" />
-                      {puedeMarcar && (a.desaparecido
-                        ? <button onClick={() => desaparecido(a, false)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Deshacer</button>
-                        : <button onClick={() => { if (confirm(`¿Marcar a ${a.fan_user} como desaparecido (no se encuentra, te bloqueó o borró la cuenta)? No se le volverá a repartir.`)) desaparecido(a, true) }} className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}>Fan desaparecido</button>)}
                       {esMgr && <button onClick={() => quitar(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar</button>}
                     </div>
                   )
@@ -495,6 +539,49 @@ export default function Recaptures() {
         )}
 
       </Panel>
+      )}
+
+      {/* ---------- Fans desaparecidos ---------- */}
+      {esMgr && pestana === 'desaparecidos' && (
+        <Panel className="p-5">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+            <p className="font-medium">Fans desaparecidos por modelo · {desaps.length}</p>
+            <div style={{ minWidth: 200 }}>
+              <Select value={fModDesap} onChange={(e) => setFModDesap(e.target.value)}>
+                <option value="todos">Todas las modelos</option>
+                {modelosDesap.map((m) => <option key={m} value={m}>{m}</option>)}
+              </Select>
+            </div>
+          </div>
+          <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+            Fans que los chatters han marcado con la ✕ roja (no se encuentran, bloquearon o borraron la cuenta). No se vuelven a repartir. Si te has equivocado o el fan ha reaparecido, pulsa "Revertir". Un fan con varias modelos sale en cada una.
+          </p>
+          {desapsPorModelo.length === 0 ? (
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No hay fans desaparecidos.</p>
+          ) : desapsPorModelo.map((g) => (
+            <div key={g.modelo} className="mb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <strong>{g.modelo}</strong>
+                <span className="text-xs px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{g.items.length}</span>
+              </div>
+              <div className="space-y-1">
+                {g.items.map((a) => (
+                  <div key={a.id} className="flex items-center gap-3 px-3 py-2 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate"><strong>{a.fan_user}</strong> {a.fan_nombre && <span style={{ color: 'var(--text-muted)' }}>{a.fan_nombre}</span>}</div>
+                      <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        Gastó {money(a.gasto)} · asignado a {a.chatterNombre || '—'} (semana del {fmtF(a.semana)})
+                        {a.desaparecido_en ? ` · marcado el ${new Date(a.desaparecido_en).toLocaleDateString('es-ES')}` : ''}{a.marcadoPor ? ` por ${a.marcadoPor}` : ''}
+                      </div>
+                    </div>
+                    <CopyButton text={a.fan_user.replace(/^@+/, '')} label="Copiar usuario" />
+                    <Button variant="ghost" onClick={() => revertirDesap(a)}>Revertir</Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </Panel>
       )}
 
       {/* ---------- Ranking de fans ---------- */}
