@@ -21,22 +21,43 @@ Reglas de análisis:
 Formato de salida: SOLO Markdown, sin introducciones del tipo "Aquí tienes". Empieza con un título con # (por ejemplo "# Informe de rendimiento — Nombre"), y usa secciones con ## (Resumen ejecutivo, Lo que dicen los números —con tabla Markdown de las cifras clave—, Puntos fuertes, Puntos de atención, Plan de acción numerado, Conclusión), negritas para lo importante y listas. Sé directo, concreto y accionable, sin relleno.`
 
 // ambito: 'chatter' | 'equipo'
-const FRASES = ['Leyendo las estadísticas…', 'Comparando semanas y tendencias…', 'Cruzando ventas, ratios y tráfico…', 'Detectando puntos de atención…', 'Teniendo en cuenta tu contexto…', 'Redactando el informe…', 'Puliendo las conclusiones…']
+const FASES = ['SINCRONIZANDO DATOS', 'ESCANEANDO TENDENCIAS', 'CRUZANDO RATIOS', 'DETECTANDO ANOMALÍAS', 'INTEGRANDO TU CONTEXTO', 'REDACTANDO INFORME', 'VERIFICANDO CONCLUSIONES']
 const CSS_IA = `
-@keyframes iaspin{to{transform:rotate(360deg)}}
-@keyframes iapulse{0%{transform:scale(.55);opacity:.55}100%{transform:scale(1.5);opacity:0}}
-@keyframes iashimmer{0%{background-position:-300px 0}100%{background-position:300px 0}}
-@keyframes iafade{0%{opacity:0;transform:translateY(6px)}15%,85%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-6px)}}
-@keyframes iafloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-.ia-orb{position:relative;width:84px;height:84px;margin:0 auto;animation:iafloat 3s ease-in-out infinite}
-.ia-orb .core{position:absolute;inset:18px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff7d6,var(--accent) 55%,#6b4aff);box-shadow:0 0 30px var(--accent)}
-.ia-orb .ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,transparent 0 55%,var(--accent) 75%,#fff 100%);-webkit-mask:radial-gradient(circle,transparent 58%,#000 60%);mask:radial-gradient(circle,transparent 58%,#000 60%);animation:iaspin 1.6s linear infinite}
-.ia-orb .ring.r2{inset:6px;animation-duration:2.6s;animation-direction:reverse;opacity:.7}
-.ia-orb .wave{position:absolute;inset:14px;border-radius:50%;border:2px solid var(--accent);animation:iapulse 2.4s ease-out infinite}
-.ia-orb .wave.w2{animation-delay:1.2s}
-.ia-line{height:11px;border-radius:6px;margin:10px auto;background:linear-gradient(90deg,var(--panel-alt) 25%,var(--accent-soft) 50%,var(--panel-alt) 75%);background-size:600px 100%;animation:iashimmer 1.6s linear infinite}
-.ia-frase{animation:iafade 2.6s ease-in-out infinite}
-@media (prefers-reduced-motion:reduce){.ia-orb,.ia-orb .ring,.ia-orb .wave,.ia-line,.ia-frase{animation:none}}
+.hud{position:relative;height:300px;perspective:900px;overflow:hidden;border-radius:12px;background:radial-gradient(ellipse at 50% 55%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 65%),var(--panel-alt);border:1px solid var(--border)}
+.hud .scene{position:absolute;left:50%;top:44%;width:0;height:0;transform-style:preserve-3d;transform:rotateX(-18deg);animation:hudtilt 9s ease-in-out infinite alternate}
+.hud .cube{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;transform-style:preserve-3d;animation:hudspin 9s linear infinite}
+.hud .cube.in{width:60px;height:60px;margin:-30px 0 0 -30px;animation:hudspin2 5s linear infinite}
+.hud .f{position:absolute;inset:0;border:1.5px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,transparent);box-shadow:0 0 14px color-mix(in srgb,var(--accent) 45%,transparent) inset;background-image:linear-gradient(var(--accent-soft) 1px,transparent 1px),linear-gradient(90deg,var(--accent-soft) 1px,transparent 1px);background-size:20px 20px}
+.hud .cube.in .f{background-size:15px 15px;border-color:#fff;box-shadow:0 0 18px var(--accent) inset}
+.hud .f1{transform:translateZ(60px)}.hud .f2{transform:rotateY(90deg) translateZ(60px)}.hud .f3{transform:rotateY(180deg) translateZ(60px)}.hud .f4{transform:rotateY(-90deg) translateZ(60px)}.hud .f5{transform:rotateX(90deg) translateZ(60px)}.hud .f6{transform:rotateX(-90deg) translateZ(60px)}
+.hud .cube.in .f1{transform:translateZ(30px)}.hud .cube.in .f2{transform:rotateY(90deg) translateZ(30px)}.hud .cube.in .f3{transform:rotateY(180deg) translateZ(30px)}.hud .cube.in .f4{transform:rotateY(-90deg) translateZ(30px)}.hud .cube.in .f5{transform:rotateX(90deg) translateZ(30px)}.hud .cube.in .f6{transform:rotateX(-90deg) translateZ(30px)}
+.hud .core{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:#fff;box-shadow:0 0 25px 8px var(--accent),0 0 60px 18px color-mix(in srgb,var(--accent) 50%,transparent);animation:hudcore 1.4s ease-in-out infinite}
+.hud .ring{position:absolute;border-radius:50%;border:1.5px dashed var(--accent);transform-style:preserve-3d}
+.hud .r1{width:230px;height:230px;margin:-115px 0 0 -115px;transform:rotateX(75deg);animation:hudring 7s linear infinite}
+.hud .r2{width:290px;height:290px;margin:-145px 0 0 -145px;border-style:solid;border-width:1px;opacity:.55;transform:rotateX(75deg) rotateY(25deg);animation:hudring 12s linear infinite reverse}
+.hud .r3{width:180px;height:180px;margin:-90px 0 0 -90px;border-color:#fff;opacity:.6;transform:rotateY(75deg);animation:hudring2 5s linear infinite}
+.hud .sat{position:absolute;left:50%;top:-5px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:#fff;box-shadow:0 0 12px 3px var(--accent)}
+.hud .grid{position:absolute;left:-50%;right:-50%;bottom:-30%;height:60%;transform:rotateX(72deg);transform-origin:50% 0;background-image:linear-gradient(var(--accent) 1px,transparent 1px),linear-gradient(90deg,var(--accent) 1px,transparent 1px);background-size:34px 34px;opacity:.28;animation:hudgrid 1.2s linear infinite;-webkit-mask:linear-gradient(transparent,#000 40%);mask:linear-gradient(transparent,#000 40%)}
+.hud .scan{position:absolute;left:0;right:0;height:70px;background:linear-gradient(transparent,color-mix(in srgb,var(--accent) 22%,transparent),transparent);animation:hudscan 2.8s linear infinite}
+.hud .br{position:absolute;width:22px;height:22px;border:2px solid var(--accent)}
+.hud .br.a{left:10px;top:10px;border-right:0;border-bottom:0}.hud .br.b{right:10px;top:10px;border-left:0;border-bottom:0}.hud .br.c{left:10px;bottom:10px;border-right:0;border-top:0}.hud .br.d{right:10px;bottom:10px;border-left:0;border-top:0}
+.hud .tag{position:absolute;font:600 10px/1.4 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.12em;color:var(--accent);text-transform:uppercase}
+.hud .bar{position:absolute;left:12%;right:12%;bottom:34px;height:3px;background:var(--border);overflow:hidden;border-radius:2px}
+.hud .bar i{position:absolute;top:0;bottom:0;width:35%;background:linear-gradient(90deg,transparent,var(--accent),#fff);animation:hudbar 1.5s ease-in-out infinite}
+.hud .fase{position:absolute;left:0;right:0;bottom:12px;text-align:center;font:700 11px ui-monospace,Menlo,Consolas,monospace;letter-spacing:.3em;color:var(--text);animation:hudblink 1.2s steps(2) infinite}
+.hud .p{position:absolute;width:3px;height:3px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);animation:hudp 4s linear infinite}
+@keyframes hudspin{to{transform:rotateX(360deg) rotateY(360deg)}}
+@keyframes hudspin2{to{transform:rotateX(-360deg) rotateZ(360deg) rotateY(-360deg)}}
+@keyframes hudtilt{from{transform:rotateX(-30deg) rotateY(-12deg)}to{transform:rotateX(-8deg) rotateY(12deg)}}
+@keyframes hudring{to{transform:rotateX(75deg) rotateZ(360deg)}}
+@keyframes hudring2{to{transform:rotateY(75deg) rotateZ(-360deg)}}
+@keyframes hudcore{0%,100%{transform:scale(.8)}50%{transform:scale(1.25)}}
+@keyframes hudgrid{to{background-position:0 34px}}
+@keyframes hudscan{0%{top:-70px}100%{top:100%}}
+@keyframes hudbar{0%{left:-35%}100%{left:100%}}
+@keyframes hudblink{50%{opacity:.55}}
+@keyframes hudp{0%{transform:translateY(0);opacity:0}15%{opacity:1}100%{transform:translateY(-280px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.hud *{animation:none!important}}
 `
 const iso = (d) => String(d || '').slice(0, 10)
 // Las semanas se guardan por su lunes; cada una cubre de lunes a domingo
@@ -44,18 +65,31 @@ const mas6 = (d) => { const t = new Date(iso(d) + 'T00:00:00Z'); t.setUTCDate(t.
 
 function Cargando({ segundos, intento }) {
   const [f, setF] = useState(0)
-  useEffect(() => { const t = setInterval(() => setF((x) => (x + 1) % FRASES.length), 2600); return () => clearInterval(t) }, [])
+  useEffect(() => { const t = setInterval(() => setF((x) => (x + 1) % FASES.length), 2400); return () => clearInterval(t) }, [])
+  const parts = useMemo(() => Array.from({ length: 14 }, (_, i) => ({ l: 6 + ((i * 37) % 88), d: (i * 0.45) % 4, t: 40 + ((i * 53) % 220) })), [])
   return (
-    <div className="py-8 text-center" role="status" aria-live="polite">
+    <div role="status" aria-live="polite" className="py-2">
       <style>{CSS_IA}</style>
-      <div className="ia-orb"><span className="wave" /><span className="wave w2" /><span className="ring" /><span className="ring r2" /><span className="core" /></div>
-      <p key={f} className="ia-frase text-sm font-medium mt-6 mb-1">{FRASES[f]}</p>
-      <p className="text-xs mb-6" style={{ color: 'var(--text-muted)' }}>
-        La IA está trabajando{intento > 1 ? ` (reintento ${intento - 1})` : ''} · {segundos}s · suele tardar entre 15 y 40 segundos, no cierres esta ventana
-      </p>
-      <div className="max-w-md mx-auto">
-        <div className="ia-line" style={{ width: '90%' }} /><div className="ia-line" style={{ width: '100%' }} /><div className="ia-line" style={{ width: '75%' }} /><div className="ia-line" style={{ width: '88%' }} />
+      <div className="hud">
+        <div className="grid" />
+        {parts.map((p, i) => <span key={i} className="p" style={{ left: `${p.l}%`, top: p.t, animationDelay: `${p.d}s` }} />)}
+        <div className="scene">
+          <div className="ring r1"><span className="sat" /></div>
+          <div className="ring r2"><span className="sat" /></div>
+          <div className="ring r3"><span className="sat" /></div>
+          <div className="cube"><i className="f f1" /><i className="f f2" /><i className="f f3" /><i className="f f4" /><i className="f f5" /><i className="f f6" /></div>
+          <div className="cube in"><i className="f f1" /><i className="f f2" /><i className="f f3" /><i className="f f4" /><i className="f f5" /><i className="f f6" /></div>
+          <div className="core" />
+        </div>
+        <div className="scan" />
+        <i className="br a" /><i className="br b" /><i className="br c" /><i className="br d" />
+        <span className="tag" style={{ left: 22, top: 16 }}>DD·IA // ANÁLISIS</span>
+        <span className="tag" style={{ right: 22, top: 16 }}>T+{String(segundos).padStart(3, '0')}s</span>
+        <span className="tag" style={{ left: 22, bottom: 58, opacity: .7 }}>{intento > 1 ? `REINTENTO ${intento - 1}` : 'CANAL SEGURO'}</span>
+        <div className="bar"><i /></div>
+        <div className="fase">{FASES[f]}…</div>
       </div>
+      <p className="text-xs text-center mt-3" style={{ color: 'var(--text-muted)' }}>La IA está trabajando · suele tardar entre 15 y 40 segundos · no cierres esta ventana</p>
     </div>
   )
 }
@@ -151,7 +185,7 @@ export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos
                 <input type="date" value={rango.hasta} min={rango.desde || undefined} max={semanasAll.length ? mas6(semanasAll[semanasAll.length - 1]) : undefined} onChange={(e) => setRango({ ...rango, hasta: e.target.value })} className="rounded-md px-3 py-2 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
               </div>
               <div className="flex gap-2 flex-wrap">
-                {[4, 8, 16].map((n) => <Button key={n} variant="ghost" onClick={() => setRango(ultimas(n))}>Últ. {n} sem.</Button>)}
+                {[['Última semana', 1], ['Última quincena', 2], ['Último mes', 4], ['Últimos 3 meses', 13]].map(([t, n]) => <Button key={n} variant="ghost" onClick={() => setRango(ultimas(n))}>{t}</Button>)}
                 <Button variant="ghost" onClick={() => setRango(ultimas(semanasAll.length))}>Todo</Button>
               </div>
             </div>
