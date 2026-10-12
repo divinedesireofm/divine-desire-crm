@@ -208,16 +208,15 @@ export default function Recaptures() {
     setGenBusy(true)
     const actuales = await cargarAsign()
     const elegidos = new Set(chattersElegidos)
-    // Una nueva repartición BORRA la anterior de los chatters elegidos (escrita o no). Solo se conservan
-    // los fans marcados como desaparecidos (para no volver a repartirlos) y lo de chatters que no participan.
-    // Los fans pendientes de un extrabajador se liberan para poder repartirlos de nuevo (lo ya escrito se conserva como histórico).
-    const liberar = actuales.filter((a) => a.extra && !a.hecho && !a.desaparecido)
-    const mantener = actuales.filter((a) => !liberar.includes(a) && (a.desaparecido || !elegidos.has(a.chatter_id)))
-    const borrar = actuales.filter((a) => !a.desaparecido && !a.extra && elegidos.has(a.chatter_id))
-    if (borrar.length) {
-      const hechos = borrar.filter((a) => a.hecho).length
-      const pend = borrar.length - hechos
-      const estado = pend > 0 ? `La recaptación anterior no se ha completado: quedan ${pend} fans sin escribir (${hechos} ya escritos de ${borrar.length}).` : `La recaptación anterior está completada (${hechos} fans escritos).`
+    // Una nueva repartición BORRA TODA la anterior de la semana (de cualquier chatter, escrita o no).
+    // Solo se conservan los fans marcados como desaparecidos (para no volver a repartirlos) y lo que ya escribió un extrabajador (histórico).
+    const borrar = actuales.filter((a) => !a.desaparecido && !(a.extra && a.hecho))
+    const mantener = actuales.filter((a) => !borrar.includes(a))
+    const visibles = borrar.filter((a) => !a.extra)
+    if (visibles.length) {
+      const hechos = visibles.filter((a) => a.hecho).length
+      const pend = visibles.length - hechos
+      const estado = pend > 0 ? `La recaptación anterior no se ha completado: quedan ${pend} fans sin escribir (${hechos} ya escritos de ${visibles.length}).` : `La recaptación anterior está completada (${hechos} fans escritos).`
       const ok = confirm(`${estado}\n\nSi continúas, se BORRARÁ esa repartición y se hará una nueva.\n\n¿Seguro que quieres hacer una nueva asignación?`)
       if (!ok) { setGenBusy(false); setGenMsg('Asignación cancelada, no se ha cambiado nada.'); return }
     }
@@ -264,7 +263,11 @@ export default function Recaptures() {
       faltan = Array.from(necesita.values()).reduce((a, b) => a + b, 0)
     }
     let error = null
-    if (borrar.length || liberar.length) ({ error } = await supabase.from('recapture_assignments').delete().in('id', [...borrar, ...liberar].map((a) => a.id)))
+    if (borrar.length) {
+      const { data: borradas, error: eDel } = await supabase.from('recapture_assignments').delete().in('id', borrar.map((a) => a.id)).select('id')
+      error = eDel
+      if (!eDel && (borradas || []).length < borrar.length) error = { message: `solo se pudieron borrar ${(borradas || []).length} de ${borrar.length} fans del reparto anterior (permisos de la base de datos). No se ha creado el nuevo para no duplicar.` }
+    }
     if (!error && nuevas.length) ({ error } = await supabase.from('recapture_assignments').insert(nuevas))
     setGenBusy(false)
     if (error) { setGenMsg('No se pudo guardar la asignación: ' + error.message); await cargarAsign(); return }
