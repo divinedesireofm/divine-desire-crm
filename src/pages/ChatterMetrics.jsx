@@ -240,18 +240,15 @@ export default function ChatterMetrics() {
     fans_chateados: r.fans_chateados, tiempo_respuesta: r.tiempo_respuesta_seg == null ? null : segundosATexto(r.tiempo_respuesta_seg),
     horas: r.horas_trabajadas, precio_medio_ppv: r.precio_medio, dolar_por_fan: r.por_fan, mensajes_por_fan: r.msgs_fan, dolar_por_hora: r.por_hora, notas: r.notas,
   })
-  const rango = (rs) => (rs.length ? `semanas del ${fmtF(rs[0].week_start)} al ${fmtF(rs[rs.length - 1].week_start)}` : 'sin datos')
-  const datosChatter = useMemo(() => filas.slice(-16), [filas])
+  const datosChatter = useMemo(() => filas.map(metr), [filas])
   const datosEquipo = useMemo(() => {
-    const semanas = [...new Set(stats.map((r) => r.week_start))].sort().slice(-8)
     const porChatter = {}
-    stats.filter((r) => semanas.includes(r.week_start)).map(enriquecer).forEach((r) => {
+    stats.map(enriquecer).forEach((r) => {
       const n = nombreDe(r.chatter_id)
       ;(porChatter[n] = porChatter[n] || []).push(r)
     })
-    return { semanas, porChatter }
+    return Object.entries(porChatter).map(([chatter, rs]) => ({ chatter, semanas: rs.sort((a, b) => a.week_start.localeCompare(b.week_start)).map(metr) }))
   }, [stats, chatters])
-  const jsonEquipo = () => JSON.stringify(Object.entries(datosEquipo.porChatter).map(([chatter, rs]) => ({ chatter, semanas: rs.sort((a, b) => a.week_start.localeCompare(b.week_start)).map(metr) })))
 
   const mGraf = POR_KEY[grafica]
   const chartData = filas.map((r) => ({ week: fmtF(r.week_start), v: r[grafica] == null ? null : (mGraf.pct ? Number(r[grafica]) * 100 : Number(r[grafica])) }))
@@ -508,10 +505,10 @@ export default function ChatterMetrics() {
         </>
       )}
       {informeIA === 'chatter' && (
-        <InformeIAModal ambito="chatter" chatterId={selectedChatter} chatterNombre={nombreDe(selectedChatter)} periodo={rango(datosChatter)} datos={JSON.stringify(datosChatter.map(metr))} onClose={() => setInformeIA(null)} />
+        <InformeIAModal ambito="chatter" chatterId={selectedChatter} chatterNombre={nombreDe(selectedChatter)} datos={datosChatter} onClose={() => setInformeIA(null)} />
       )}
       {informeIA === 'equipo' && (
-        <InformeIAModal ambito="equipo" periodo={rango(datosEquipo.semanas.map((w) => ({ week_start: w })))} datos={jsonEquipo()} onClose={() => setInformeIA(null)} />
+        <InformeIAModal ambito="equipo" datos={datosEquipo} onClose={() => setInformeIA(null)} />
       )}
     </div>
   )
