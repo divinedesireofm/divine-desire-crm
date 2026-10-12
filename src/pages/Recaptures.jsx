@@ -230,7 +230,7 @@ export default function Recaptures() {
     const minimo = parseFloat(minGasto) || 0
     const disponibles = poolFans.filter((f) => f.total >= minimo && !excluir.has(f.user.toLowerCase()))
     const nuevas = []
-    const fila = (id, f) => ({ semana, chatter_id: id, fan_user: f.user, fan_nombre: f.nombre, gasto: Math.round(f.total * 100) / 100, modelos: Array.from(f.modelos).join(', '), ultima_compra: f.ultima || null, asignado_por: profile.id })
+    const fila = (id, f) => ({ semana, chatter_id: id, fan_user: f.user, fan_nombre: f.nombre, gasto: Math.round(f.total * 100) / 100, modelos: Array.from(f.modelos).join(', '), ultima_compra: f.ultima || null, asignado_por: profile.id, periodo_desde: desde, periodo_hasta: hasta })
     let faltan = 0
     if (modo === 'auto') {
       const n = chattersElegidos.length
@@ -263,16 +263,23 @@ export default function Recaptures() {
       faltan = Array.from(necesita.values()).reduce((a, b) => a + b, 0)
     }
     let error = null
+    let faltaMigracion = false
     if (borrar.length) {
       const { data: borradas, error: eDel } = await supabase.from('recapture_assignments').delete().in('id', borrar.map((a) => a.id)).select('id')
       error = eDel
       if (!eDel && (borradas || []).length < borrar.length) error = { message: `solo se pudieron borrar ${(borradas || []).length} de ${borrar.length} fans del reparto anterior (permisos de la base de datos). No se ha creado el nuevo para no duplicar.` }
     }
-    if (!error && nuevas.length) ({ error } = await supabase.from('recapture_assignments').insert(nuevas))
+    if (!error && nuevas.length) {
+      ({ error } = await supabase.from('recapture_assignments').insert(nuevas))
+      if (error && /periodo_(desde|hasta)/.test(error.message)) { // aún no está la migración 60: se guarda igual, sin el periodo
+        ({ error } = await supabase.from('recapture_assignments').insert(nuevas.map(({ periodo_desde, periodo_hasta, ...resto }) => resto)))
+        if (!error) faltaMigracion = true
+      }
+    }
     setGenBusy(false)
     if (error) { setGenMsg('No se pudo guardar la asignación: ' + error.message); await cargarAsign(); return }
     setGenMsg(nuevas.length
-      ? `Asignados ${nuevas.length} fans.${faltan > 0 ? ` No había fans suficientes para completar ${faltan} puestos (prueba con un rango más amplio o quitando el mínimo).` : ''} Míralos en la pestaña "Fans asignados".`
+      ? `${faltaMigracion ? 'AVISO: falta ejecutar la migración 60 en Supabase para guardar el periodo de compra. ' : ''}Asignados ${nuevas.length} fans.${faltan > 0 ? ` No había fans suficientes para completar ${faltan} puestos (prueba con un rango más amplio o quitando el mínimo).` : ''} Míralos en la pestaña "Fans asignados".`
       : 'No hay fans disponibles con estos criterios. Amplía el rango de fechas o baja el mínimo.')
     cargarAsign()
   }
@@ -349,6 +356,11 @@ export default function Recaptures() {
     setAsign((rs) => rs.filter((x) => x.id !== a.id))
   }
 
+  const rangoTxt = (items) => {
+    const ds = items.map((a) => a.periodo_desde).filter(Boolean).sort()
+    const hs = items.map((a) => a.periodo_hasta).filter(Boolean).sort()
+    return ds.length && hs.length ? `del ${fmtF(ds[0])} al ${fmtF(hs[hs.length - 1])}` : ''
+  }
   const grupos = useMemo(() => {
     const g = new Map()
     asign.forEach((a) => {
@@ -442,6 +454,11 @@ export default function Recaptures() {
         </div>
 
         {genMsg && <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>{genMsg}</p>}
+        {rangoTxt(asign) && (
+          <div className="mb-4 px-3 py-2 rounded-md text-sm" style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
+            📅 <strong>Periodo de compra de estos fans:</strong> {rangoTxt(asign)}. Son fans que compraron en esas fechas y que toca recuperar.
+          </div>
+        )}
         {grupos.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {esMgr ? 'Aún no hay fans repartidos esta semana.' : 'Todavía no te han asignado fans esta semana.'}
@@ -452,6 +469,7 @@ export default function Recaptures() {
             <div key={g.id} className="mb-5">
               <div className="flex items-center gap-3 mb-2">
                 <strong>{g.id === profile.id ? 'Mis fans' : g.nombre}</strong>
+                {rangoTxt(g.items) && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>· compras {rangoTxt(g.items)}</span>}
                 <span className="text-xs px-1.5 py-0.5 rounded-full tabular-nums" style={{ background: hechos === g.items.length ? 'var(--success)22' : 'var(--accent-soft)', color: hechos === g.items.length ? 'var(--success)' : 'var(--accent)' }}>
                   {hechos}/{g.items.length} resueltos
                 </span>
