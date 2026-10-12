@@ -279,6 +279,26 @@ export default function Recaptures() {
   const generar = () => repartir('azar')
   const autoAsignar = () => repartir('auto')
 
+  // Borra TODO el reparto de la semana elegida (menos los fans «desaparecidos», que no deben volver a repartirse)
+  async function borrarSemana() {
+    setGenMsg('')
+    const filas = await cargarAsign()
+    const borrar = filas.filter((a) => !a.desaparecido && !(a.extra && a.hecho))
+    const visibles = borrar.filter((a) => !a.extra)
+    if (!visibles.length) { setGenMsg('No hay fans asignados que borrar en la semana del ' + fmtF(semana) + '.'); return }
+    const hechos = visibles.filter((a) => a.hecho).length
+    const nDesap = filas.filter((a) => a.desaparecido).length
+    const ok = confirm(`Vas a BORRAR los ${visibles.length} fans asignados de la semana del ${fmtF(semana)} (${hechos} ya escritos y ${visibles.length - hechos} pendientes).${nDesap ? `\n\nLos ${nDesap} marcados como desaparecidos se conservan.` : ''}\n\nDespués podrás volver a repartirlos desde cero. No se puede deshacer.\n\n¿Seguro?`)
+    if (!ok) return
+    setGenBusy(true)
+    const { data: borradas, error } = await supabase.from('recapture_assignments').delete().in('id', borrar.map((a) => a.id)).select('id')
+    setGenBusy(false)
+    if (error) { setGenMsg('No se pudo borrar: ' + error.message); await cargarAsign(); return }
+    if ((borradas || []).length < borrar.length) setGenMsg(`Solo se pudieron borrar ${(borradas || []).length} de ${borrar.length} fans (permisos de la base de datos).`)
+    else setGenMsg(`Reparto de la semana del ${fmtF(semana)} borrado (${visibles.length} fans). Ya puedes volver a repartir.`)
+    await cargarAsign()
+  }
+
   async function marcar(a, hecho) {
     setAsign((rs) => rs.map((x) => (x.id === a.id ? { ...x, hecho, hecho_en: hecho ? new Date().toISOString() : null } : x)))
     const { error } = await supabase.from('recapture_assignments').update({ hecho, hecho_en: hecho ? new Date().toISOString() : null, hecho_por: hecho ? profile.id : null }).eq('id', a.id)
@@ -414,12 +434,14 @@ export default function Recaptures() {
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <p className="font-medium">Fans asignados · semana del {fmtF(semana)}</p>
           <div className="flex items-center gap-2">
+            {esMgr && <Button variant="danger" onClick={borrarSemana} disabled={genBusy}>🗑 Borrar reparto de esta semana</Button>}
             <Button variant="ghost" onClick={() => setSemana(sumarDias(semana, -7))}>←</Button>
             <Button variant="ghost" onClick={() => setSemana(lunesDe(hoy()))} disabled={esSemanaActual}>Esta semana</Button>
             <Button variant="ghost" onClick={() => setSemana(sumarDias(semana, 7))}>→</Button>
           </div>
         </div>
 
+        {genMsg && <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>{genMsg}</p>}
         {grupos.length === 0 ? (
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {esMgr ? 'Aún no hay fans repartidos esta semana.' : 'Todavía no te han asignado fans esta semana.'}
