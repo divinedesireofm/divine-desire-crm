@@ -4,20 +4,9 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader, DeltaBadge } from '../components/ui'
-import { iaCallJSON, getVoiceGuide, withVoiceGuide } from '../lib/ai'
+import InformeIAModal from '../components/InformeIAModal'
 import { exportarFichasChatters } from '../lib/excelExport'
 import { leerLibro, parsearChatters, norm, fmtF, lunesDe, tiempoASegundos, segundosATexto } from '../lib/excelImport'
-
-const REGLAS_CHATTER = `Eres el analista de rendimiento del equipo de chat de la agencia Divine Desire. Analizas la evolución semanal de un chatter concreto con las mismas métricas del Excel de seguimiento de chatters. Ten en cuenta:
-1. Compara la tendencia (¿sube, baja o se mantiene?), no solo el número absoluto de la última semana.
-2. Ventas altas con muy pocos mensajes u horas pueden indicar suerte puntual, no una técnica repetible.
-3. Una caída de más del 25% respecto a la media de las semanas anteriores merece atención.
-4. Lee las métricas en cadena: ventas ← PPV desbloqueados ← Unlock Ratio (calidad de la oferta, precio, momento) y PPV enviados ← Golden Ratio (ganas de vender) ← fans chateados (tráfico).
-5. Tiempo de respuesta: menos de 5 minutos es lo óptimo; más de eso es inaceptable. Si sube, es malo.
-6. Si las ventas bajan pero fans chateados también, la causa suele ser el tráfico de la cuenta, no el chatter.
-7. Sé directo, breve y accionable — nada de relleno.
-8. Estás valorando a una persona, no solo un número. Antes de sugerir que algo es culpa del chatter, pregúntate si hay otra explicación (menos tráfico, un turno peor, menos horas, problemas de luz o internet). Si hay dudas razonables, plantéalo como pregunta a revisar con la persona, no como veredicto.
-Los valores null son datos que no se registraron esa semana, no ceros. Golden Ratio y Unlock Ratio vienen como fracción (0.05 = 5%).`
 
 // Mismas métricas y fórmulas que el Excel SEGUIMIENTO_CHATTERS
 const METRICAS = [
@@ -105,9 +94,7 @@ export default function ChatterMetrics() {
   const [impErr, setImpErr] = useState('')
 
   const [exportando, setExportando] = useState(false)
-  const [analisis, setAnalisis] = useState(null)
-  const [iaBusy, setIaBusy] = useState(false)
-  const [iaErr, setIaErr] = useState('')
+  const [informeIA, setInformeIA] = useState(null) // 'chatter' | 'equipo' | null
 
   async function cargar() {
     setLoading(true)
@@ -128,7 +115,6 @@ export default function ChatterMetrics() {
     setLoading(false)
   }
   useEffect(() => { cargar() }, [])
-  useEffect(() => { setAnalisis(null) }, [selectedChatter])
 
   const nombreDe = (id) => chatters.find((c) => c.id === id)?.full_name || '—'
   const filas = useMemo(
@@ -247,38 +233,26 @@ export default function ChatterMetrics() {
     setImpBusy(false)
   }
 
-  // ---------- análisis IA ----------
-  async function generarAnalisis() {
-    setIaBusy(true); setIaErr(''); setAnalisis(null)
-    try {
-      const guia = await getVoiceGuide()
-      const system = withVoiceGuide(REGLAS_CHATTER, guia)
-      const hist = filas.slice(-16).map((r) => ({
-        semana: r.week_start, ventas: r.ventas_total, ventas_ppv: r.ventas_ppv, propinas: r.propinas, mensajes: r.mensajes_enviados,
-        ppv_enviados: r.ppv_enviados, ppv_desbloqueados: r.ppv_desbloqueados, golden_ratio: r.golden, unlock_ratio: r.unlock,
-        fans_chateados: r.fans_chateados, tiempo_respuesta: r.tiempo_respuesta_seg == null ? null : segundosATexto(r.tiempo_respuesta_seg),
-        horas: r.horas_trabajadas, precio_medio_ppv: r.precio_medio, dolar_por_fan: r.por_fan, mensajes_por_fan: r.msgs_fan, dolar_por_hora: r.por_hora, notas: r.notas,
-      }))
-      const obj = await iaCallJSON(system, [{ role: 'user', content: `Chatter: ${nombreDe(selectedChatter)}\n\nHistórico semanal (últimas ${hist.length} semanas):\n${JSON.stringify(hist)}` }], {
-        tool_name: 'entregar_analisis',
-        tool_description: 'Entrega el análisis de rendimiento del chatter.',
-        schema: {
-          type: 'object',
-          properties: {
-            resumen: { type: 'string', description: '2-4 frases' },
-            puntos_atencion: { type: 'array', items: { type: 'object', properties: { titulo: { type: 'string' }, detalle: { type: 'string' }, urgencia: { type: 'string', enum: ['alta', 'media', 'baja'] } }, required: ['titulo', 'detalle', 'urgencia'] } },
-            plan_accion: { type: 'array', items: { type: 'object', properties: { titulo: { type: 'string' }, detalle: { type: 'string' } }, required: ['titulo', 'detalle'] } },
-            conclusion: { type: 'string', description: '1-2 frases' },
-          },
-          required: ['resumen', 'puntos_atencion', 'plan_accion', 'conclusion'],
-        },
-      }, 1500)
-      setAnalisis(obj)
-    } catch (e) { setIaErr(e.message) }
-    setIaBusy(false)
-  }
+  // ---------- análisis IA (informes) ----------
+  const metr = (r) => ({
+    semana: r.week_start, ventas: r.ventas_total, ventas_ppv: r.ventas_ppv, propinas: r.propinas, mensajes: r.mensajes_enviados,
+    ppv_enviados: r.ppv_enviados, ppv_desbloqueados: r.ppv_desbloqueados, golden_ratio: r.golden, unlock_ratio: r.unlock,
+    fans_chateados: r.fans_chateados, tiempo_respuesta: r.tiempo_respuesta_seg == null ? null : segundosATexto(r.tiempo_respuesta_seg),
+    horas: r.horas_trabajadas, precio_medio_ppv: r.precio_medio, dolar_por_fan: r.por_fan, mensajes_por_fan: r.msgs_fan, dolar_por_hora: r.por_hora, notas: r.notas,
+  })
+  const rango = (rs) => (rs.length ? `semanas del ${fmtF(rs[0].week_start)} al ${fmtF(rs[rs.length - 1].week_start)}` : 'sin datos')
+  const datosChatter = useMemo(() => filas.slice(-16), [filas])
+  const datosEquipo = useMemo(() => {
+    const semanas = [...new Set(stats.map((r) => r.week_start))].sort().slice(-8)
+    const porChatter = {}
+    stats.filter((r) => semanas.includes(r.week_start)).map(enriquecer).forEach((r) => {
+      const n = nombreDe(r.chatter_id)
+      ;(porChatter[n] = porChatter[n] || []).push(r)
+    })
+    return { semanas, porChatter }
+  }, [stats, chatters])
+  const jsonEquipo = () => JSON.stringify(Object.entries(datosEquipo.porChatter).map(([chatter, rs]) => ({ chatter, semanas: rs.sort((a, b) => a.week_start.localeCompare(b.week_start)).map(metr) })))
 
-  const URGENCIA_COLOR = { alta: 'var(--danger)', media: 'var(--gold)', baja: 'var(--text-muted)' }
   const mGraf = POR_KEY[grafica]
   const chartData = filas.map((r) => ({ week: fmtF(r.week_start), v: r[grafica] == null ? null : (mGraf.pct ? Number(r[grafica]) * 100 : Number(r[grafica])) }))
   const ultima = filas[filas.length - 1]
@@ -305,6 +279,7 @@ export default function ChatterMetrics() {
         action={canEdit && (
           <div className="flex gap-2 flex-wrap">
             <Button variant="ghost" onClick={() => { setPanel(panel === 'excel' ? null : 'excel'); setImpErr(''); setImpMsg('') }}>{panel === 'excel' ? 'Cancelar' : '📥 Subir Excel'}</Button>
+            <Button variant="ghost" onClick={() => setInformeIA('equipo')} disabled={!stats.length}>✨ Generar análisis del equipo</Button>
             <Button onClick={() => (panel === 'form' ? cerrarForm() : abrirNueva())} disabled={!selectedChatter}>{panel === 'form' ? 'Cancelar' : 'Añadir semana'}</Button>
           </div>
         )}
@@ -488,7 +463,7 @@ export default function ChatterMetrics() {
                       {METRICAS.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
                     </Select>
                   </div>
-                  <Button onClick={generarAnalisis} disabled={iaBusy}>{iaBusy ? 'Analizando…' : '✨ Generar análisis'}</Button>
+                  <Button onClick={() => setInformeIA('chatter')} disabled={!filas.length}>✨ Generar análisis por IA</Button>
                 </div>
                 {chartData.length > 1 && (
                   <ResponsiveContainer width="100%" height={220}>
@@ -501,46 +476,7 @@ export default function ChatterMetrics() {
                     </LineChart>
                   </ResponsiveContainer>
                 )}
-                {iaErr && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{iaErr}</p>}
               </Panel>
-
-              {analisis && (
-                <Panel className="p-5 mb-6">
-                  <p className="text-sm font-medium mb-2">📋 Resumen</p>
-                  <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>{analisis.resumen}</p>
-                  {analisis.puntos_atencion?.length > 0 && (
-                    <>
-                      <p className="text-sm font-medium mb-2">⚠️ Puntos de atención</p>
-                      <div className="space-y-2 mb-5">
-                        {analisis.puntos_atencion.map((f, i) => (
-                          <div key={i} className="p-3 rounded-md" style={{ background: 'var(--panel-alt)', borderLeft: `3px solid ${URGENCIA_COLOR[f.urgencia] || 'var(--text-muted)'}` }}>
-                            <p className="text-sm font-medium" style={{ color: URGENCIA_COLOR[f.urgencia] }}>{f.titulo}</p>
-                            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{f.detalle}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {analisis.plan_accion?.length > 0 && (
-                    <>
-                      <p className="text-sm font-medium mb-2">🎯 Plan de acción</p>
-                      <div className="space-y-2 mb-5">
-                        {analisis.plan_accion.map((a, i) => (
-                          <div key={i} className="flex gap-3 p-3 rounded-md" style={{ background: 'var(--panel-alt)' }}>
-                            <span className="font-display font-semibold gold-text">{i + 1}</span>
-                            <div>
-                              <p className="text-sm font-medium">{a.titulo}</p>
-                              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{a.detalle}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  <p className="text-sm font-medium mb-2">✅ Conclusión</p>
-                  <p className="text-sm">{analisis.conclusion}</p>
-                </Panel>
-              )}
 
               <Panel className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -570,6 +506,12 @@ export default function ChatterMetrics() {
             </>
           )}
         </>
+      )}
+      {informeIA === 'chatter' && (
+        <InformeIAModal ambito="chatter" chatterId={selectedChatter} chatterNombre={nombreDe(selectedChatter)} periodo={rango(datosChatter)} datos={JSON.stringify(datosChatter.map(metr))} onClose={() => setInformeIA(null)} />
+      )}
+      {informeIA === 'equipo' && (
+        <InformeIAModal ambito="equipo" periodo={rango(datosEquipo.semanas.map((w) => ({ week_start: w })))} datos={jsonEquipo()} onClose={() => setInformeIA(null)} />
       )}
     </div>
   )
