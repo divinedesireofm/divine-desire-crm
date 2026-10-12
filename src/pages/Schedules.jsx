@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { getProfilesByRoles } from '../lib/roles'
+import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { ModelAvatar } from '../components/ModelAvatar'
 
@@ -65,12 +65,13 @@ function HorarioSemana({ esMgr }) {
 
   async function load() {
     const desde = isoDate(dias[0]), hasta = isoDate(dias[6])
-    const [{ data: r }, u, { data: g }] = await Promise.all([
+    const [{ data: r }, u, { data: g }, ex] = await Promise.all([
       supabase.from('schedules').select('*, profiles(full_name)').gte('fecha', desde).lte('fecha', hasta),
       getProfilesByRoles(['manager', 'chatter']),
       supabase.from('shift_groups').select('id, nombre').eq('activo', true).order('nombre'),
+      getExtrabajadorIds(),
     ])
-    setRows(r || []); setChatters(u); setGrupos(g || [])
+    setRows((r || []).filter((x) => !ex.has(x.chatter_id))); setChatters(u); setGrupos(g || [])
   }
   useEffect(() => { load() }, [lunes])
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { getProfilesByRoles } from '../lib/roles'
+import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import ModelName from '../components/ModelAvatar'
@@ -52,12 +52,13 @@ function MasivosCal() {
 
   async function load() {
     const desde = isoDate(first), hasta = isoDate(last)
-    const [{ data: r }, { data: m }, u] = await Promise.all([
+    const [{ data: r }, { data: m }, u, ex] = await Promise.all([
       supabase.from('massive_calendar').select('*, profiles(full_name), models(stage_name)').gte('fecha', desde).lte('fecha', hasta),
       supabase.from('models').select('id, stage_name').eq('status', 'activa').order('stage_name'),
       getProfilesByRoles(['manager', 'chatter']),
+      getExtrabajadorIds(),
     ])
-    setRows(r || []); setModelos(m || []); setChatters(u)
+    setRows((r || []).filter((x) => !ex.has(x.chatter_id))); setModelos(m || []); setChatters(u)
   }
   useEffect(() => { load() }, [y, mo])
 

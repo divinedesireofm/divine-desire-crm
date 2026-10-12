@@ -115,8 +115,9 @@ export default function ChatterMetrics() {
       canEdit ? getProfilesByRoles(['chatter', 'manager', 'admin']) : Promise.resolve(profile ? [profile] : []),
       supabase.from('chatter_weekly_stats').select('*').order('week_start', { ascending: true }).limit(5000),
     ])
+    const permitidos = new Set(cs.map((c) => c.id))
     setChatters(cs)
-    setStats(data || [])
+    setStats((data || []).filter((r) => !canEdit || permitidos.has(r.chatter_id))) // sin métricas de extrabajadores
     setSelectedChatter((sel) => {
       if (sel) return sel
       const conDatos = cs.find((c) => (data || []).some((r) => r.chatter_id === c.id))

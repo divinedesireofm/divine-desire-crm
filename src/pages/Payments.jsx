@@ -358,7 +358,7 @@ function PagosAdmin() {
             <div><label className="text-xs block mb-1" style={lbl}>Usuario del CRM (para que vea sus pagos)</label>
               <Select value={cform.profile_id} onChange={(e) => setCform({ ...cform, profile_id: e.target.value })}>
                 <option value="">Sin enlazar</option>
-                {perfiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                {perfiles.filter((p) => !/\(extrabajador\)\s*$/i.test(p.full_name || '') || p.id === cform.profile_id).map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
               </Select></div>
             <div><label className="text-xs block mb-1" style={lbl}>Fecha de inicio</label><Input type="date" value={cform.fecha_inicio || ''} onChange={(e) => setCform({ ...cform, fecha_inicio: e.target.value })} /></div>
             <div><label className="text-xs block mb-1" style={lbl}>% habitual (0.15 = 15 %)</label><Input type="number" step="0.01" value={cform.pct_defecto} onChange={(e) => setCform({ ...cform, pct_defecto: e.target.value })} /></div>

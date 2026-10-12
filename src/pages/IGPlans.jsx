@@ -74,6 +74,8 @@ export default function IGPlans() {
   const [guardando, setGuardando] = useState(false)
   const [vista, setVista] = useState('planes') // planes | borradores
   const [equipo, setEquipo] = useState([])
+  const [todosNombres, setTodosNombres] = useState({})
+  const [toast, setToast] = useState('')
 
   async function cargar(silencioso = false) {
     if (!silencioso) setLoading(true)
@@ -83,6 +85,7 @@ export default function IGPlans() {
       getProfilesByRoles(['admin', 'ig_manager', 'ig_assistant']),
     ])
     setEquipo(eq || [])
+    supabase.from('profiles').select('id, full_name').then(({ data: ps }) => setTodosNombres(Object.fromEntries((ps || []).map((x) => [x.id, x.full_name]))))
     setCuentas(c || [])
     setPlanes(p || [])
     setLoading(false)
@@ -91,7 +94,7 @@ export default function IGPlans() {
 
   const cuenta = (id) => cuentas.find((c) => c.id === id)
   const usuarioDe = (id) => cuenta(id)?.username || ''
-  const nombreDe = (id) => equipo.find((x) => x.id === id)?.full_name || '—'
+  const nombreDe = (id) => equipo.find((x) => x.id === id)?.full_name || todosNombres[id] || '—'
   const delFiltro = useMemo(() => planes.filter((p) => filtro === 'todas' || p.account_id === filtro), [planes, filtro])
   const borradores = delFiltro.filter((p) => p.estado === 'borrador')
   const visibles = delFiltro.filter((p) => p.estado !== 'borrador')
@@ -144,6 +147,8 @@ export default function IGPlans() {
     }
     setEd((x) => (x && (x.id === e.id || (!x.id && !e.id)) ? { ...x, id: data.id, estado: 'borrador', created_at: data.created_at } : x))
     setAuto({ estado: 'ok', hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) })
+    setToast('✓ Borrador guardado correctamente')
+    setTimeout(() => setToast(''), 3500)
     cargar(true)
     return true
   }
@@ -271,6 +276,11 @@ export default function IGPlans() {
 
   return (
     <div>
+      {toast && (
+        <div role="status" className="fixed bottom-6 right-6 z-[70] px-4 py-3 rounded-lg text-sm font-medium shadow-lg" style={{ background: 'var(--panel)', border: '1px solid var(--success)', color: 'var(--success)', boxShadow: '0 10px 30px rgba(0,0,0,.45)' }}>
+          {toast}
+        </div>
+      )}
       <PageHeader
         title="Planificaciones de reels"
         subtitle="Confecciona la planificación semanal de cada cuenta con la plantilla y copia el texto listo para enviárselo a la chica."

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { getProfilesByRoles } from '../lib/roles'
+import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Table, Td, PageHeader } from '../components/ui'
 import { ModelAvatar } from '../components/ModelAvatar'
 
@@ -72,11 +72,13 @@ export default function Chatters() {
 
   async function load() {
     setLoading(true)
-    const [{ data: existing }, allChatterProfiles, { data: md }] = await Promise.all([
+    const [{ data: existingAll }, allChatterProfiles, { data: md }, ex] = await Promise.all([
       supabase.from('chatters').select('*, profiles(full_name)'),
       getProfilesByRoles(['chatter', 'manager']),
       supabase.from('models').select('id, stage_name, status').order('stage_name'),
+      getExtrabajadorIds(),
     ])
+    const existing = (existingAll || []).filter((c) => !ex.has(c.id))
     setChatters(existing || [])
     setModelos((md || []).filter((m) => m.status !== 'baja'))
     const existingIds = new Set((existing || []).map((c) => c.id))

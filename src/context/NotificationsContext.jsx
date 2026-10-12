@@ -52,7 +52,7 @@ export function NotificationsProvider({ children }) {
     if (gestiona) {
       consultas.push(
         supabase.from('content_assignments').select('id, titulo, models(stage_name)').lte('enviado_en', hace14dias).is('hecho_en', null).not('enviado_en', 'is', null),
-        supabase.from('profiles').select('id, full_name').eq('password_set', false).lt('created_at', new Date(Date.now() - 86400000).toISOString()), // solo si lleva más de 1 día sin crearla
+        supabase.from('profiles').select('id, full_name').eq('password_set', false).eq('active', true).lt('created_at', new Date(Date.now() - 86400000).toISOString()), // solo si lleva más de 1 día sin crearla
       )
     }
     const [{ data: notifs }, { data: reads }, r3, r4] = await Promise.all(consultas)
