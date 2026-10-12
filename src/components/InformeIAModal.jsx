@@ -17,7 +17,8 @@ Reglas de análisis:
 7. Se valora a personas: antes de culpar, considera otras explicaciones (tráfico, turno, horas, luz/internet) y plantea las dudas como cosas a revisar con la persona.
 8. Los valores null son datos no registrados, no ceros. Golden y Unlock Ratio vienen como fracción (0.05 = 5%). Los importes están en dólares.
 9. Usa SOLO los datos aportados; no inventes cifras. Si algo no se puede concluir con los datos, dilo.
-10. Si Kevin escribe un contexto o unas instrucciones, tenlos en cuenta como prioridad: responde a lo que pide y con el enfoque que pide.
+10. NUNCA analices solo los números del periodo pedido. Recibirás: (a) el PERIODO A ANALIZAR, (b) el HISTÓRICO ANTERIOR con sus medias, (c) la media del equipo en ese periodo (para un chatter) y (d) los INFORMES ANTERIORES guardados. Compara siempre el periodo con su media histórica y con las semanas previas (¿mejora o empeora y cuánto?), con el resto del equipo, y haz seguimiento de los informes anteriores: qué se dijo entonces, si las cifras confirman o desmienten aquellas conclusiones y si se cumplieron las acciones propuestas. Si falta historial o informes previos, dilo en una línea y sigue.
+11. Si Kevin escribe un contexto o unas instrucciones, tenlos en cuenta como prioridad: responde a lo que pide y con el enfoque que pide.
 Formato de salida: SOLO Markdown, sin introducciones del tipo "Aquí tienes". Empieza con un título con # (por ejemplo "# Informe de rendimiento — Nombre"), y usa secciones con ## (Resumen ejecutivo, Lo que dicen los números —con tabla Markdown de las cifras clave—, Puntos fuertes, Puntos de atención, Plan de acción numerado, Conclusión), negritas para lo importante y listas. Sé directo, concreto y accionable, sin relleno.`
 
 // ambito: 'chatter' | 'equipo'
@@ -95,7 +96,19 @@ function Cargando({ segundos, intento }) {
 }
 
 // datos: chatter -> [{semana, ...métricas}] · equipo -> [{chatter, semanas:[{semana,...}]}]
-export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos, onClose }) {
+const NUM_KEYS = ['ventas', 'ventas_ppv', 'propinas', 'mensajes', 'ppv_enviados', 'ppv_desbloqueados', 'golden_ratio', 'unlock_ratio', 'fans_chateados', 'tiempo_respuesta_seg', 'horas', 'precio_medio_ppv', 'dolar_por_fan', 'mensajes_por_fan', 'dolar_por_hora']
+// Media de cada métrica (ignora las semanas sin dato)
+function medias(rows) {
+  const out = {}
+  NUM_KEYS.forEach((k) => {
+    const v = rows.map((r) => (r[k] === null || r[k] === undefined || r[k] === '' ? null : Number(r[k]))).filter((x) => x !== null && !Number.isNaN(x))
+    if (v.length) out[k] = Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 1000) / 1000
+  })
+  return out
+}
+const recorta = (t, n) => (t.length > n ? t.slice(0, n) + '\n[…recortado]' : t)
+
+export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos, equipo, onClose }) {
   const { profile } = useAuth()
   const [contexto, setContexto] = useState('')
   const [busy, setBusy] = useState(false)
@@ -131,9 +144,26 @@ export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos
     try {
       const guia = await getVoiceGuide().catch(() => '')
       const system = withVoiceGuide(BASE, guia)
-      const cabecera = esEquipo
-        ? `ANÁLISIS DE TODO EL EQUIPO DE CHATTERS.\nPeriodo cubierto: ${periodo}\n\nDatos semanales por chatter (JSON):\n${JSON.stringify(filtrado)}`
-        : `ANÁLISIS DEL CHATTER: ${chatterNombre}\nPeriodo cubierto: ${periodo}\n\nHistórico semanal (JSON):\n${JSON.stringify(filtrado)}`
+      // Contexto para que la IA no mire solo el periodo: historial previo, media del equipo e informes anteriores
+      const antes = (s) => iso(s.semana) < rango.desde
+      const NPREV = esEquipo ? 8 : 12
+      let previos = ''
+      try {
+        let q = supabase.from('metric_reports').select('titulo,periodo,contenido,created_at').eq('tipo', ambito).order('created_at', { ascending: false }).limit(3)
+        if (!esEquipo) q = q.eq('chatter_id', chatterId)
+        const { data: rp } = await q
+        previos = (rp || []).map((r) => `--- Informe del ${new Date(r.created_at).toLocaleDateString('es-ES')} (${r.periodo}) ---\n${recorta(r.contenido || '', 3500)}`).join('\n\n')
+      } catch (e) { /* sin informes previos */ }
+      const sinPrevios = 'No hay informes anteriores guardados.'
+      let cabecera
+      if (esEquipo) {
+        const hist = datos.map((d) => ({ chatter: d.chatter, semanas: d.semanas.filter(antes).slice(-NPREV) })).filter((d) => d.semanas.length)
+        cabecera = `ANÁLISIS DE TODO EL EQUIPO DE CHATTERS.\n\n== (a) PERIODO A ANALIZAR: ${periodo} ==\nDatos semanales por chatter (JSON):\n${JSON.stringify(filtrado)}\n\nMedias del periodo por chatter (JSON):\n${JSON.stringify(filtrado.map((d) => ({ chatter: d.chatter, media_periodo: medias(d.semanas) })))}\n\n== (b) HISTÓRICO ANTERIOR (hasta ${NPREV} semanas previas al periodo) ==\n${hist.length ? `Medias históricas por chatter (JSON):\n${JSON.stringify(hist.map((d) => ({ chatter: d.chatter, semanas_previas: d.semanas.length, media_historica: medias(d.semanas) })))}\n\nSemanas previas (JSON):\n${JSON.stringify(hist)}` : 'No hay semanas anteriores registradas.'}\n\n== (d) INFORMES ANTERIORES DEL EQUIPO ==\n${previos || sinPrevios}`
+      } else {
+        const hist = datos.filter(antes).slice(-NPREV)
+        const eqPeriodo = (equipo || []).filter((d) => d.chatter !== chatterNombre).flatMap((d) => d.semanas.filter(enRango))
+        cabecera = `ANÁLISIS DEL CHATTER: ${chatterNombre}\n\n== (a) PERIODO A ANALIZAR: ${periodo} ==\nSemanas (JSON):\n${JSON.stringify(filtrado)}\nMedia del periodo (JSON): ${JSON.stringify(medias(filtrado))}\n\n== (b) HISTÓRICO ANTERIOR (${hist.length} semanas previas al periodo) ==\n${hist.length ? `Media histórica (JSON): ${JSON.stringify(medias(hist))}\nSemanas previas (JSON):\n${JSON.stringify(hist)}` : 'No hay semanas anteriores registradas.'}\n\n== (c) MEDIA DEL RESTO DEL EQUIPO EN EL MISMO PERIODO ==\n${eqPeriodo.length ? JSON.stringify(medias(eqPeriodo)) : 'Sin datos del equipo.'}\n\n== (d) INFORMES ANTERIORES DE ${chatterNombre} ==\n${previos || sinPrevios}`
+      }
       const texto = `${cabecera}\n\n${contexto.trim() ? `CONTEXTO E INSTRUCCIONES DE KEVIN (prioridad):\n${contexto.trim()}` : 'Kevin no ha añadido contexto: haz un análisis general completo.'}`
       // La primera llamada a veces llega vacía (la función estaba «dormida»): se reintenta sola hasta 3 veces
       let md = ''

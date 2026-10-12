@@ -237,7 +237,7 @@ export default function ChatterMetrics() {
   const metr = (r) => ({
     semana: r.week_start, ventas: r.ventas_total, ventas_ppv: r.ventas_ppv, propinas: r.propinas, mensajes: r.mensajes_enviados,
     ppv_enviados: r.ppv_enviados, ppv_desbloqueados: r.ppv_desbloqueados, golden_ratio: r.golden, unlock_ratio: r.unlock,
-    fans_chateados: r.fans_chateados, tiempo_respuesta: r.tiempo_respuesta_seg == null ? null : segundosATexto(r.tiempo_respuesta_seg),
+    fans_chateados: r.fans_chateados, tiempo_respuesta_seg: r.tiempo_respuesta_seg, tiempo_respuesta: r.tiempo_respuesta_seg == null ? null : segundosATexto(r.tiempo_respuesta_seg),
     horas: r.horas_trabajadas, precio_medio_ppv: r.precio_medio, dolar_por_fan: r.por_fan, mensajes_por_fan: r.msgs_fan, dolar_por_hora: r.por_hora, notas: r.notas,
   })
   const datosChatter = useMemo(() => filas.map(metr), [filas])
@@ -505,7 +505,7 @@ export default function ChatterMetrics() {
         </>
       )}
       {informeIA === 'chatter' && (
-        <InformeIAModal ambito="chatter" chatterId={selectedChatter} chatterNombre={nombreDe(selectedChatter)} datos={datosChatter} onClose={() => setInformeIA(null)} />
+        <InformeIAModal ambito="chatter" chatterId={selectedChatter} chatterNombre={nombreDe(selectedChatter)} datos={datosChatter} equipo={datosEquipo} onClose={() => setInformeIA(null)} />
       )}
       {informeIA === 'equipo' && (
         <InformeIAModal ambito="equipo" datos={datosEquipo} onClose={() => setInformeIA(null)} />
