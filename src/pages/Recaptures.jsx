@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { getProfilesByRoles } from '../lib/roles'
+import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
@@ -128,6 +128,8 @@ export default function Recaptures() {
   // ---- asignación semanal
   const [semana, setSemana] = useState(lunesDe(hoy()))
   const [asign, setAsign] = useState([])
+  const [extraIds, setExtraIds] = useState(new Set())
+  useEffect(() => { getExtrabajadorIds().then(setExtraIds) }, [])
   const [chatters, setChatters] = useState([])
   const [selChat, setSelChat] = useState(null) // null = todos
   const [porChatter, setPorChatter] = useState(10)
@@ -185,8 +187,9 @@ export default function Recaptures() {
       const { data: ps } = await supabase.from('profiles').select('id, full_name').in('id', ids)
       nombres = new Map((ps || []).map((p) => [p.id, p.full_name]))
     }
-    const conNombre = filasA.map((a) => ({ ...a, profiles: { full_name: nombres.get(a.chatter_id) || '' } }))
-    setAsign(conNombre)
+    const extra = await getExtrabajadorIds()
+    const conNombre = filasA.map((a) => ({ ...a, extra: extra.has(a.chatter_id), profiles: { full_name: nombres.get(a.chatter_id) || '' } }))
+    setAsign(conNombre.filter((a) => !a.extra)) // los extrabajadores no aparecen en el reparto
     return conNombre
   }
   useEffect(() => { cargarAsign() }, [semana])
@@ -207,8 +210,10 @@ export default function Recaptures() {
     const elegidos = new Set(chattersElegidos)
     // Una nueva repartición BORRA la anterior de los chatters elegidos (escrita o no). Solo se conservan
     // los fans marcados como desaparecidos (para no volver a repartirlos) y lo de chatters que no participan.
-    const mantener = actuales.filter((a) => a.desaparecido || !elegidos.has(a.chatter_id))
-    const borrar = actuales.filter((a) => !a.desaparecido && elegidos.has(a.chatter_id))
+    // Los fans pendientes de un extrabajador se liberan para poder repartirlos de nuevo (lo ya escrito se conserva como histórico).
+    const liberar = actuales.filter((a) => a.extra && !a.hecho && !a.desaparecido)
+    const mantener = actuales.filter((a) => !liberar.includes(a) && (a.desaparecido || !elegidos.has(a.chatter_id)))
+    const borrar = actuales.filter((a) => !a.desaparecido && !a.extra && elegidos.has(a.chatter_id))
     if (borrar.length) {
       const hechos = borrar.filter((a) => a.hecho).length
       const pend = borrar.length - hechos
@@ -259,7 +264,7 @@ export default function Recaptures() {
       faltan = Array.from(necesita.values()).reduce((a, b) => a + b, 0)
     }
     let error = null
-    if (borrar.length) ({ error } = await supabase.from('recapture_assignments').delete().in('id', borrar.map((a) => a.id)))
+    if (borrar.length || liberar.length) ({ error } = await supabase.from('recapture_assignments').delete().in('id', [...borrar, ...liberar].map((a) => a.id)))
     if (!error && nuevas.length) ({ error } = await supabase.from('recapture_assignments').insert(nuevas))
     setGenBusy(false)
     if (error) { setGenMsg('No se pudo guardar la asignación: ' + error.message); await cargarAsign(); return }
@@ -605,7 +610,7 @@ export default function Recaptures() {
               <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Chatter que hizo la venta</label>
               <Select value={fChatter} onChange={(e) => setFChatter(e.target.value)}>
                 <option value="todos">Todos</option>
-                {chattersVenta.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                {chattersVenta.filter((c) => !extraIds.has(c.id)).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </Select>
             </div>
             <label className="flex items-center gap-2 text-sm self-end pb-2 cursor-pointer sm:col-span-2">
