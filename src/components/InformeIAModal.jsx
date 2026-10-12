@@ -39,6 +39,8 @@ const CSS_IA = `
 @media (prefers-reduced-motion:reduce){.ia-orb,.ia-orb .ring,.ia-orb .wave,.ia-line,.ia-frase{animation:none}}
 `
 const iso = (d) => String(d || '').slice(0, 10)
+// Las semanas se guardan por su lunes; cada una cubre de lunes a domingo
+const mas6 = (d) => { const t = new Date(iso(d) + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + 6); return t.toISOString().slice(0, 10) }
 
 function Cargando({ segundos, intento }) {
   const [f, setF] = useState(0)
@@ -71,9 +73,9 @@ export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos
   const esEquipo = ambito === 'equipo'
 
   const semanasAll = useMemo(() => [...new Set((esEquipo ? datos.flatMap((d) => d.semanas) : datos).map((s) => iso(s.semana)))].sort(), [datos, esEquipo])
-  const ultimas = (n) => ({ desde: semanasAll[Math.max(0, semanasAll.length - n)] || '', hasta: semanasAll[semanasAll.length - 1] || '' })
+  const ultimas = (n) => ({ desde: semanasAll[Math.max(0, semanasAll.length - n)] || '', hasta: semanasAll.length ? mas6(semanasAll[semanasAll.length - 1]) : '' })
   const [rango, setRango] = useState(() => ultimas(esEquipo ? 8 : 16))
-  const enRango = (s) => iso(s.semana) >= rango.desde && iso(s.semana) <= rango.hasta
+  const enRango = (s) => iso(s.semana) <= rango.hasta && mas6(s.semana) >= rango.desde // la semana (lun-dom) coincide con el periodo
   const filtrado = useMemo(() => (esEquipo
     ? datos.map((d) => ({ chatter: d.chatter, semanas: d.semanas.filter(enRango) })).filter((d) => d.semanas.length)
     : datos.filter(enRango)), [datos, rango, esEquipo])
@@ -146,7 +148,7 @@ export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos
               </div>
               <div>
                 <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Hasta</label>
-                <input type="date" value={rango.hasta} min={rango.desde || undefined} max={semanasAll[semanasAll.length - 1]} onChange={(e) => setRango({ ...rango, hasta: e.target.value })} className="rounded-md px-3 py-2 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+                <input type="date" value={rango.hasta} min={rango.desde || undefined} max={semanasAll.length ? mas6(semanasAll[semanasAll.length - 1]) : undefined} onChange={(e) => setRango({ ...rango, hasta: e.target.value })} className="rounded-md px-3 py-2 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
               </div>
               <div className="flex gap-2 flex-wrap">
                 {[4, 8, 16].map((n) => <Button key={n} variant="ghost" onClick={() => setRango(ultimas(n))}>Últ. {n} sem.</Button>)}
@@ -154,7 +156,7 @@ export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos
               </div>
             </div>
             <p className="text-xs mb-4" style={{ color: nSemanas && !rangoMal ? 'var(--text-muted)' : 'var(--danger)' }}>
-              {rangoMal ? 'La fecha «desde» debe ser anterior a «hasta».' : nSemanas ? `Se analizarán las ${nSemanas} ${nSemanas === 1 ? 'semana' : 'semanas'} que empiezan entre esas fechas (${semanasAll.length} disponibles en total).` : 'No hay semanas registradas en ese rango.'}
+              {rangoMal ? 'La fecha «desde» debe ser anterior a «hasta».' : nSemanas ? `Se analizarán ${nSemanas} ${nSemanas === 1 ? 'semana completa (lunes a domingo)' : 'semanas completas (lunes a domingo)'} que coinciden con esas fechas (${semanasAll.length} disponibles en total).` : 'No hay semanas registradas en ese rango.'}
             </p>
             <label className="text-sm font-medium block mb-1">Contexto e instrucciones (opcional)</label>
             <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
