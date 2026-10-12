@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
@@ -367,6 +367,7 @@ export default function Recaptures() {
     setAsign((rs) => rs.filter((x) => x.id !== a.id))
   }
 
+  const modeloDe = (a) => (a.modelos || '').split(',')[0].trim() || 'Sin modelo'
   const rangoTxt = (items) => {
     const ds = items.map((a) => a.periodo_desde).filter(Boolean).sort()
     const hs = items.map((a) => a.periodo_hasta).filter(Boolean).sort()
@@ -379,6 +380,12 @@ export default function Recaptures() {
       if (!g.has(k)) g.set(k, { id: k, nombre: a.profiles?.full_name || 'Sin nombre', items: [] })
       g.get(k).items.push(a)
     })
+    // Dentro de cada chatter, los fans van agrupados por modelo (para no saltar de una chica a otra) y por gasto de mayor a menor
+    g.forEach((gr) => gr.items.sort((x, y) => {
+      const mx = modeloDe(x); const my = modeloDe(y)
+      if (mx !== my) return mx === 'Sin modelo' ? 1 : my === 'Sin modelo' ? -1 : mx.localeCompare(my, 'es')
+      return (Number(y.gasto) || 0) - (Number(x.gasto) || 0)
+    }))
     const arr = Array.from(g.values())
     arr.sort((a, b) => (a.id === profile.id ? -1 : b.id === profile.id ? 1 : a.nombre.localeCompare(b.nombre)))
     return arr
@@ -494,8 +501,20 @@ export default function Recaptures() {
               <div className="space-y-1">
                 {g.items.map((a) => {
                   const puedeMarcar = esMgr || a.chatter_id === profile.id
+                  const mod = modeloDe(a)
+                  const primero = g.items.findIndex((x) => modeloDe(x) === mod) === g.items.indexOf(a)
+                  const delModelo = g.items.filter((x) => modeloDe(x) === mod)
+                  const resueltosM = delModelo.filter((x) => x.hecho || x.desaparecido).length
                   return (
-                    <div key={a.id} className="flex items-center gap-3 px-3 py-2 rounded-md text-sm" style={{ background: a.desaparecido ? 'var(--danger)11' : a.hecho ? 'var(--success)11' : 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                    <Fragment key={a.id}>
+                    {primero && (
+                      <div className="flex items-center gap-2 pt-3 pb-1 text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gold, var(--accent))' }}>
+                        <span>👩 {mod}</span>
+                        <span className="font-normal normal-case tabular-nums" style={{ color: 'var(--text-muted)' }}>{resueltosM}/{delModelo.length} fans</span>
+                        <span className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 px-3 py-2 rounded-md text-sm" style={{ background: a.desaparecido ? 'var(--danger)11' : a.hecho ? 'var(--success)11' : 'var(--panel-alt)', border: '1px solid var(--border)' }}>
                       <input
                         type="checkbox"
                         checked={!!a.hecho}
@@ -527,6 +546,7 @@ export default function Recaptures() {
                       <CopyButton text={a.fan_user.replace(/^@+/, '')} label="Copiar usuario" />
                       {esMgr && <button onClick={() => quitar(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar</button>}
                     </div>
+                    </Fragment>
                   )
                 })}
               </div>
