@@ -137,6 +137,17 @@ export default function Recaptures() {
   const [noRepetir, setNoRepetir] = useState(true)
   const [genBusy, setGenBusy] = useState(false)
   const [genMsg, setGenMsg] = useState('')
+  const [genFade, setGenFade] = useState(false)
+  // Los avisos se desvanecen solos: suaves a los 4 s y fuera a los 6 s (los errores se quedan algo más)
+  useEffect(() => {
+    if (!genMsg) return undefined
+    const largo = /^(No se pudo|Solo se|AVISO)/.test(genMsg)
+    setGenFade(false)
+    const t1 = setTimeout(() => setGenFade(true), largo ? 10000 : 4000)
+    const t2 = setTimeout(() => setGenMsg(''), largo ? 12000 : 6000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [genMsg])
+  const avisoStyle = { color: /^(No se pudo|Solo se|AVISO)/.test(genMsg) ? 'var(--danger)' : 'var(--success)', opacity: genFade ? 0 : 1, transition: 'opacity 2s ease' }
   const [importados, setImportados] = useState([])
   const [incluirImp, setIncluirImp] = useState(true)
   const [pestana, setPestana] = useState('asignados')
@@ -453,7 +464,10 @@ export default function Recaptures() {
           </div>
         </div>
 
-        {genMsg && <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>{genMsg}</p>}
+        {genMsg && <p className="text-sm mb-3" style={avisoStyle}>{genMsg}</p>}
+        {!rangoTxt(asign) && esMgr && asign.length > 0 && (
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>📅 Periodo de compra no registrado: este reparto se hizo antes de guardarlo. Borra el reparto y vuelve a repartir para que aparezca aquí arriba.</p>
+        )}
         {rangoTxt(asign) && (
           <div className="mb-4 px-3 py-2 rounded-md text-sm" style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
             📅 <strong>Periodo de compra de estos fans:</strong> {rangoTxt(asign)}. Son fans que compraron en esas fechas y que toca recuperar.
@@ -585,7 +599,7 @@ export default function Recaptures() {
                 <Button onClick={autoAsignar} disabled={genBusy || cargando}>{genBusy ? 'Repartiendo…' : 'Auto-asignar'}</Button>
               </div>
             </div>
-            {genMsg && <p className="text-sm mt-3">{genMsg}</p>}
+            {genMsg && <p className="text-sm mt-3" style={avisoStyle}>{genMsg}</p>}
           </div>
         )}
 
