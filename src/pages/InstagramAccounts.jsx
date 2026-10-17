@@ -6,6 +6,7 @@ import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
 import ModelName from '../components/ModelAvatar'
 import ZeroAccounts from './ZeroAccounts'
+import IGProfileMetrics from './IGProfileMetrics'
 
 const STATUS_OPTIONS = ['calentando', 'activa', 'en_revision', 'suspendida', 'baneada']
 
@@ -36,7 +37,7 @@ export default function InstagramAccounts() {
   const canEdit = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
   const canDelete = hasAnyRole(['admin', 'ig_manager'])
   const [params, setParams] = useSearchParams()
-  const tab = params.get('tab') === 'cero' ? 'cero' : 'cuentas'
+  const tab = params.get('tab') === 'cero' ? 'cero' : params.get('tab') === 'metricas' ? 'metricas' : 'cuentas'
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
   const [assistants, setAssistants] = useState([])
@@ -45,6 +46,7 @@ export default function InstagramAccounts() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
+  const [seguidores, setSeguidores] = useState({}) // account_id -> última lectura de seguidores
 
   async function load() {
     setLoading(true)
@@ -54,6 +56,11 @@ export default function InstagramAccounts() {
       getProfilesByRoles(['ig_assistant']),
     ])
     setAccounts(acc || [])
+    supabase.from('ig_profile_stats').select('account_id, followers, captured_at').order('captured_at', { ascending: false }).limit(2000).then(({ data: st }) => {
+      const m = {}
+      ;(st || []).forEach((r) => { if (!(r.account_id in m)) m[r.account_id] = r.followers })
+      setSeguidores(m)
+    })
     setModels(mods || [])
     setAssistants(profs)
     setLoading(false)
@@ -132,10 +139,10 @@ export default function InstagramAccounts() {
 
   const pestanas = (
     <div className="flex gap-2 mb-5">
-      {[['cuentas', 'Cuentas'], ['cero', 'Cuentas de cero']].map(([id, label]) => (
+      {[['cuentas', 'Cuentas'], ['metricas', 'Métricas de perfil'], ['cero', 'Cuentas de cero']].map(([id, label]) => (
         <button
           key={id}
-          onClick={() => setParams(id === 'cero' ? { tab: 'cero' } : {})}
+          onClick={() => setParams(id === 'cuentas' ? {} : { tab: id })}
           className="px-3 py-1.5 rounded-full text-sm"
           style={{
             background: tab === id ? 'var(--accent-soft)' : 'var(--panel-alt)',
@@ -148,6 +155,16 @@ export default function InstagramAccounts() {
       ))}
     </div>
   )
+
+  if (tab === 'metricas') {
+    return (
+      <div>
+        <PageHeader title="Cuentas de Instagram" subtitle="Métricas reales de cada perfil (seguidores, publicaciones, interacción) leídas con ScrapeCreators." />
+        {pestanas}
+        <IGProfileMetrics />
+      </div>
+    )
+  }
 
   if (tab === 'cero') {
     return (
@@ -266,14 +283,14 @@ export default function InstagramAccounts() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['IG original', 'Correo', 'Cuenta actual', 'Modelo', 'Público', 'Estado', 'Responsable', '2FA', 'Asignación', 'Días', 'Observaciones', 'Restricciones', ''].map((c) => (
+                  {['IG original', 'Correo', 'Cuenta actual', 'Seguidores', 'Modelo', 'Público', 'Estado', 'Responsable', '2FA', 'Asignación', 'Días', 'Observaciones', 'Restricciones', ''].map((c) => (
                     <th key={c} className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {accounts.length === 0 ? (
-                  <tr><td colSpan={13} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay cuentas.</td></tr>
+                  <tr><td colSpan={14} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay cuentas.</td></tr>
                 ) : accounts.map((a) => (
                   <tr key={a.id} style={{ borderBottom: '1px solid var(--border)' }}>
                     <Td>{a.original_username || '—'}</Td>
@@ -283,6 +300,7 @@ export default function InstagramAccounts() {
                         <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a>
                       ) : `@${a.username}`}
                     </Td>
+                    <Td>{seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : '—'}</Td>
                     <Td><ModelName name={a.models?.stage_name} /></Td>
                     <Td>{(a.target_audience || []).join(', ') || '—'}</Td>
                     <Td><StatusBadge status={a.status} /></Td>
