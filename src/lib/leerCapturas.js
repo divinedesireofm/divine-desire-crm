@@ -1,7 +1,7 @@
 import { iaCallJSON } from './ai'
 
 // Reduce la captura (los móviles hacen fotos de varios MB) y la pasa a JPEG en base64.
-export function reducirImagen(file, max = 1600) {
+export function reducirImagen(file, max = 1568) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file)
     const img = new Image()
@@ -11,7 +11,7 @@ export function reducirImagen(file, max = 1600) {
       c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
       URL.revokeObjectURL(url)
-      resolve({ mediaType: 'image/jpeg', base64: c.toDataURL('image/jpeg', 0.85).split(',')[1], nombre: file.name || 'captura' })
+      resolve({ mediaType: 'image/jpeg', base64: c.toDataURL('image/jpeg', 0.8).split(',')[1], nombre: file.name || 'captura' })
     }
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo abrir la imagen. Prueba con otra captura (JPG o PNG).')) }
     img.src = url
@@ -59,7 +59,7 @@ export async function leerVentasDeCapturas(imagenes, modelo) {
   let ultimo = null
   for (let n = 0; n < 2; n++) { // un reintento por si la primera llamada llega vacía o falla
     try {
-      const r = await iaCallJSON(SYSTEM, [{ role: 'user', content: contenido }], { tool_name: 'entregar_ventas', tool_description: 'Entrega los pagos de fans leídos en las capturas.', schema: SCHEMA }, 3000)
+      const r = await iaCallJSON(SYSTEM, [{ role: 'user', content: contenido }], { tool_name: 'entregar_ventas', tool_description: 'Entrega los pagos de fans leídos en las capturas.', schema: SCHEMA }, 4000)
       if (r && Array.isArray(r.compras)) return { compras: r.compras, notas: r.notas || '' }
       ultimo = new Error('La IA no devolvió un resultado válido.')
     } catch (e) { ultimo = e }

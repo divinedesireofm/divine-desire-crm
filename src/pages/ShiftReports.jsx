@@ -44,6 +44,7 @@ function fmtTS(ts) {
 const normUser = (v) => '@' + String(v || '').replace(/[@\s]/g, '')
 const r2 = (n) => Math.round(n * 100) / 100
 const fmt$ = (n) => '$' + Number(n || 0).toFixed(2)
+const MAX_CAPTURAS = 10 // por carga; una vez leídas se pueden subir más en el mismo reporte
 const FAN_VACIO = { fan: '', user: '@', monto: '', tipo: 'ppv' }
 function totales(compras) {
   const c = compras || []
@@ -88,7 +89,11 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
     try {
       const nuevas = []
       for (const f of imgs) nuevas.push(await reducirImagen(f))
-      setCaps((c) => [...c, ...nuevas].slice(0, 6))
+      setCaps((c) => {
+        const todas = [...c, ...nuevas]
+        if (todas.length > MAX_CAPTURAS) setCapErr(`El máximo es ${MAX_CAPTURAS} capturas cada vez: se han quedado las primeras ${MAX_CAPTURAS}. Cuando se vuelquen las ventas podrás subir más.`)
+        return todas.slice(0, MAX_CAPTURAS)
+      })
     } catch (e) { setCapErr(e.message) }
   }
   function alPegar(e) {
@@ -100,10 +105,14 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
     try {
       const r = await leerVentasDeCapturas(caps, etiqueta)
       if (!r.compras.length) { setCapInfo('La IA no ha encontrado ningún pago en la captura. Prueba con otra captura más nítida o añádelos a mano.'); setLeyendo(false); return }
+      const claveC = (x) => `${String(x.user || '').toLowerCase()}|${Number(x.monto)}|${x.tipo}`
+      const yaHay = new Set(compras.map(claveC))
+      let repes = 0
       const filas = r.compras.map((c) => ({ fan: String(c.fan || '').trim(), user: normUser(c.user), monto: String(c.monto), tipo: c.tipo === 'tip' ? 'tip' : 'ppv', ia: true, dudoso: !!c.dudoso || !String(c.user || '').replace(/[@\s]/g, '') || !String(c.fan || '').trim() }))
+      filas.forEach((f) => { if (f.user.length > 1 && yaHay.has(claveC(f))) { f.dudoso = true; repes += 1 } })
       onChange([...compras, ...filas])
       setCaps([])
-      setCapInfo(`La IA ha añadido ${filas.length} ${filas.length === 1 ? 'compra' : 'compras'} (marcadas en amarillo). Revísalas con la captura delante y corrige lo que haga falta antes de enviar.${r.notas ? ' Nota de la IA: ' + r.notas : ''}`)
+      setCapInfo(`La IA ha añadido ${filas.length} ${filas.length === 1 ? 'compra' : 'compras'} (marcadas en amarillo). Revísalas con la captura delante y corrige lo que haga falta antes de enviar.${repes ? ` ⚠ ${repes} ${repes === 1 ? 'coincide' : 'coinciden'} con compras que ya había (mismo usuario, importe y tipo): puede ser una captura repetida, bórralas si es así.` : ''}${r.notas ? ' Nota de la IA: ' + r.notas : ''} Puedes subir más capturas de esta modelo cuando quieras.`)
     } catch (e) { setCapErr(e.message || 'No se pudo leer la captura. Inténtalo otra vez o añade las compras a mano.') }
     setLeyendo(false)
   }
@@ -166,10 +175,11 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
       )}
       <div className="mb-4 rounded-md p-3" style={{ border: '1px dashed var(--accent)', background: 'var(--panel-alt)' }} tabIndex={0} onPaste={alPegar} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); anadirArchivos(e.dataTransfer.files) }}>
         <p className="text-sm font-medium mb-1">📸 Subir captura de las ventas</p>
-        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Sube (o pega con Ctrl+V / arrastra) hasta 6 capturas y la IA rellena las compras por ti. Después revísalas y corrige lo que haga falta antes de enviar el reporte.</p>
+        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Sube (o pega con Ctrl+V / arrastra) hasta 10 capturas cada vez y la IA rellena las compras por ti. Cuando se hayan volcado puedes subir más en esta misma modelo y reporte. Después revísalas y corrige lo que haga falta antes de enviar el reporte.</p>
         <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { anadirArchivos(e.target.files); e.target.value = '' }} />
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={leyendo || caps.length >= 6}>Elegir captura(s)</Button>
+          <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={leyendo || caps.length >= MAX_CAPTURAS}>Elegir captura(s)</Button>
+          {caps.length > 0 && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{caps.length}/{MAX_CAPTURAS}</span>}
           {caps.length > 0 && <Button onClick={leerConIA} disabled={leyendo}>{leyendo ? 'Leyendo la captura…' : `✨ Leer ${caps.length === 1 ? 'la captura' : caps.length + ' capturas'} con IA`}</Button>}
         </div>
         {caps.length > 0 && (
