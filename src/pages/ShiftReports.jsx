@@ -6,6 +6,7 @@ import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import ModelName from '../components/ModelAvatar'
 import MiniCalculadora from '../components/MiniCalculadora'
+import { reducirImagen, leerVentasDeCapturas } from '../lib/leerCapturas'
 
 const TURNOS = [
   { id: 'madrugada', n: 'Madrugada', h: '2:00 – 10:00 VE' },
@@ -69,12 +70,44 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
   const [err, setErr] = useState('')
   const f = { ...FAN_VACIO, ...(nuevo || {}) }
   function setRow(i, key, value) {
-    onChange(compras.map((c, j) => (j === i ? { ...c, [key]: key === 'user' ? normUser(value) : value } : c)))
+    onChange(compras.map((c, j) => (j === i ? { ...c, [key]: key === 'user' ? normUser(value) : value, ia: false, dudoso: false } : c)))
   }
   function setNew(key, value) {
     setNuevo({ ...f, [key]: key === 'user' ? normUser(value) : value })
   }
   const formRef = useRef(null)
+  const [caps, setCaps] = useState([]) // capturas elegidas, pendientes de leer
+  const [leyendo, setLeyendo] = useState(false)
+  const [capErr, setCapErr] = useState('')
+  const [capInfo, setCapInfo] = useState('')
+  const fileRef = useRef(null)
+  async function anadirArchivos(files) {
+    setCapErr('')
+    const imgs = Array.from(files || []).filter((f) => f.type.startsWith('image/'))
+    if (!imgs.length) { setCapErr('Solo se pueden subir imágenes (capturas de pantalla).'); return }
+    try {
+      const nuevas = []
+      for (const f of imgs) nuevas.push(await reducirImagen(f))
+      setCaps((c) => [...c, ...nuevas].slice(0, 6))
+    } catch (e) { setCapErr(e.message) }
+  }
+  function alPegar(e) {
+    const archivos = Array.from(e.clipboardData?.items || []).filter((i) => i.type.startsWith('image/')).map((i) => i.getAsFile()).filter(Boolean)
+    if (archivos.length) { e.preventDefault(); anadirArchivos(archivos) }
+  }
+  async function leerConIA() {
+    setCapErr(''); setCapInfo(''); setLeyendo(true)
+    try {
+      const r = await leerVentasDeCapturas(caps, etiqueta)
+      if (!r.compras.length) { setCapInfo('La IA no ha encontrado ningún pago en la captura. Prueba con otra captura más nítida o añádelos a mano.'); setLeyendo(false); return }
+      const filas = r.compras.map((c) => ({ fan: String(c.fan || '').trim(), user: normUser(c.user), monto: String(c.monto), tipo: c.tipo === 'tip' ? 'tip' : 'ppv', ia: true, dudoso: !!c.dudoso || !String(c.user || '').replace(/[@\s]/g, '') || !String(c.fan || '').trim() }))
+      onChange([...compras, ...filas])
+      setCaps([])
+      setCapInfo(`La IA ha añadido ${filas.length} ${filas.length === 1 ? 'compra' : 'compras'} (marcadas en amarillo). Revísalas con la captura delante y corrige lo que haga falta antes de enviar.${r.notas ? ' Nota de la IA: ' + r.notas : ''}`)
+    } catch (e) { setCapErr(e.message || 'No se pudo leer la captura. Inténtalo otra vez o añade las compras a mano.') }
+    setLeyendo(false)
+  }
+  const nIA = compras.filter((c) => c.ia).length
   // mantener=true: añade el pago pero deja el fan y su @usuario para anotarle otro pago sin volver a escribirlos
   function anadir(mantener) {
     const msg = validarCompras([f])
@@ -101,7 +134,7 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
       ) : (
         <div className="mb-3 space-y-2">
           {compras.map((x, i) => (
-            <div key={i} className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-center">
+            <div key={i} className="grid grid-cols-2 sm:grid-cols-5 gap-2 items-center rounded-md" style={x.ia ? { background: 'color-mix(in srgb, var(--gold) 14%, transparent)', outline: `1px solid ${x.dudoso ? 'var(--danger)' : 'var(--gold)'}`, padding: 4 } : undefined}>
               <Input placeholder="Nombre del fan" value={x.fan} onChange={(e) => setRow(i, 'fan', e.target.value)} />
               <Input placeholder="@usuario" value={x.user} onChange={(e) => setRow(i, 'user', e.target.value)} />
               <div className="relative">
@@ -125,6 +158,34 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
           Fans con varios pagos: {variosPagos.map((e, k) => <span key={k}>{k > 0 && ' · '}<strong>{e.fan || e.user}</strong> {e.n} pagos = {fmt$(e.total)}</span>)}
         </p>
       )}
+      {nIA > 0 && (
+        <div className="mb-3 flex items-center gap-3 flex-wrap text-xs px-3 py-2 rounded-md" style={{ background: 'color-mix(in srgb, var(--gold) 14%, transparent)', border: '1px solid var(--gold)' }}>
+          <span>🤖 {nIA} {nIA === 1 ? 'compra leída' : 'compras leídas'} por la IA sin revisar. Las marcadas con borde rojo tienen datos dudosos. Si editas una fila se da por revisada.</span>
+          <button type="button" className="underline" onClick={() => onChange(compras.map((c) => ({ ...c, ia: false, dudoso: false })))}>✓ Ya las he revisado todas</button>
+        </div>
+      )}
+      <div className="mb-4 rounded-md p-3" style={{ border: '1px dashed var(--accent)', background: 'var(--panel-alt)' }} tabIndex={0} onPaste={alPegar} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); anadirArchivos(e.dataTransfer.files) }}>
+        <p className="text-sm font-medium mb-1">📸 Subir captura de las ventas</p>
+        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Sube (o pega con Ctrl+V / arrastra) hasta 6 capturas y la IA rellena las compras por ti. Después revísalas y corrige lo que haga falta antes de enviar el reporte.</p>
+        <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { anadirArchivos(e.target.files); e.target.value = '' }} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={leyendo || caps.length >= 6}>Elegir captura(s)</Button>
+          {caps.length > 0 && <Button onClick={leerConIA} disabled={leyendo}>{leyendo ? 'Leyendo la captura…' : `✨ Leer ${caps.length === 1 ? 'la captura' : caps.length + ' capturas'} con IA`}</Button>}
+        </div>
+        {caps.length > 0 && (
+          <div className="flex gap-2 flex-wrap mt-3">
+            {caps.map((c, k) => (
+              <div key={k} className="relative">
+                <img src={`data:${c.mediaType};base64,${c.base64}`} alt={`Captura ${k + 1}`} className="h-20 rounded-md" style={{ border: '1px solid var(--border)', opacity: leyendo ? 0.6 : 1 }} />
+                {!leyendo && <button type="button" aria-label="Quitar captura" onClick={() => setCaps((x) => x.filter((_, j) => j !== k))} className="absolute -top-2 -right-2 rounded-full w-5 h-5 text-xs" style={{ background: 'var(--danger)', color: '#fff' }}>×</button>}
+              </div>
+            ))}
+          </div>
+        )}
+        {leyendo && <p className="text-xs mt-2" style={{ color: 'var(--accent)' }}>⏳ La IA está leyendo las ventas… suele tardar 10-20 segundos.</p>}
+        {capErr && <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>{capErr}</p>}
+        {capInfo && <p className="text-xs mt-2" style={{ color: 'var(--success)' }}>{capInfo}</p>}
+      </div>
       <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Añadir otra compra{f._mant ? ` · pagos de ${f.fan || f.user}` : ''}</p>
       <div className="mb-3" ref={formRef}>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
@@ -146,6 +207,7 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
         </div>
         {err && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{err}</p>}
       </div>
+      <MiniCalculadora onUsar={(n) => setNuevo({ ...f, monto: String(n) })} />
       <div className="flex flex-wrap gap-4 text-sm px-3 py-2 rounded-md" style={{ background: 'var(--accent-soft)' }}>
         <span>PPV facturado: <strong className="tabular-nums" style={{ color: 'var(--success)' }}>{fmt$(t.ppv)}</strong></span>
         <span>Tips: <strong className="tabular-nums" style={{ color: 'var(--gold)' }}>{fmt$(t.tips)}</strong></span>
@@ -391,6 +453,8 @@ export default function ShiftReports() {
     const malas = sel.map((id) => validarCompras(campos[id]?.compras)).find(Boolean)
     if (malas) { setError(malas); return }
     if (sel.some((id) => pendiente(fanInput[id]))) { setError('Tienes una compra a medio rellenar. Pulsa «Añadir compra» o bórrala antes de enviar.'); return }
+    const sinRevisar = sel.reduce((n, id) => n + (campos[id]?.compras || []).filter((c) => c.ia).length, 0)
+    if (sinRevisar > 0 && !confirm(`Hay ${sinRevisar} compras leídas por la IA que no has marcado como revisadas.\n\nLa IA puede equivocarse con importes o usuarios. ¿Las has comprobado con la captura y quieres enviar el reporte?`)) return
     setBusy(true)
     const { data: rep, error: e1 } = await supabase
       .from('shift_reports')
@@ -784,7 +848,6 @@ export default function ShiftReports() {
           </div>
         )}
       </Panel>
-      <MiniCalculadora />
     </div>
   )
 }

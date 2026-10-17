@@ -57,7 +57,8 @@ const TECLAS = [
   ['(', '0', ',', ')'],
 ]
 
-export default function MiniCalculadora() {
+// Calculadora integrada (desplegable dentro del reporte). onUsar(número) lo vuelca en el importe de la compra que se está añadiendo.
+export default function MiniCalculadora({ onUsar }) {
   const [abierta, setAbierta] = useState(false)
   const [expr, setExpr] = useState('')
   const [hist, setHist] = useState([])
@@ -87,13 +88,14 @@ export default function MiniCalculadora() {
   }
 
   return (
-    <div className="fixed z-[55]" style={{ right: 20, bottom: 20 }}>
+    <div className="mb-3">
+      <button
+        type="button" onClick={() => setAbierta((x) => !x)} aria-expanded={abierta}
+        className="text-sm px-3 py-1.5 rounded-md inline-flex items-center gap-2"
+        style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
+      >🧮 Calculadora <span style={{ color: 'var(--text-muted)' }}>{abierta ? '▲' : '▼'}</span></button>
       {abierta && (
-        <div className="mb-3 rounded-xl p-3 shadow-2xl" style={{ width: 280, background: 'var(--panel)', border: '1px solid var(--border)' }} role="dialog" aria-label="Calculadora">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>🧮 Calculadora</span>
-            <button type="button" onClick={() => setAbierta(false)} aria-label="Cerrar calculadora" className="text-lg leading-none px-1">×</button>
-          </div>
+        <div className="mt-2 rounded-xl p-3" style={{ maxWidth: 300, background: 'var(--panel)', border: '1px solid var(--border)' }} role="group" aria-label="Calculadora">
           <input
             ref={ref} value={expr} onChange={(e) => setExpr(e.target.value.replace(/[^0-9+\-*/().,%×÷−]/g, ''))} onKeyDown={onKey}
             inputMode="decimal" placeholder="0" aria-label="Operación"
@@ -114,8 +116,11 @@ export default function MiniCalculadora() {
           </div>
           <div className="grid grid-cols-2 gap-1.5">
             <button type="button" onClick={igual} className="rounded-md py-2 text-sm font-semibold" style={{ background: 'var(--accent)', color: '#000' }}>= Calcular</button>
-            <button type="button" onClick={copiar} disabled={res === null} className="rounded-md py-2 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', opacity: res === null ? 0.5 : 1 }}>{copiado ? '✓ Copiado' : 'Copiar resultado'}</button>
+            <button type="button" onClick={copiar} disabled={res === null} className="rounded-md py-2 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', opacity: res === null ? 0.5 : 1 }}>{copiado ? '✓ Copiado' : 'Copiar'}</button>
           </div>
+          {onUsar && (
+            <button type="button" disabled={res === null || res <= 0} onClick={() => onUsar(res)} className="mt-1.5 w-full rounded-md py-2 text-sm" style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent)', color: 'var(--text)', opacity: res === null || res <= 0 ? 0.5 : 1 }}>Usar como importe de la compra</button>
+          )}
           {hist.length > 0 && (
             <div className="mt-2 pt-2 text-xs space-y-0.5" style={{ borderTop: '1px solid var(--border)', color: 'var(--text-muted)' }}>
               {hist.map((h, i) => (
@@ -127,13 +132,6 @@ export default function MiniCalculadora() {
           )}
         </div>
       )}
-      <div className="flex justify-end">
-        <button
-          type="button" onClick={() => setAbierta((a) => !a)} aria-label="Abrir calculadora" title="Calculadora"
-          className="rounded-full flex items-center justify-center text-xl shadow-xl"
-          style={{ width: 52, height: 52, background: 'var(--accent)', color: '#000' }}
-        >🧮</button>
-      </div>
     </div>
   )
 }
