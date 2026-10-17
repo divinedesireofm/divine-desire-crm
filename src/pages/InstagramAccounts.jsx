@@ -194,7 +194,7 @@ export default function InstagramAccounts() {
       {showForm && (
         <Panel className="p-5 mb-6">
           <p className="text-sm mb-4 font-medium">{editingId ? 'Editar cuenta' : 'Nueva cuenta'}</p>
-          <form onSubmit={handleSubmit} className="grid grid-cols-3 gap-3">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Input
               placeholder="Instagram original (si la cuenta fue comprada)"
               value={form.original_username}
@@ -262,8 +262,8 @@ export default function InstagramAccounts() {
               value={form.restrictions}
               onChange={(e) => setForm({ ...form, restrictions: e.target.value })}
             />
-            {error && <p className="col-span-3 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-            <div className="col-span-3 flex gap-2">
+            {error && <p className="sm:col-span-2 lg:col-span-3 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+            <div className="sm:col-span-2 lg:col-span-3 flex flex-wrap gap-2">
               <Button type="submit">{editingId ? 'Guardar cambios' : 'Guardar cuenta'}</Button>
               {editingId && (
                 <Button type="button" variant="ghost" onClick={() => { setShowForm(false); setEditingId(null) }}>

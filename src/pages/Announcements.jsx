@@ -3,18 +3,17 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 
-const AMBITO_LABEL = { general: 'General (todos)', chatting: 'Chatting', instagram: 'Instagram', modelos: 'Modelos' }
+const AMBITO_LABEL = { general: 'General (ambos equipos)', chatting: 'Chatting', instagram: 'Instagram' }
 const SCOPE_ROLES = {
-  general: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'],
+  general: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'],
   chatting: ['admin', 'manager', 'chatter'],
   instagram: ['admin', 'ig_manager', 'ig_assistant'],
-  modelos: ['admin', 'manager', 'modelo'],
 }
 
 function canCreate(roles) {
   const s = new Set()
-  if (roles.includes('admin')) { s.add('general'); s.add('chatting'); s.add('instagram'); s.add('modelos') }
-  if (roles.includes('manager')) { s.add('chatting'); s.add('modelos') }
+  if (roles.includes('admin')) { s.add('general'); s.add('chatting'); s.add('instagram') }
+  if (roles.includes('manager')) s.add('chatting')
   if (roles.includes('ig_manager') || roles.includes('ig_assistant')) s.add('instagram')
   return Array.from(s)
 }
@@ -22,7 +21,6 @@ function canSee(roles) {
   const s = new Set(['general'])
   if (roles.includes('admin') || roles.includes('manager') || roles.includes('chatter')) s.add('chatting')
   if (roles.includes('admin') || roles.includes('ig_manager') || roles.includes('ig_assistant')) s.add('instagram')
-  if (roles.includes('admin') || roles.includes('manager') || roles.includes('modelo')) s.add('modelos')
   return Array.from(s)
 }
 function fmtFecha(ts) {
@@ -49,7 +47,7 @@ export default function Announcements() {
       setReads(counts)
       const { data: urows } = await supabase.from('user_roles').select('user_id, role')
       const tot = {}
-      for (const scope of ['general', 'chatting', 'instagram', 'modelos']) {
+      for (const scope of ['general', 'chatting', 'instagram']) {
         const ids = new Set((urows || []).filter((p) => SCOPE_ROLES[scope].includes(p.role)).map((p) => p.user_id))
         tot[scope] = ids.size
       }

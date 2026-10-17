@@ -53,7 +53,7 @@ export default function Scripts() {
       ) : cats.map((cat) => (
         <div key={cat} className="mb-6">
           <p className="text-sm font-medium mb-2">{cat} <span style={{ color: 'var(--text-muted)' }}>({porCat[cat].length})</span></p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {porCat[cat].map((s) => (
               <Panel key={s.id} className="p-4">
                 <p className="font-medium mb-2">{s.titulo}</p>

@@ -143,7 +143,7 @@ export function PageHeader({ title, subtitle, action }) {
         <h1 className="text-lg sm:text-xl font-semibold font-display break-words">{title}</h1>
         {subtitle && <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{subtitle}</p>}
       </div>
-      {action}
+      {action && <div className="pageheader-actions min-w-0">{action}</div>}
     </div>
   )
 }

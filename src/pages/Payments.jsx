@@ -273,7 +273,7 @@ function PagosAdmin() {
       <PageHeader
         title="Pagos a chatters"
         subtitle="Registro de lo pagado a cada chatter. Introduces la facturación de Infloww y el pago se calcula solo con la misma fórmula del Excel."
-        action={<div className="flex gap-2"><Button variant="ghost" onClick={() => editarCuenta(null)}>+ Cuenta</Button><Button onClick={() => nuevoPago()} disabled={!cuentas.length}>+ Registrar pago</Button></div>}
+        action={<div className="flex flex-wrap gap-2"><Button variant="ghost" onClick={() => editarCuenta(null)}>+ Cuenta</Button><Button onClick={() => nuevoPago()} disabled={!cuentas.length}>+ Registrar pago</Button></div>}
       />
 
       {msg && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{msg}</p>}
@@ -367,7 +367,7 @@ function PagosAdmin() {
             <div><label className="text-xs block mb-1" style={lbl}>Dirección USDT · BSC</label><Input value={cform.wallet_usdt_bsc || ''} onChange={(e) => setCform({ ...cform, wallet_usdt_bsc: e.target.value })} /></div>
             <div><label className="text-xs block mb-1" style={lbl}>Dirección de Binance</label><Input value={cform.wallet_binance || ''} onChange={(e) => setCform({ ...cform, wallet_binance: e.target.value })} /></div>
             <label className="text-sm flex items-center gap-2 sm:col-span-2"><input type="checkbox" checked={cform.activa} onChange={(e) => setCform({ ...cform, activa: e.target.checked })} /> Cuenta activa</label>
-            <div className="sm:col-span-2 flex gap-2"><Button type="submit">Guardar cuenta</Button><Button type="button" variant="ghost" onClick={() => setCform(null)}>Cancelar</Button></div>
+            <div className="sm:col-span-2 flex flex-wrap gap-2"><Button type="submit">Guardar cuenta</Button><Button type="button" variant="ghost" onClick={() => setCform(null)}>Cancelar</Button></div>
           </form>
         </Panel>
       )}
@@ -814,7 +814,7 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
             <div><label className="text-xs block mb-1" style={lbl}>Importe ($)</label><Input type="number" step="0.01" value={edit.monto} onChange={(e) => setEdit({ ...edit, monto: e.target.value })} required /></div>
             <div><label className="text-xs block mb-1" style={lbl}>Fecha de cobro</label><Input type="date" value={edit.fecha_cobro} onChange={(e) => setEdit({ ...edit, fecha_cobro: e.target.value })} required /></div>
             <div><label className="text-xs block mb-1" style={lbl}>Nota</label><Input value={edit.nota || ''} onChange={(e) => setEdit({ ...edit, nota: e.target.value })} /></div>
-            <div className="col-span-2 lg:col-span-4 flex gap-2"><Button type="submit">Guardar</Button><Button type="button" variant="ghost" onClick={() => setEdit(null)}>Cancelar</Button></div>
+            <div className="col-span-2 lg:col-span-4 flex flex-wrap gap-2"><Button type="submit">Guardar</Button><Button type="button" variant="ghost" onClick={() => setEdit(null)}>Cancelar</Button></div>
           </form>
         </Panel>
       )}

@@ -17,22 +17,6 @@
   --success: #4FBF8B;
 }
 
-:root[data-theme="light"] {
-  --bg: #FAF7F2;
-  --panel: #FFFFFF;
-  --panel-alt: #F3EFE8;
-  --border: #E3DCCB;
-  --text: #1C1917;
-  --text-muted: #6B6255;
-  --accent: #A9790A;
-  --accent-soft: #A9790A22;
-  --gold: #A9790A;
-  --gold-light: #C9A227;
-  --gold-deep: #8A6508;
-  --danger: #C0392B;
-  --success: #2E8B57;
-}
-
 .gold-text {
   background: linear-gradient(180deg, var(--gold-light), var(--gold-deep));
   -webkit-background-clip: text;
@@ -107,3 +91,21 @@ tbody tr {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ===== Responsive (lote 46) ===== */
+/* Acciones de cabecera: los botones saltan de línea en vez de solaparse */
+.pageheader-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.pageheader-actions > .flex, .pageheader-actions > div { flex-wrap: wrap; }
+@media (max-width: 639px) {
+  .pageheader-actions { width: 100%; }
+  .pageheader-actions > .flex, .pageheader-actions > div { width: 100%; }
+}
+/* Los botones nunca se encogen hasta cortar el texto */
+button { max-width: 100%; }
+/* Medios y tablas nunca desbordan su contenedor */
+main img, main video, main canvas, main svg { max-width: 100%; }
+main textarea, main input, main select { max-width: 100%; }
+/* Objetivos táctiles cómodos en móvil */
+@media (pointer: coarse) {
+  main button, main select, main input:not([type=checkbox]):not([type=radio]) { min-height: 38px; }
+}

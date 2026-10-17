@@ -158,7 +158,7 @@ export default function ModelPortal() {
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Todavía no hay facturación registrada por el equipo de chat.</p>
             ) : (
               <>
-                <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
                   {[['Este mes', tot((x) => x.fecha.startsWith(mesAct))], ['Mes anterior', tot((x) => x.fecha.startsWith(mesAnt))], ['Total', tot(() => true)]].map(([t, v]) => (
                     <div key={t} className="rounded-md p-3" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t}</p>

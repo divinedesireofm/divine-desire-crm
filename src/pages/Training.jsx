@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
-import { iaCallJSON, getVoiceGuide, withVoiceGuide } from '../lib/ai'
+import { iaCall, iaJson, getVoiceGuide, withVoiceGuide } from '../lib/ai'
 
 function fechaHoyISO() {
   const d = new Date()
@@ -59,25 +59,9 @@ export default function Training() {
     try {
       const anteriores = pils.slice(0, 8).map((p) => `#${p.numero} [${p.concepto}] ${p.titulo}: ${p.pregunta}`).join('\n')
       const guia = await getVoiceGuide()
-      const system = withVoiceGuide(`Eres experto en formación de equipos de chat/ventas para OnlyFans en la agencia Divine Desire. Genera UNA "píldora de valor" diaria: un concepto breve y práctico (técnica de venta, psicología del fan, gestión de objeciones, etc.) seguido de una pregunta tipo test de una sola respuesta correcta para comprobar que se ha entendido.\n\nPíldoras anteriores ya usadas (no repitas el mismo concepto):\n${anteriores}`, guia)
-      const obj = await iaCallJSON(system, [{ role: 'user', content: 'Genera la píldora de hoy.' }], {
-        tool_name: 'generar_pildora',
-        tool_description: 'Entrega la píldora de formación generada.',
-        schema: {
-          type: 'object',
-          properties: {
-            concepto: { type: 'string', description: 'Nombre corto del concepto' },
-            titulo: { type: 'string', description: 'Título llamativo' },
-            contenido: { type: 'string', description: 'Explicación práctica de 3-5 frases' },
-            pregunta: { type: 'string' },
-            opcion_a: { type: 'string' }, opcion_b: { type: 'string' },
-            opcion_c: { type: 'string' }, opcion_d: { type: 'string' },
-            respuesta_correcta: { type: 'string', enum: ['A', 'B', 'C', 'D'] },
-            explicacion_correcta: { type: 'string', description: 'Por qué es la correcta, 1-2 frases' },
-          },
-          required: ['concepto', 'titulo', 'contenido', 'pregunta', 'opcion_a', 'opcion_b', 'opcion_c', 'opcion_d', 'respuesta_correcta', 'explicacion_correcta'],
-        },
-      }, 900)
+      const system = withVoiceGuide(`Eres experto en formación de equipos de chat/ventas para OnlyFans en la agencia Divine Desire. Genera UNA "píldora de valor" diaria: un concepto breve y práctico (técnica de venta, psicología del fan, gestión de objeciones, etc.) seguido de una pregunta tipo test de una sola respuesta correcta para comprobar que se ha entendido.\n\nPíldoras anteriores ya usadas (no repitas el mismo concepto):\n${anteriores}\n\nDevuelve SOLO un JSON válido (sin markdown) con esta forma exacta: {"concepto":"nombre corto del concepto","titulo":"título llamativo","contenido":"explicación práctica de 3-5 frases","pregunta":"la pregunta del test","opcion_a":"...","opcion_b":"...","opcion_c":"...","opcion_d":"...","respuesta_correcta":"A|B|C|D","explicacion_correcta":"por qué es la correcta, 1-2 frases"}`, guia)
+      const txt = await iaCall(system, [{ role: 'user', content: 'Genera la píldora de hoy.' }], 900)
+      const obj = iaJson(txt)
       setForm({
         ...EMPTY,
         numero: Math.max(0, ...pils.map((p) => p.numero || 0)) + 1,
@@ -131,7 +115,7 @@ export default function Training() {
         }
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Panel className="p-4">
           <p className="text-2xl font-display font-semibold gold-text">{sel ? `#${sel.numero}` : '—'}</p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Píldora · {sel?.fecha_publicacion}</p>
@@ -153,7 +137,7 @@ export default function Training() {
       {showForm && (
         <Panel className="p-5 mb-6">
           <p className="text-sm font-medium mb-3">Nueva píldora</p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
             <Input type="number" placeholder="Número" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} />
             <Input type="date" value={form.fecha_publicacion} onChange={(e) => setForm({ ...form, fecha_publicacion: e.target.value })} />
             <Input placeholder="Concepto (ej: Activación)" className="col-span-2" value={form.concepto} onChange={(e) => setForm({ ...form, concepto: e.target.value })} />
@@ -184,7 +168,7 @@ export default function Training() {
         </Panel>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Panel className="p-4">
           <p className="text-sm font-medium mb-3">Píldoras</p>
           <div className="space-y-1 max-h-[60vh] overflow-y-auto">
@@ -203,7 +187,7 @@ export default function Training() {
           </div>
         </Panel>
 
-        <Panel className="p-4 col-span-2">
+        <Panel className="p-4 sm:col-span-2">
           {!sel ? (
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Selecciona una píldora.</p>
           ) : (
@@ -218,7 +202,6 @@ export default function Training() {
                   <strong>Correcta ({sel.respuesta_correcta}):</strong> {[sel.opcion_a, sel.opcion_b, sel.opcion_c, sel.opcion_d][['A', 'B', 'C', 'D'].indexOf(sel.respuesta_correcta)]}
                 </p>
               </div>
-              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -249,7 +232,6 @@ export default function Training() {
                   })}
                 </tbody>
               </table>
-              </div>
             </>
           )}
         </Panel>

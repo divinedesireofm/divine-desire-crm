@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
-import { iaCallJSON, getVoiceGuide, withVoiceGuide } from '../lib/ai'
+import { iaCall, iaJson, getVoiceGuide, withVoiceGuide } from '../lib/ai'
 
 const CAT_ACT = ['Urgencia', 'Curiosidad', 'Fecha especial', 'Festivo / día mundial']
 
@@ -46,17 +46,10 @@ export default function Activation() {
       const refs = rows.filter((r) => r.categoria === iaCat).slice(0, 10).map((r) => r.texto)
       const pool = buenos.length ? buenos.slice(0, 12) : refs
       const guia = await getVoiceGuide()
-      const system = withVoiceGuide(`Eres experto en mensajes masivos de activación para OnlyFans en la agencia Divine Desire. Objetivo: reactivar fans inactivos y abrir conversación. Reglas: combinar curiosidad, sorpresa o urgencia; NUNCA empezar con 'hola qué tal'; mensajes creíbles y NO sexuales; en español, tono natural y femenino, con algún emoji. Categoría pedida: ${iaCat}.\n\nMensajes que han funcionado bien al equipo (úsalos como referencia de estilo, NO los copies literal):\n${pool.map((t) => `• ${t}`).join('\n')}`, guia)
-      const resultado = await iaCallJSON(system, [{ role: 'user', content: iaPrompt.trim() || `Genera 4 mensajes nuevos de la categoría ${iaCat}` }], {
-        tool_name: 'generar_mensajes',
-        tool_description: 'Entrega los 4 mensajes generados.',
-        schema: {
-          type: 'object',
-          properties: { mensajes: { type: 'array', items: { type: 'string' }, minItems: 4, maxItems: 4 } },
-          required: ['mensajes'],
-        },
-      }, 900)
-      setIaOut(Array.isArray(resultado?.mensajes) ? resultado.mensajes : [])
+      const system = withVoiceGuide(`Eres experto en mensajes masivos de activación para OnlyFans en la agencia Divine Desire. Objetivo: reactivar fans inactivos y abrir conversación. Reglas: combinar curiosidad, sorpresa o urgencia; NUNCA empezar con 'hola qué tal'; mensajes creíbles y NO sexuales; en español, tono natural y femenino, con algún emoji. Categoría pedida: ${iaCat}.\n\nMensajes que han funcionado bien al equipo (úsalos como referencia de estilo, NO los copies literal):\n${pool.map((t) => `• ${t}`).join('\n')}\n\nDevuelve SOLO un array JSON de 4 strings (sin markdown), cada string un mensaje listo para enviar.`, guia)
+      const txt = await iaCall(system, [{ role: 'user', content: iaPrompt.trim() || `Genera 4 mensajes nuevos de la categoría ${iaCat}` }], 900)
+      const arr = iaJson(txt)
+      setIaOut(Array.isArray(arr) ? arr : [])
     } catch (e) { setIaErr(e.message) }
     setIaBusy(false)
   }
@@ -87,12 +80,12 @@ export default function Activation() {
 
       <Panel className="p-5 mb-6">
         <p className="font-medium mb-3">✨ Generar masivos con IA</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
           <Select value={iaCat} onChange={(e) => setIaCat(e.target.value)}>
             {CAT_ACT.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
           <input
-            className="col-span-2 px-3 py-2 rounded-md text-sm outline-none"
+            className="sm:col-span-2 px-3 py-2 rounded-md text-sm outline-none"
             style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
             placeholder="Ej: para San Valentín, fans que llevan días sin escribir"
             value={iaPrompt}

@@ -70,12 +70,12 @@ export default function Leads() {
             </Select>
             <Input
               placeholder="Notas"
-              className="col-span-2"
+              className="sm:col-span-2"
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
             />
-            {error && <p className="col-span-2 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-            <Button type="submit" className="col-span-2">Guardar lead</Button>
+            {error && <p className="sm:col-span-2 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+            <Button type="submit" className="sm:col-span-2">Guardar lead</Button>
           </form>
         </Panel>
       )}

@@ -41,7 +41,6 @@ export default function Prices() {
       ) : secs.map((sec) => (
         <Panel key={sec} className="p-5 mb-4">
           <p className="font-medium mb-3">{sec}</p>
-          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -68,7 +67,6 @@ export default function Prices() {
               ))}
             </tbody>
           </table>
-          </div>
         </Panel>
       ))}
 
@@ -81,7 +79,7 @@ export default function Prices() {
               list="secciones"
               value={edit.seccion}
               onChange={(e) => setEdit({ ...edit, seccion: e.target.value })}
-              className="col-span-2"
+              className="sm:col-span-2"
             />
             <datalist id="secciones">{secs.map((s) => <option key={s} value={s} />)}</datalist>
             <Input placeholder="Concepto" value={edit.concepto} onChange={(e) => setEdit({ ...edit, concepto: e.target.value })} />

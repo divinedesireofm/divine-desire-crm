@@ -84,7 +84,7 @@ function DuracionSelect({ value, onChange }) {
     onChange([nm !== '' ? nm + ' min' : '0 min', ns !== '' && ns !== '0' ? ns + ' s' : ''].filter(Boolean).join(' '))
   }
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
       <Select value={m} onChange={(e) => cambiar(e.target.value, s)}>
         <option value="">Min</option>
         {Array.from({ length: 121 }, (_, i) => <option key={i} value={i}>{i} min</option>)}
@@ -351,7 +351,7 @@ export default function Requests() {
                       </div>
                       {abierto && (
                         <div className="px-3 pb-3 pt-1">
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm mb-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 gap-3 text-sm mb-3">
                             {campo('Tipo', tm.n)}
                             {campo('Estado', <span style={{ color: eo.color }}>{eo.n}</span>)}
                             {campo('Modelo', r.modelo)}

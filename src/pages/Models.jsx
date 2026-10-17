@@ -116,7 +116,7 @@ export default function Models() {
       {showForm && (
         <Panel className="p-5 mb-6">
           <p className="text-sm mb-4 font-medium">{editingId ? 'Editar modelo' : 'Nuevo modelo'}</p>
-          <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3">
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               placeholder="Nombre artístico"
               value={form.stage_name}
@@ -146,12 +146,12 @@ export default function Models() {
             />
             <Input
               placeholder="Notas"
-              className="col-span-2"
+              className="sm:col-span-2"
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
             />
-            {error && <p className="col-span-2 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-            <div className="col-span-2 flex gap-2">
+            {error && <p className="sm:col-span-2 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+            <div className="sm:col-span-2 flex flex-wrap gap-2">
               <Button type="submit">{editingId ? 'Guardar cambios' : 'Guardar modelo'}</Button>
               {editingId && (
                 <Button type="button" variant="ghost" onClick={() => { setShowForm(false); setEditingId(null) }}>
