@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, Fragment } from 'react'
+import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import ModelName from '../components/ModelAvatar'
+import MiniCalculadora from '../components/MiniCalculadora'
 
 const TURNOS = [
   { id: 'madrugada', n: 'Madrugada', h: '2:00 – 10:00 VE' },
@@ -60,7 +61,8 @@ function validarCompras(compras) {
   return ''
 }
 const normalizarCompras = (compras) => (compras || []).map((c) => ({ fan: String(c.fan).trim(), user: c.user, monto: r2(parseFloat(c.monto)), tipo: c.tipo === 'tip' ? 'tip' : 'ppv' }))
-const pendiente = (f) => !!f && (f.fan?.trim() || f.monto || (f.user || '@').length > 1)
+// Si el formulario solo conserva el fan (para seguir añadiéndole pagos) y no tiene importe, no cuenta como «a medias»
+const pendiente = (f) => !!f && !(f._mant && !f.monto) && !!(f.fan?.trim() || f.monto || (f.user || '@').length > 1)
 
 // Lista de compras editable fila a fila + formulario para añadir otra + totales automáticos
 function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
@@ -72,13 +74,25 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
   function setNew(key, value) {
     setNuevo({ ...f, [key]: key === 'user' ? normUser(value) : value })
   }
-  function anadir() {
+  const formRef = useRef(null)
+  // mantener=true: añade el pago pero deja el fan y su @usuario para anotarle otro pago sin volver a escribirlos
+  function anadir(mantener) {
     const msg = validarCompras([f])
     setErr(msg)
     if (msg) return
     onChange([...compras, { fan: f.fan.trim(), user: f.user, monto: f.monto, tipo: f.tipo }])
-    setNuevo({ ...FAN_VACIO, tipo: f.tipo })
+    setNuevo(mantener ? { ...FAN_VACIO, fan: f.fan, user: f.user, tipo: f.tipo, _mant: true } : { ...FAN_VACIO, tipo: f.tipo })
+    if (mantener) setTimeout(() => formRef.current?.querySelector('input[type=number]')?.focus(), 0)
   }
+  // «+ pago» en una fila: copia ese fan justo debajo con el importe en blanco
+  function otroPago(i) {
+    const c = compras[i]
+    onChange([...compras.slice(0, i + 1), { fan: c.fan, user: c.user, monto: '', tipo: c.tipo }, ...compras.slice(i + 1)])
+  }
+  // Fans con varios pagos: total por fan
+  const porFan = new Map()
+  compras.forEach((x) => { const k = String(x.user || '').toLowerCase(); const e = porFan.get(k) || { fan: x.fan, user: x.user, n: 0, total: 0 }; e.n += 1; e.total += Number(x.monto || 0); porFan.set(k, e) })
+  const variosPagos = Array.from(porFan.values()).filter((e) => e.n > 1)
   const t = totales(compras)
   return (
     <div>
@@ -98,13 +112,21 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
                 <option value="ppv">PPV</option>
                 <option value="tip">Tip</option>
               </Select>
-              <button type="button" onClick={() => onChange(compras.filter((_, j) => j !== i))} className="text-xs hover:underline text-left" style={{ color: 'var(--danger)' }}>Quitar</button>
+              <div className="flex gap-3 text-xs">
+                <button type="button" onClick={() => otroPago(i)} className="hover:underline text-left" style={{ color: 'var(--accent)' }} title="Añadir otro pago de este mismo fan">+ pago</button>
+                <button type="button" onClick={() => onChange(compras.filter((_, j) => j !== i))} className="hover:underline text-left" style={{ color: 'var(--danger)' }}>Quitar</button>
+              </div>
             </div>
           ))}
         </div>
       )}
-      <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Añadir otra compra</p>
-      <div className="mb-3">
+      {variosPagos.length > 0 && (
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+          Fans con varios pagos: {variosPagos.map((e, k) => <span key={k}>{k > 0 && ' · '}<strong>{e.fan || e.user}</strong> {e.n} pagos = {fmt$(e.total)}</span>)}
+        </p>
+      )}
+      <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Añadir otra compra{f._mant ? ` · pagos de ${f.fan || f.user}` : ''}</p>
+      <div className="mb-3" ref={formRef}>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           <Input placeholder="Nombre del fan" value={f.fan} onChange={(e) => setNew('fan', e.target.value)} />
           <Input placeholder="@usuario" value={f.user} onChange={(e) => setNew('user', e.target.value)} />
@@ -116,7 +138,11 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
             <option value="ppv">PPV</option>
             <option value="tip">Tip</option>
           </Select>
-          <Button variant="ghost" onClick={anadir}>Añadir compra</Button>
+          <Button variant="ghost" onClick={() => anadir(false)}>Añadir compra</Button>
+        </div>
+        <div className="mt-2 flex items-center gap-3 flex-wrap">
+          <Button variant="ghost" onClick={() => anadir(true)}>＋ Añadir y poner otro pago a este fan</Button>
+          {f._mant && <button type="button" onClick={() => setNuevo({ ...FAN_VACIO, tipo: f.tipo })} className="text-xs underline" style={{ color: 'var(--text-muted)' }}>Cambiar de fan</button>}
         </div>
         {err && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{err}</p>}
       </div>
@@ -758,6 +784,7 @@ export default function ShiftReports() {
           </div>
         )}
       </Panel>
+      <MiniCalculadora />
     </div>
   )
 }
