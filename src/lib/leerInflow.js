@@ -15,16 +15,18 @@ Reglas:
    - ppv_enviados: PPV enviados / Direct PPVs sent / PPVs sent.
    - ppv_desbloqueados: PPV desbloqueados / PPVs unlocked / PPVs purchased.
    - fans_chateados: fans con los que ha chateado / Fans chatted.
-   - fans_gastaron: Fans who spent money (fans únicos que han gastado dinero).
-   - fan_cvr: Fan CVR (fan conversion rate), como número en porcentaje (12.5 si pone 12.5%).
-   - media_fan_gasto: Avg earnings per fan who spent money (media ganada por fan que gasta), en dólares.
-   - caracteres: Character count (número total de caracteres enviados).
+   - fans_gastaron: columna «Fans who spent money» (también «Unique fans who spent money» o «Fans spent»): fans únicos que han gastado dinero. Es un recuento de fans, NO dinero.
+   - fan_cvr: columna «Fan CVR» (fan conversion rate / tasa de conversión de fans), como número en porcentaje (12.5 si pone 12.5%).
+   - media_fan_gasto: columna «Avg earnings per fan who spent money» (también «Avg. earnings per paying fan»): media ganada por cada fan que gasta, en dólares.
+   - caracteres: columna «Character count» (caracteres enviados). Si sale abreviado (1.2K, 25K) conviértelo a número completo (1200, 25000).
    - tiempo_respuesta: tiempo de respuesta / Reply time. Si hay dos columnas de tiempo de respuesta, esta es la basada en horas trabajadas/clocked hours; si solo hay una y no dice "scheduled hours", usa esta. Texto exactamente como se ve (por ejemplo "2m 37s" o "00:02:37").
    - tiempo_respuesta_programadas: Response time (based on scheduled hours), solo si existe esa columna; texto tal como se ve.
    - horas_trabajadas: horas trabajadas / Clocked hours, en horas decimales (si sale 7h 30m devuelve 7.5).
 6. No devuelvas ratios (golden ratio, unlock ratio), la app los calcula sola. Ignora filas de totales o medias del equipo.
 7. Si en las capturas se ve el rango de fechas del informe, devuélvelo en "fecha_inicio" y "fecha_fin" con formato AAAA-MM-DD (si el año no se ve, asume el año en curso). Si no se ve, deja ambos vacíos.
-8. En "notas" escribe en una frase cualquier cosa que haya que revisar (columnas que no se leen, nombres cortados...). Si no hay nada, deja "".`
+8. Las cabeceras de Infloww llevan iconos (ⓘ) y flechas de ordenación: ignóralos. La tabla es ancha: lee TODAS las columnas visibles en cada captura, también las del extremo derecho, y no dejes ninguna sin mirar.
+9. En "columnas_detectadas" lista el nombre exacto de TODAS las columnas de la tabla que ves (en el orden en que aparecen). Si de un chatter ves una columna que no encaja en ninguna métrica de arriba, devuélvela en su campo "otras" como {columna, valor} (valor tal como se ve) en lugar de descartarla.
+10. En "notas" escribe en una frase cualquier cosa que haya que revisar (columnas que no se leen, nombres cortados...). Si no hay nada, deja "".`
 
 const num = { type: ['number', 'null'] }
 const SCHEMA = {
@@ -42,14 +44,16 @@ const SCHEMA = {
           mensajes_enviados: num, ppv_enviados: num, ppv_desbloqueados: num, fans_chateados: num,
           tiempo_respuesta: { type: ['string', 'null'] },
           tiempo_respuesta_programadas: { type: ['string', 'null'] },
+          otras: { type: 'array', items: { type: 'object', properties: { columna: { type: 'string' }, valor: { type: 'string' } }, required: ['columna', 'valor'] } },
           horas_trabajadas: num,
         },
         required: ['nombre'],
       },
     },
+    columnas_detectadas: { type: 'array', items: { type: 'string' } },
     notas: { type: 'string' },
   },
-  required: ['chatters', 'notas'],
+  required: ['chatters', 'notas', 'columnas_detectadas'],
 }
 
 // imagenes: [{mediaType, base64}] -> { fecha_inicio, fecha_fin, chatters:[...], notas }
@@ -60,7 +64,7 @@ export async function leerEstadisticasInflow(imagenes) {
   for (let n = 0; n < 3; n++) {
     try {
       const r = await iaCallJSON(SYSTEM, [{ role: 'user', content: contenido }], { tool_name: 'entregar_estadisticas', tool_description: 'Entrega las estadísticas de cada chatter leídas en las capturas de Infloww.', schema: SCHEMA }, 4000)
-      if (r && Array.isArray(r.chatters)) return { fecha_inicio: r.fecha_inicio || '', fecha_fin: r.fecha_fin || '', chatters: r.chatters, notas: r.notas || '' }
+      if (r && Array.isArray(r.chatters)) return { fecha_inicio: r.fecha_inicio || '', fecha_fin: r.fecha_fin || '', chatters: r.chatters, notas: r.notas || '', columnas: Array.isArray(r.columnas_detectadas) ? r.columnas_detectadas : [] }
       ultimo = new Error('La IA no devolvió un resultado válido.')
     } catch (e) { ultimo = e }
     await new Promise((res) => setTimeout(res, 1200))

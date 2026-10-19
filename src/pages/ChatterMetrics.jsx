@@ -275,7 +275,7 @@ export default function ChatterMetrics() {
     setInfErr(''); setInfMsg(''); setInf(null); setInfBusy(true)
     try {
       const imgs = []
-      for (const f of files) imgs.push(await reducirImagen(f))
+      for (const f of files) imgs.push(await reducirImagen(f, 2000)) // la tabla de Infloww es ancha: más resolución para leer bien todas las columnas
       const r = await leerEstadisticasInflow(imgs)
       if (!r.chatters.length) throw new Error('No he encontrado filas de chatters en las capturas. Sube una captura de la tabla de estadísticas de empleados de Infloww.')
       const hojas = r.chatters.map((c) => ({ hoja: c.nombre || '' }))
@@ -285,8 +285,9 @@ export default function ChatterMetrics() {
         semana: base,
         rango: r.fecha_inicio && r.fecha_fin ? `${r.fecha_inicio} → ${r.fecha_fin}` : '',
         notas: r.notas,
+        columnas: r.columnas,
         filas: r.chatters.map((c, i) => ({
-          nombre: c.nombre, chatterId: ids[i], incluir: !!ids[i],
+          nombre: c.nombre, chatterId: ids[i], incluir: !!ids[i], otras: Array.isArray(c.otras) ? c.otras : [],
           v: Object.fromEntries(CAMPOS_INF.map((k) => {
             if (POR_KEY[k].tiempo) { const t = k === 'tiempo_respuesta_seg' ? c.tiempo_respuesta : c.tiempo_respuesta_programadas; return [k, t ? String(t).replace(/\s+/g, '') : ''] }
             return [k, c[k] === null || c[k] === undefined ? '' : String(c[k])]
@@ -402,6 +403,21 @@ export default function ChatterMetrics() {
                 </p>
               </div>
               {inf.notas && <p className="text-xs mb-3" style={{ color: 'var(--gold)' }}>⚠ {inf.notas}</p>}
+              {inf.columnas?.length > 0 && <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Columnas que ha visto la IA: {inf.columnas.join(' · ')}</p>}
+              {(() => {
+                const vacias = CAMPOS_INF.filter((k) => inf.filas.every((f) => f.v[k] === '' || f.v[k] == null))
+                return vacias.length > 0 && vacias.length < CAMPOS_INF.length ? (
+                  <p className="text-xs mb-3" style={{ color: 'var(--gold)' }}>
+                    No se ha leído ningún valor de: {vacias.map((k) => POR_KEY[k].label).join(', ')}. Si esas columnas salen en tu Infloww, haz otra captura donde se vean (la tabla es ancha: sube también la parte derecha) y vuelve a subirla.
+                  </p>
+                ) : null
+              })()}
+              {inf.filas.some((f) => f.otras?.length) && (
+                <div className="text-xs mb-3 rounded-md px-3 py-2" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                  <p className="mb-1" style={{ color: 'var(--text)' }}>Columnas leídas que no encajan en ninguna métrica (no se guardan):</p>
+                  {inf.filas.filter((f) => f.otras?.length).map((f, i) => <p key={i}>{f.nombre}: {f.otras.map((o) => `${o.columna} = ${o.valor}`).join(' · ')}</p>)}
+                </div>
+              )}
               <div className="overflow-x-auto mb-3">
                 <table className="w-full text-sm">
                   <thead>
