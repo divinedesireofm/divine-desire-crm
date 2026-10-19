@@ -167,6 +167,9 @@ function PagosAdmin() {
   const [bonos, setBonos] = useState([])
   const [sanciones, setSanciones] = useState([])
   const [cuotas, setCuotas] = useState([])
+  const [cuentasEx, setCuentasEx] = useState([]) // cuentas de extrabajadores (dados de baja en Equipo)
+  const [pagosEx, setPagosEx] = useState([])
+  const [selEx, setSelEx] = useState('todas')
   const creandoCuentas = useRef(false)
   const [qrGrande, setQrGrande] = useState(null) // { src, titulo }
 
@@ -191,13 +194,24 @@ function PagosAdmin() {
     const [{ data: c }, { data: p }, { data: pr }, { data: bn }, { data: sn }, { data: cu }] = await Promise.all([
       supabase.from('payout_accounts').select('*').order('created_at'),
       supabase.from('chatter_payouts').select('*').order('fecha', { ascending: false }).limit(5000),
-      supabase.from('profiles').select('id, full_name').order('full_name'),
+      supabase.from('profiles').select('id, full_name, extrabajador').order('full_name'),
       supabase.from('payout_bonuses').select('*').order('fecha_cobro', { ascending: false }).limit(2000),
       supabase.from('sanctions').select('id, chatter_id, motivo, monto, fecha, payout_id').order('fecha', { ascending: false }).limit(2000),
       supabase.from('payout_advance_installments').select('*').order('fecha_prevista').limit(2000),
     ])
-    const nuevasCuentas = await asegurarCuentas(c || [])
-    setCuentas([...(c || []), ...nuevasCuentas]); setPagos(p || []); setPerfiles(pr || []); setBonos(bn || []); setSanciones(sn || []); setCuotas(cu || []); setCargando(false)
+    let perf = pr
+    if (!perf) { // sin la migración 55 no existe la columna «extrabajador»
+      const r = await supabase.from('profiles').select('id, full_name').order('full_name'); perf = r.data || []
+    }
+    const esEx = (cu) => {
+      const pf = perf.find((x) => x.id === cu.profile_id)
+      return !!pf && (pf.extrabajador === true || /\(extrabajador\)\s*$/i.test(pf.full_name || ''))
+    }
+    const todas = c || []
+    const exIds = new Set(todas.filter(esEx).map((x) => x.id))
+    const nuevasCuentas = await asegurarCuentas(todas)
+    setCuentas([...todas.filter((x) => !exIds.has(x.id)), ...nuevasCuentas]); setCuentasEx(todas.filter((x) => exIds.has(x.id)))
+    setPagos((p || []).filter((x) => !exIds.has(x.account_id))); setPagosEx((p || []).filter((x) => exIds.has(x.account_id))); setPerfiles(perf); setBonos(bn || []); setSanciones(sn || []); setCuotas(cu || []); setCargando(false)
   }
   useEffect(() => { cargar() }, [])
 
@@ -402,13 +416,15 @@ function PagosAdmin() {
       {msg && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{msg}</p>}
 
       <div className="flex gap-2 mb-4">
-        {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos'], ['adelantos', 'Adelantos']].map(([k, t]) => (
+        {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos'], ['adelantos', 'Adelantos'], ['extrabajadores', 'Pagos de extrabajadores' + (pagosEx.length ? ` (${pagosEx.length})` : '')]].map(([k, t]) => (
           <button key={k} onClick={() => setVista(k)} className="px-4 py-1.5 rounded-md text-sm font-medium"
             style={{ background: vista === k ? 'var(--accent)' : 'var(--panel-alt)', color: vista === k ? '#000' : 'var(--text)', border: '1px solid ' + (vista === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
         ))}
       </div>
 
-      {vista === 'bonos' ? (
+      {vista === 'extrabajadores' ? (
+        <ExtrabajadoresTab cuentas={cuentasEx} pagos={pagosEx} sel={selEx} setSel={setSelEx} notasDe={notasDe} />
+      ) : vista === 'bonos' ? (
         <BonosTab cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={cargar} />
       ) : vista === 'adelantos' ? (
         <AdelantosTab cuentas={cuentas} cuotas={cuotas} pagos={pagos} onCambio={cargar} />
@@ -681,6 +697,72 @@ function PagosAdmin() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// =====================================================================================
+// PAGOS DE EXTRABAJADORES: histórico de quienes se han dado de baja en Equipo (solo lectura)
+// =====================================================================================
+function ExtrabajadoresTab({ cuentas, pagos, sel, setSel, notasDe }) {
+  const lbl = { color: 'var(--text-muted)' }
+  const cuentaDe = (id) => cuentas.find((c) => c.id === id)
+  const lista = pagos.filter((p) => sel === 'todas' || p.account_id === sel)
+  const pagado = r2(lista.filter((p) => p.estado === 'Pagado').reduce((t, p) => t + calcPago(p), 0))
+  const pendiente = r2(lista.filter((p) => p.estado !== 'Pagado').reduce((t, p) => t + calcPago(p), 0))
+  if (!cuentas.length) return <Panel className="p-6 text-sm text-center" style={lbl}>Aún no hay extrabajadores. Cuando elimines a un trabajador en Equipo, sus pagos quedarán guardados aquí.</Panel>
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {[{ id: 'todas', nombre: 'Todos' }, ...cuentas].map((c) => {
+          const on = sel === c.id
+          return (
+            <button key={c.id} onClick={() => setSel(c.id)} className="px-3 py-1.5 rounded-full text-sm"
+              style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}>
+              {String(c.nombre).replace(/\s*\(extrabajador\)\s*$/i, '')}
+            </button>
+          )
+        })}
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <Panel className="p-4"><p className="text-xs mb-1" style={lbl}>Total pagado</p><p className="text-xl font-display font-semibold gold-text tabular-nums">{money(pagado)}</p></Panel>
+        <Panel className="p-4"><p className="text-xs mb-1" style={lbl}>Pendiente</p><p className="text-xl font-display font-semibold tabular-nums">{money(pendiente)}</p></Panel>
+      </div>
+      <Panel>
+        {lista.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>Sin pagos registrados.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
+                {['Fecha', ...(sel === 'todas' ? ['Extrabajador'] : []), 'Bruta', 'Neta', '%', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Pago', 'Estado', 'Notas'].map((h) => (
+                  <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={lbl}>{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {lista.map((p, idx) => {
+                  const celda = (v) => (num(v) ? money(v) : <span style={lbl}>—</span>)
+                  const sig = lista[idx + 1]
+                  return (
+                    <tr key={p.id} style={{ borderBottom: sig && sig.fecha !== p.fecha ? '3px solid color-mix(in srgb, var(--text-muted) 55%, var(--border))' : '1px solid var(--border)' }}>
+                      <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(p.fecha)}</td>
+                      {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{String(cuentaDe(p.account_id)?.nombre || '').replace(/\s*\(extrabajador\)\s*$/i, '')}</td>}
+                      <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_bruta)}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{p.pct != null ? Math.round(num(p.pct) * 100) + '%' : '—'}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(p.bonos)}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(p.adelanto)}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(p.penalizacion)}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(p.deuda)}</td>
+                      <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(calcPago(p))}</td>
+                      <td className="px-3 py-2.5 text-xs">{p.estado}</td>
+                      <td className="px-3 py-2.5 text-xs max-w-[320px]" style={lbl}>{notasDe(p)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
     </div>
   )
 }
