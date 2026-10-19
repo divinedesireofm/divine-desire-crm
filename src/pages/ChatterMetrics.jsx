@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader, DeltaBadge } from '../components/ui'
 import InformeIAModal from '../components/InformeIAModal'
+import InfoTip from '../components/InfoTip'
 import { exportarFichasChatters } from '../lib/excelExport'
 import { reducirImagen } from '../lib/leerCapturas'
 import { leerEstadisticasInflow } from '../lib/leerInflow'
@@ -353,7 +354,7 @@ export default function ChatterMetrics() {
   function campo(m) {
     return (
       <div key={m.key}>
-        <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>{m.label}{m.unit === '$' ? ' ($)' : ''}{m.pctDirecto ? ' (%)' : ''}</label>
+        <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>{m.label}{m.unit === '$' ? ' ($)' : ''}{m.pctDirecto ? ' (%)' : ''}<InfoTip texto={m.indica} /></label>
         {m.tiempo ? (
           <Input placeholder="ej. 2m37s" value={form[m.key + '_txt']} onChange={(e) => setForm({ ...form, [m.key + '_txt']: e.target.value })} />
         ) : (
@@ -408,7 +409,7 @@ export default function ChatterMetrics() {
                       <th />
                       <th className="text-left px-2 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>Leído</th>
                       <th className="text-left px-2 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>Chatter del CRM</th>
-                      {CAMPOS_INF.map((k) => <th key={k} className="text-left px-2 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{POR_KEY[k].label}</th>)}
+                      {CAMPOS_INF.map((k) => <th key={k} className="text-left px-2 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{POR_KEY[k].label}<InfoTip texto={POR_KEY[k].indica} /></th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -503,7 +504,7 @@ export default function ChatterMetrics() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
               {METRICAS.filter((m) => m.calc).map((m) => (
                 <div key={m.key}>
-                  <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>{m.label}</label>
+                  <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>{m.label}<InfoTip texto={m.indica} /></label>
                   <div className="px-3 py-2 rounded-md text-sm tabular-nums" style={{ background: 'var(--panel-alt)', border: '1px dashed var(--border)', color: 'var(--text-muted)' }}>{fmtMetrica(m, previa[m.key])}</div>
                 </div>
               ))}
@@ -567,7 +568,7 @@ export default function ChatterMetrics() {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-muted)' }}>Chatter</th>
-                {KEYS_TABLA_EQUIPO.map((k) => <th key={k} className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{POR_KEY[k].label}</th>)}
+                {KEYS_TABLA_EQUIPO.map((k) => <th key={k} className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{POR_KEY[k].label}<InfoTip texto={POR_KEY[k].indica} /></th>)}
               </tr>
             </thead>
             <tbody>
@@ -604,7 +605,7 @@ export default function ChatterMetrics() {
                     const m = POR_KEY[k]
                     return (
                       <Panel key={k} className="p-4">
-                        <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>{m.label} · sem. {fmtF(ultima.week_start)}</p>
+                        <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>{m.label}<InfoTip texto={m.indica} /> · sem. {fmtF(ultima.week_start)}</p>
                         <p className="font-display text-xl font-semibold tabular-nums">{fmtMetrica(m, ultima[k])}</p>
                         {anterior && !m.inverso && <DeltaBadge actual={ultima[k]} anterior={anterior[k]} />}
                         {anterior && m.inverso && <DeltaBadge actual={anterior[k]} anterior={ultima[k]} />}
@@ -641,7 +642,7 @@ export default function ChatterMetrics() {
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
                       <th className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>Semana</th>
-                      {METRICAS.map((m) => <th key={m.key} className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{m.label}</th>)}
+                      {METRICAS.map((m) => <th key={m.key} className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{m.label}<InfoTip texto={m.indica} /></th>)}
                       {canEdit && <th />}
                     </tr>
                   </thead>
