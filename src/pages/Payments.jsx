@@ -65,6 +65,36 @@ function cuentaEsDe(cuenta, perfil) {
 }
 const fmtAlta = (ts) => (ts ? new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '')
 
+// Métodos de cobro: [clave, etiqueta, campo de la dirección, campo del QR]
+const WALLETS = [
+  ['usdc_eth', 'USDC · ETH', 'wallet_usdc_eth', 'qr_usdc_eth'],
+  ['usdc_bsc', 'USDC · BSC', 'wallet_usdc_bsc', 'qr_usdc_bsc'],
+  ['usdt_bsc', 'USDT · BSC', 'wallet_usdt_bsc', 'qr_usdt_bsc'],
+  ['binance', 'Binance', 'wallet_binance', 'qr_binance'],
+]
+// Reduce la imagen del QR (sigue siendo legible) y la devuelve como texto para guardarla en la cuenta
+function imagenAQr(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const hacer = (max, tipo, q) => {
+        const k = Math.min(1, max / Math.max(img.width, img.height))
+        const c = document.createElement('canvas')
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height)
+        return c.toDataURL(tipo, q)
+      }
+      let d = hacer(520, 'image/png')
+      if (d.length > 220000) d = hacer(420, 'image/jpeg', 0.9)
+      URL.revokeObjectURL(url)
+      resolve(d)
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo abrir la imagen.')) }
+    img.src = url
+  })
+}
+
 // Reparto por defecto de un adelanto en n cuotas con sus fechas
 function cuotasPorDefecto(total, n, fechaBase, ancla, previas) {
   const fechas = siguientesDiasPago(fechaBase, ancla, n)
@@ -138,6 +168,7 @@ function PagosAdmin() {
   const [sanciones, setSanciones] = useState([])
   const [cuotas, setCuotas] = useState([])
   const creandoCuentas = useRef(false)
+  const [qrGrande, setQrGrande] = useState(null) // { src, titulo }
 
   // Cada chatter activo del equipo tiene su cuenta de pago: si falta, se crea sola y queda marcada «pendiente de editar»
   async function asegurarCuentas(actuales) {
@@ -332,14 +363,15 @@ function PagosAdmin() {
       nombre: cform.nombre.trim(), profile_id: cform.profile_id || null, fecha_inicio: cform.fecha_inicio || null,
       pct_defecto: num(cform.pct_defecto), wallet_usdc_eth: cform.wallet_usdc_eth?.trim() || null, wallet_usdc_bsc: cform.wallet_usdc_bsc?.trim() || null,
       wallet_usdt_bsc: cform.wallet_usdt_bsc?.trim() || null, wallet_binance: cform.wallet_binance?.trim() || null, activa: cform.activa,
+      qr_usdc_eth: cform.qr_usdc_eth || null, qr_usdc_bsc: cform.qr_usdc_bsc || null, qr_usdt_bsc: cform.qr_usdt_bsc || null, qr_binance: cform.qr_binance || null,
     }
     if (!payload.nombre) return
     payload.pendiente_editar = false
     let res = cform.id
       ? await supabase.from('payout_accounts').update(payload).eq('id', cform.id)
       : await supabase.from('payout_accounts').insert([payload])
-    if (res.error && /pendiente_editar/.test(res.error.message || '')) { // aún sin migración 62
-      const { pendiente_editar, ...resto } = payload
+    if (res.error && /pendiente_editar|qr_/.test(res.error.message || '')) { // aún sin migraciones 62/63
+      const { pendiente_editar, qr_usdc_eth, qr_usdc_bsc, qr_usdt_bsc, qr_binance, ...resto } = payload
       res = cform.id
         ? await supabase.from('payout_accounts').update(resto).eq('id', cform.id)
         : await supabase.from('payout_accounts').insert([resto])
@@ -444,14 +476,22 @@ function PagosAdmin() {
             </div>
           )}
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {[['USDC · ETH', cuentaSel.wallet_usdc_eth], ['USDC · BSC', cuentaSel.wallet_usdc_bsc], ['USDT · BSC', cuentaSel.wallet_usdt_bsc], ['Binance', cuentaSel.wallet_binance]].filter(([, v]) => v).map(([k, v]) => (
-              <div key={k} className="flex items-center gap-2 text-xs rounded-md px-2.5 py-1.5" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-                <span style={lbl} className="shrink-0">{k}</span>
-                <code className="truncate flex-1">{v}</code>
-                <CopyButton text={v} label="Copiar" />
+            {WALLETS.filter(([, , dir, qr]) => cuentaSel[dir] || cuentaSel[qr]).map(([k, etiqueta, dir, qr]) => (
+              <div key={k} className="flex items-center gap-3 text-xs rounded-md px-2.5 py-2" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                {cuentaSel[qr] && (
+                  <button type="button" onClick={() => setQrGrande({ src: cuentaSel[qr], titulo: `${cuentaSel.nombre} · ${etiqueta}` })} title="Ampliar QR" className="shrink-0 rounded" style={{ background: '#fff', padding: 2 }}>
+                    <img src={cuentaSel[qr]} alt={`QR ${etiqueta}`} style={{ width: 64, height: 64, objectFit: 'contain', display: 'block' }} />
+                  </button>
+                )}
+                <div className="min-w-0 flex-1">
+                  <span style={lbl} className="block mb-1">{etiqueta}</span>
+                  {cuentaSel[dir] ? (
+                    <div className="flex items-center gap-2"><code className="truncate flex-1">{cuentaSel[dir]}</code><CopyButton text={cuentaSel[dir]} label="Copiar" /></div>
+                  ) : <span style={lbl}>Sin dirección escrita</span>}
+                </div>
               </div>
             ))}
-            {!cuentaSel.wallet_usdc_eth && !cuentaSel.wallet_usdc_bsc && !cuentaSel.wallet_usdt_bsc && !cuentaSel.wallet_binance && <p className="text-xs" style={lbl}>Sin direcciones guardadas.</p>}
+            {WALLETS.every(([, , dir, qr]) => !cuentaSel[dir] && !cuentaSel[qr]) && <p className="text-xs" style={lbl}>Sin direcciones guardadas.</p>}
           </div>
         </Panel>
       )}
@@ -469,10 +509,24 @@ function PagosAdmin() {
               </Select></div>
             <div><label className="text-xs block mb-1" style={lbl}>Fecha de inicio</label><Input type="date" value={cform.fecha_inicio || ''} onChange={(e) => setCform({ ...cform, fecha_inicio: e.target.value })} /></div>
             <div><label className="text-xs block mb-1" style={lbl}>% habitual (0.15 = 15 %)</label><Input type="number" step="0.01" value={cform.pct_defecto} onChange={(e) => setCform({ ...cform, pct_defecto: e.target.value })} /></div>
-            <div><label className="text-xs block mb-1" style={lbl}>Dirección USDC · ETH</label><Input value={cform.wallet_usdc_eth || ''} onChange={(e) => setCform({ ...cform, wallet_usdc_eth: e.target.value })} /></div>
-            <div><label className="text-xs block mb-1" style={lbl}>Dirección USDC · BSC</label><Input value={cform.wallet_usdc_bsc || ''} onChange={(e) => setCform({ ...cform, wallet_usdc_bsc: e.target.value })} /></div>
-            <div><label className="text-xs block mb-1" style={lbl}>Dirección USDT · BSC</label><Input value={cform.wallet_usdt_bsc || ''} onChange={(e) => setCform({ ...cform, wallet_usdt_bsc: e.target.value })} /></div>
-            <div><label className="text-xs block mb-1" style={lbl}>Dirección de Binance</label><Input value={cform.wallet_binance || ''} onChange={(e) => setCform({ ...cform, wallet_binance: e.target.value })} /></div>
+            {WALLETS.map(([k, etiqueta, dir, qr]) => (
+              <div key={k}>
+                <label className="text-xs block mb-1" style={lbl}>Dirección {etiqueta}</label>
+                <Input value={cform[dir] || ''} onChange={(e) => setCform({ ...cform, [dir]: e.target.value })} />
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {cform[qr] && <img src={cform[qr]} alt={`QR ${etiqueta}`} style={{ width: 56, height: 56, objectFit: 'contain', background: '#fff', borderRadius: 4, padding: 2 }} />}
+                  <label className="text-xs px-2.5 py-1 rounded-md cursor-pointer" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--accent)' }}>
+                    {cform[qr] ? 'Cambiar QR' : '📷 Subir imagen del QR'}
+                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                      const f = e.target.files?.[0]; e.target.value = ''
+                      if (!f) return
+                      try { const d = await imagenAQr(f); setCform((c) => ({ ...c, [qr]: d })) } catch (err) { setMsg(err.message) }
+                    }} />
+                  </label>
+                  {cform[qr] && <button type="button" className="text-xs hover:underline" style={{ color: 'var(--danger)' }} onClick={() => setCform({ ...cform, [qr]: null })}>Quitar QR</button>}
+                </div>
+              </div>
+            ))}
             <label className="text-sm flex items-center gap-2 sm:col-span-2"><input type="checkbox" checked={cform.activa} onChange={(e) => setCform({ ...cform, activa: e.target.checked })} /> Cuenta activa</label>
             <div className="sm:col-span-2 flex flex-wrap gap-2"><Button type="submit">Guardar cuenta</Button><Button type="button" variant="ghost" onClick={() => setCform(null)}>Cancelar</Button></div>
           </form>
@@ -618,6 +672,15 @@ function PagosAdmin() {
         )}
       </Panel>
       </>)}
+      {qrGrande && (
+        <div onClick={() => setQrGrande(null)} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
+          <div className="rounded-lg p-4 text-center" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm mb-3">{qrGrande.titulo}</p>
+            <img src={qrGrande.src} alt="QR" style={{ width: 'min(80vw, 360px)', background: '#fff', padding: 8, borderRadius: 6 }} />
+            <div className="mt-3"><Button variant="ghost" onClick={() => setQrGrande(null)}>Cerrar</Button></div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

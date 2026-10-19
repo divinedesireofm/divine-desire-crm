@@ -7,7 +7,7 @@ import { reducirImagen, refrescarFotosModelos } from '../lib/modelPhotos'
 
 const STATUS_OPTIONS = ['en_preparacion', 'activa', 'pausada', 'baja']
 const STATUS_LABELS = { en_preparacion: 'En preparación', activa: 'Activa', pausada: 'Pausada', en_negociacion: 'En negociación', baja: 'Baja' }
-const EMPTY_FORM = { stage_name: '', status: 'en_preparacion', commission_percent: '', email: '', phone: '', notes: '' }
+const EMPTY_FORM = { stage_name: '', status: 'en_preparacion', commission_percent: '', email: '', phone: '', notes: '', notas_privadas: '' }
 
 export default function Models() {
   const { hasRole } = useAuth()
@@ -19,11 +19,16 @@ export default function Models() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
   const [subiendo, setSubiendo] = useState(null)
+  const [privados, setPrivados] = useState({}) // { model_id: { email, phone, notas } } — solo lo ve el admin
 
   async function load() {
     setLoading(true)
     const { data, error } = await supabase.from('models').select('*').order('created_at', { ascending: false })
     if (!error) setModels(data)
+    if (canEdit) {
+      const { data: pv } = await supabase.from('model_private').select('*')
+      setPrivados(Object.fromEntries((pv || []).map((r) => [r.model_id, r])))
+    }
     setLoading(false)
   }
 
@@ -68,9 +73,10 @@ export default function Models() {
       stage_name: m.stage_name || '',
       status: !m.status || m.status === 'en_negociacion' ? 'en_preparacion' : m.status,
       commission_percent: m.commission_percent ?? '',
-      email: m.email || '',
-      phone: m.phone || '',
+      email: privados[m.id]?.email || '',
+      phone: privados[m.id]?.phone || '',
       notes: m.notes || '',
+      notas_privadas: privados[m.id]?.notas || '',
     })
     setShowForm(true)
   }
@@ -82,16 +88,23 @@ export default function Models() {
       stage_name: form.stage_name,
       status: form.status,
       commission_percent: form.commission_percent || null,
-      email: form.email || null,
-      phone: form.phone || null,
       notes: form.notes || null,
     }
-    const { error } = editingId
-      ? await supabase.from('models').update(payload).eq('id', editingId)
-      : await supabase.from('models').insert([payload])
+    const res = editingId
+      ? await supabase.from('models').update(payload).eq('id', editingId).select().single()
+      : await supabase.from('models').insert([payload]).select().single()
 
-    if (error) {
+    if (res.error) {
       setError('No se pudo guardar. Revisa los datos e inténtalo de nuevo.')
+      return
+    }
+    // email, teléfono y notas privadas van aparte: solo el admin puede leerlos
+    const { error: ePriv } = await supabase.from('model_private').upsert({
+      model_id: editingId || res.data.id, email: form.email.trim() || null, phone: form.phone.trim() || null, notas: form.notas_privadas.trim() || null, updated_at: new Date().toISOString(),
+    }, { onConflict: 'model_id' })
+    if (ePriv) {
+      setError('La modelo se guardó, pero no se pudieron guardar sus datos privados. ¿Has ejecutado la migración 63? ' + ePriv.message)
+      load()
       return
     }
     setShowForm(false)
@@ -150,6 +163,17 @@ export default function Models() {
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
             />
+            <div className="sm:col-span-2">
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>🔒 Información de la modelo (solo la ves tú: email, teléfono y estas notas no los ve nadie más del equipo)</label>
+              <textarea
+                rows={5}
+                placeholder="Datos personales, acuerdos, preferencias, límites, horarios, cualquier cosa que quieras tener a mano de ella…"
+                value={form.notas_privadas}
+                onChange={(e) => setForm({ ...form, notas_privadas: e.target.value })}
+                className="w-full px-3 py-2 rounded-md text-sm outline-none resize-y"
+                style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              />
+            </div>
             {error && <p className="sm:col-span-2 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
             <div className="sm:col-span-2 flex flex-wrap gap-2">
               <Button type="submit">{editingId ? 'Guardar cambios' : 'Guardar modelo'}</Button>
@@ -168,7 +192,7 @@ export default function Models() {
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
         ) : (
           <Table
-            columns={['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono', 'Notas', '']}
+            columns={canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono', 'Notas', 'Información privada', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', '']}
             rows={models}
             renderRow={(m) => (
               <>
@@ -191,9 +215,10 @@ export default function Models() {
                 </Td>
                 <Td><StatusBadge status={m.status} /></Td>
                 <Td>{m.commission_percent ? `${m.commission_percent}%` : '—'}</Td>
-                <Td style={{ color: 'var(--text-muted)' }}>{m.email || '—'}</Td>
-                <Td style={{ color: 'var(--text-muted)' }}>{m.phone || '—'}</Td>
+                {canEdit && <Td style={{ color: 'var(--text-muted)' }}>{privados[m.id]?.email || '—'}</Td>}
+                {canEdit && <Td style={{ color: 'var(--text-muted)' }}>{privados[m.id]?.phone || '—'}</Td>}
                 <Td style={{ color: 'var(--text-muted)' }}>{m.notes || '—'}</Td>
+                {canEdit && <Td style={{ color: 'var(--text-muted)', maxWidth: 280 }}><span className="block whitespace-pre-wrap text-xs" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{privados[m.id]?.notas || '—'}</span></Td>}
                 <Td>
                   {canEdit && (
                     <button onClick={() => startEdit(m)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>

@@ -21,7 +21,12 @@ const METRICAS = [
   { key: 'golden', label: 'Golden Ratio', calc: true, pct: true, indica: 'De cada cuántos mensajes enviados, cuántos son de venta (PPV enviados ÷ Mensajes enviados)', fallo: 'Si baja, está mandando menos mensajes de venta; revisar miedos o pocas ganas de vender.' },
   { key: 'unlock', label: 'Unlock Ratio', calc: true, pct: true, indica: 'De cada mensaje de venta que envía, cuántos le abren (PPV desbloqueados ÷ PPV enviados)', fallo: 'Si baja, le abren menos mensajes de venta; revisar los PPV que envía, precio, contenido o momento en que los envía.' },
   { key: 'fans_chateados', label: 'Fans Chateados', input: true, indica: 'Con cuántos fans ha chateado en ese periodo', fallo: 'Si baja, habla con menos fans; revisar si es problema de tráfico en las métricas de la cuenta.' },
+  { key: 'fans_gastaron', label: 'Fans que han gastado', input: true, nueva: true, indica: 'Fans únicos que han dado propina o comprado PPV en mensajes enviados directamente por el chatter. No incluye masivos de prioridad ni de OF, ni mensajes automáticos (dato de Infloww; se cuenta desde que se añadió).', fallo: 'Si baja, menos fans están pagando; revisar calidad del tráfico y de las conversaciones.' },
+  { key: 'fan_cvr', label: 'Fan CVR', input: true, nueva: true, pctDirecto: true, indica: 'Tasa de conversión de fans: fans únicos que dieron propina o compraron PPV ÷ fans únicos a los que el chatter envió mensajes, × 100 (dato de Infloww; se cuenta desde que se añadió).', fallo: 'Si baja, convierte a menos fans de los que escribe; revisar el guion de venta y el filtro de fans.' },
+  { key: 'media_fan_gasto', label: 'Media por fan que gasta', input: true, nueva: true, unit: '$', dec: 2, indica: 'Importe medio gastado por cada fan que gasta dinero. Incluye ventas por mensajes directos y propinas; no incluye masivos de prioridad ni de OF ni automáticos (dato de Infloww; se cuenta desde que se añadió).', fallo: 'Si baja, los fans que pagan gastan menos; revisar precios y upsell.' },
+  { key: 'caracteres', label: 'Caracteres enviados', input: true, nueva: true, indica: 'Número total de caracteres de los mensajes enviados por el chatter. No incluye masivos, automáticos ni mensajes que usan scripts (dato de Infloww; se cuenta desde que se añadió).', fallo: 'Si baja, escribe menos de forma personal; puede que dependa demasiado de scripts o que haya menos actividad.' },
   { key: 'tiempo_respuesta_seg', label: 'Tiempo de Respuesta', tiempo: true, input: true, inverso: true, indica: 'Tiempo medio de respuesta en los chats. Menos de 5 min es lo óptimo; más de eso es inaceptable', fallo: 'Si sube, es malo: tarda más en responder mensajes.' },
+  { key: 'tiempo_respuesta_prog_seg', label: 'Tiempo de respuesta (horas programadas)', tiempo: true, input: true, inverso: true, nueva: true, indica: 'Tiempo medio de respuesta calculado sobre las horas programadas del chatter (dato de Infloww; se cuenta desde que se añadió).', fallo: 'Si sube, tarda más en contestar en su horario; revisar carga de chats y conexión.' },
   { key: 'horas_trabajadas', label: 'Horas trabajadas', input: true, dec: 1, indica: 'Cuántas horas ha trabajado en ese periodo', fallo: 'Si baja, trabaja menos días o tiene problemas de luz o internet.' },
   { key: 'precio_medio', label: 'Precio medio PPV', calc: true, unit: '$', dec: 2, indica: 'Media de precios de los mensajes de venta que le compran (Ventas ÷ PPV desbloqueados)', fallo: 'Si baja, vende a menor precio; revisar si la facturación es buena. Si aumentan las ventas pero con menor precio, no está mal.' },
   { key: 'por_fan', label: '$ por Fan Chateado', calc: true, unit: '$', dec: 2, indica: 'Facturación por fan que habla (Ventas ÷ Fans chateados)', fallo: 'Si baja, monetiza menos a los fans que ya hay en la cuenta; revisar cómo habla con fans nuevos y si sigue las guías de venta.' },
@@ -29,8 +34,9 @@ const METRICAS = [
   { key: 'por_hora', label: '$ por hora', calc: true, unit: '$', dec: 2, indica: 'Cuánto factura por hora (Ventas ÷ Horas trabajadas)', fallo: 'Si baja, rinde menos en su horario; revisar tiempo de respuesta y ventas realizadas.' },
 ]
 const ENTRADAS = METRICAS.filter((m) => m.input).map((m) => m.key)
-const EMPTY_FORM = { week_start: '', notas: '', ...Object.fromEntries(ENTRADAS.map((k) => [k, ''])), tiempo_txt: '' }
-const KEYS_TABLA_EQUIPO = ['ventas_total', 'por_hora', 'unlock', 'golden', 'fans_chateados', 'tiempo_respuesta_seg', 'horas_trabajadas']
+const EMPTY_FORM = { week_start: '', notas: '', ...Object.fromEntries(ENTRADAS.map((k) => [k, ''])), ...Object.fromEntries(METRICAS.filter((m) => m.tiempo).map((m) => [m.key + '_txt', ''])) }
+const KEYS_TABLA_EQUIPO = ['ventas_total', 'por_hora', 'unlock', 'golden', 'fan_cvr', 'fans_chateados', 'tiempo_respuesta_seg', 'horas_trabajadas']
+const TIEMPOS = METRICAS.filter((m) => m.tiempo)
 
 const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
 const div = (a, b) => (a != null && b ? a / b : null)
@@ -50,6 +56,7 @@ function fmtEs(n, dec = 2) { return n === null || n === undefined || n === '' ? 
 function fmtMetrica(m, v) {
   if (v === null || v === undefined || v === '') return '—'
   if (m.tiempo) return segundosATexto(v)
+  if (m.pctDirecto) return fmtEs(v, 2) + '%'
   if (m.pct) return (Number(v) * 100).toLocaleString('es-ES', { maximumFractionDigits: 2 }) + '%'
   const t = fmtEs(v, m.dec ?? 2)
   return m.unit === '$' ? '$' + t : t
@@ -156,7 +163,8 @@ export default function ChatterMetrics() {
   // ---------- alta / edición manual ----------
   const semana = form.week_start ? lunesDe(form.week_start) : ''
   const previa = useMemo(() => {
-    const f = { ...form, tiempo_respuesta_seg: tiempoASegundos(form.tiempo_txt) }
+    const f = { ...form }
+    TIEMPOS.forEach((m) => { f[m.key] = tiempoASegundos(form[m.key + '_txt']) })
     return enriquecer(f)
   }, [form])
 
@@ -164,7 +172,7 @@ export default function ChatterMetrics() {
   function abrirEditar(r) {
     const f = { ...EMPTY_FORM, week_start: r.week_start, notas: r.notas || '' }
     ENTRADAS.forEach((k) => { f[k] = r[k] === null || r[k] === undefined ? '' : String(r[k]) })
-    f.tiempo_txt = r.tiempo_respuesta_seg == null ? '' : segundosATexto(r.tiempo_respuesta_seg)
+    TIEMPOS.forEach((m) => { f[m.key + '_txt'] = r[m.key] == null ? '' : segundosATexto(r[m.key]) })
     setEditId(r.id); setForm(f); setError(null); setPanel('form')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -176,12 +184,12 @@ export default function ChatterMetrics() {
     if (!form.week_start) { setError('Indica la semana.'); return }
     setGuardando(true)
     const payload = { chatter_id: selectedChatter, week_start: semana, notas: form.notas || null }
-    ENTRADAS.forEach((k) => { payload[k] = k === 'tiempo_respuesta_seg' ? tiempoASegundos(form.tiempo_txt) : num(form[k]) })
+    ENTRADAS.forEach((k) => { payload[k] = POR_KEY[k].tiempo ? tiempoASegundos(form[k + '_txt']) : num(form[k]) })
     const { error: err } = editId
       ? await supabase.from('chatter_weekly_stats').update(payload).eq('id', editId)
       : await supabase.from('chatter_weekly_stats').insert([payload])
     setGuardando(false)
-    if (err) { setError(editId ? 'No se pudieron guardar los cambios.' : 'No se pudo guardar. ¿Ya existe esa semana para este chatter? Búscala en la tabla y pulsa Editar. Si es la primera vez, ejecuta la migración 42.'); return }
+    if (err) { setError(/fans_gastaron|fan_cvr|media_fan_gasto|caracteres|tiempo_respuesta_prog/.test(err.message || '') ? 'Faltan las métricas nuevas en la base de datos: ejecuta la migración 63.' : editId ? 'No se pudieron guardar los cambios.' : 'No se pudo guardar. ¿Ya existe esa semana para este chatter? Búscala en la tabla y pulsa Editar. Si es la primera vez, ejecuta la migración 42.'); return }
     cerrarForm(); cargar()
   }
   async function borrar(r) {
@@ -258,7 +266,7 @@ export default function ChatterMetrics() {
   }
 
   // ---------- subir capturas de Infloww ----------
-  const CAMPOS_INF = ['ventas_total', 'ventas_ppv', 'propinas', 'mensajes_enviados', 'ppv_enviados', 'ppv_desbloqueados', 'fans_chateados', 'tiempo_respuesta_seg', 'horas_trabajadas']
+  const CAMPOS_INF = ['ventas_total', 'ventas_ppv', 'propinas', 'mensajes_enviados', 'ppv_enviados', 'ppv_desbloqueados', 'fans_chateados', 'fans_gastaron', 'fan_cvr', 'media_fan_gasto', 'caracteres', 'tiempo_respuesta_seg', 'tiempo_respuesta_prog_seg', 'horas_trabajadas']
   async function elegirCapturas(e) {
     const files = Array.from(e.target.files || []).slice(0, 10)
     e.target.value = ''
@@ -279,7 +287,7 @@ export default function ChatterMetrics() {
         filas: r.chatters.map((c, i) => ({
           nombre: c.nombre, chatterId: ids[i], incluir: !!ids[i],
           v: Object.fromEntries(CAMPOS_INF.map((k) => {
-            if (k === 'tiempo_respuesta_seg') return [k, c.tiempo_respuesta ? c.tiempo_respuesta.replace(/\s+/g, '') : '']
+            if (POR_KEY[k].tiempo) { const t = k === 'tiempo_respuesta_seg' ? c.tiempo_respuesta : c.tiempo_respuesta_programadas; return [k, t ? String(t).replace(/\s+/g, '') : ''] }
             return [k, c[k] === null || c[k] === undefined ? '' : String(c[k])]
           })),
         })),
@@ -304,7 +312,7 @@ export default function ChatterMetrics() {
         const previo = stats.find((r) => r.chatter_id === f.chatterId && r.week_start === lunes) || {}
         const row = { chatter_id: f.chatterId, week_start: lunes }
         CAMPOS_INF.forEach((k) => {
-          const nuevo = k === 'tiempo_respuesta_seg' ? tiempoASegundos(f.v[k]) : num(f.v[k])
+          const nuevo = POR_KEY[k].tiempo ? tiempoASegundos(f.v[k]) : num(f.v[k])
           row[k] = nuevo !== null && nuevo !== undefined ? nuevo : (previo[k] ?? null) // lo que no se leyó no pisa lo que ya había
         })
         return row
@@ -325,7 +333,7 @@ export default function ChatterMetrics() {
     semana: r.week_start, ventas: r.ventas_total, ventas_ppv: r.ventas_ppv, propinas: r.propinas, mensajes: r.mensajes_enviados,
     ppv_enviados: r.ppv_enviados, ppv_desbloqueados: r.ppv_desbloqueados, golden_ratio: r.golden, unlock_ratio: r.unlock,
     fans_chateados: r.fans_chateados, tiempo_respuesta_seg: r.tiempo_respuesta_seg, tiempo_respuesta: r.tiempo_respuesta_seg == null ? null : segundosATexto(r.tiempo_respuesta_seg),
-    horas: r.horas_trabajadas, precio_medio_ppv: r.precio_medio, dolar_por_fan: r.por_fan, mensajes_por_fan: r.msgs_fan, dolar_por_hora: r.por_hora, notas: r.notas,
+    horas: r.horas_trabajadas, fans_que_gastaron: r.fans_gastaron, fan_cvr_pct: r.fan_cvr, media_por_fan_que_gasta: r.media_fan_gasto, caracteres_enviados: r.caracteres, tiempo_respuesta_horas_programadas: r.tiempo_respuesta_prog_seg == null ? null : segundosATexto(r.tiempo_respuesta_prog_seg), precio_medio_ppv: r.precio_medio, dolar_por_fan: r.por_fan, mensajes_por_fan: r.msgs_fan, dolar_por_hora: r.por_hora, notas: r.notas,
   })
   const datosChatter = useMemo(() => filas.map(metr), [filas])
   const datosEquipo = useMemo(() => {
@@ -345,9 +353,9 @@ export default function ChatterMetrics() {
   function campo(m) {
     return (
       <div key={m.key}>
-        <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>{m.label}{m.unit === '$' ? ' ($)' : ''}</label>
+        <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>{m.label}{m.unit === '$' ? ' ($)' : ''}{m.pctDirecto ? ' (%)' : ''}</label>
         {m.tiempo ? (
-          <Input placeholder="ej. 2m37s" value={form.tiempo_txt} onChange={(e) => setForm({ ...form, tiempo_txt: e.target.value })} />
+          <Input placeholder="ej. 2m37s" value={form[m.key + '_txt']} onChange={(e) => setForm({ ...form, [m.key + '_txt']: e.target.value })} />
         ) : (
           <Input type="number" step="0.01" value={form[m.key]} onChange={(e) => setForm({ ...form, [m.key]: e.target.value })} />
         )}
@@ -563,7 +571,7 @@ export default function ChatterMetrics() {
               </tr>
             </thead>
             <tbody>
-              {filasEquipo.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No hay datos de esa semana.</td></tr>}
+              {filasEquipo.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No hay datos de esa semana.</td></tr>}
               {filasEquipo.map((r) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td className="px-4 py-3 font-medium whitespace-nowrap">
@@ -577,7 +585,7 @@ export default function ChatterMetrics() {
                 <tr>
                   <td className="px-4 py-3 font-medium">Total equipo</td>
                   <td className="px-4 py-3 font-medium tabular-nums">${fmtEs(filasEquipo.reduce((a, r) => a + (Number(r.ventas_total) || 0), 0))}</td>
-                  <td colSpan={5} />
+                  <td colSpan={6} />
                   <td className="px-4 py-3 tabular-nums">{fmtEs(filasEquipo.reduce((a, r) => a + (Number(r.horas_trabajadas) || 0), 0), 1)}</td>
                 </tr>
               )}
@@ -621,7 +629,7 @@ export default function ChatterMetrics() {
                       <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
                       <XAxis dataKey="week" stroke="var(--text-muted)" fontSize={12} />
                       <YAxis stroke="var(--text-muted)" fontSize={12} />
-                      <Tooltip contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8 }} formatter={(v) => (mGraf.tiempo ? segundosATexto(v) : mGraf.pct ? fmtEs(v) + '%' : fmtEs(v))} />
+                      <Tooltip contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8 }} formatter={(v) => (mGraf.tiempo ? segundosATexto(v) : mGraf.pct || mGraf.pctDirecto ? fmtEs(v) + '%' : fmtEs(v))} />
                       <Line type="monotone" dataKey="v" name={mGraf.label} stroke="var(--accent)" strokeWidth={2} dot={false} connectNulls />
                     </LineChart>
                   </ResponsiveContainer>

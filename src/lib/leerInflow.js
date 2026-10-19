@@ -15,7 +15,12 @@ Reglas:
    - ppv_enviados: PPV enviados / Direct PPVs sent / PPVs sent.
    - ppv_desbloqueados: PPV desbloqueados / PPVs unlocked / PPVs purchased.
    - fans_chateados: fans con los que ha chateado / Fans chatted.
-   - tiempo_respuesta: tiempo de respuesta / Reply time, como texto exactamente como se ve (por ejemplo "2m 37s" o "00:02:37").
+   - fans_gastaron: Fans who spent money (fans únicos que han gastado dinero).
+   - fan_cvr: Fan CVR (fan conversion rate), como número en porcentaje (12.5 si pone 12.5%).
+   - media_fan_gasto: Avg earnings per fan who spent money (media ganada por fan que gasta), en dólares.
+   - caracteres: Character count (número total de caracteres enviados).
+   - tiempo_respuesta: tiempo de respuesta / Reply time. Si hay dos columnas de tiempo de respuesta, esta es la basada en horas trabajadas/clocked hours; si solo hay una y no dice "scheduled hours", usa esta. Texto exactamente como se ve (por ejemplo "2m 37s" o "00:02:37").
+   - tiempo_respuesta_programadas: Response time (based on scheduled hours), solo si existe esa columna; texto tal como se ve.
    - horas_trabajadas: horas trabajadas / Clocked hours, en horas decimales (si sale 7h 30m devuelve 7.5).
 6. No devuelvas ratios (golden ratio, unlock ratio), la app los calcula sola. Ignora filas de totales o medias del equipo.
 7. Si en las capturas se ve el rango de fechas del informe, devuélvelo en "fecha_inicio" y "fecha_fin" con formato AAAA-MM-DD (si el año no se ve, asume el año en curso). Si no se ve, deja ambos vacíos.
@@ -36,6 +41,7 @@ const SCHEMA = {
           ventas_total: num, ventas_ppv: num, propinas: num,
           mensajes_enviados: num, ppv_enviados: num, ppv_desbloqueados: num, fans_chateados: num,
           tiempo_respuesta: { type: ['string', 'null'] },
+          tiempo_respuesta_programadas: { type: ['string', 'null'] },
           horas_trabajadas: num,
         },
         required: ['nombre'],
