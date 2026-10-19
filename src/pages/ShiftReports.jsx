@@ -5,7 +5,6 @@ import { getProfilesByRoles } from '../lib/roles'
 import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import ModelName from '../components/ModelAvatar'
-import MiniCalculadora from '../components/MiniCalculadora'
 import { reducirImagen, leerVentasDeCapturas } from '../lib/leerCapturas'
 
 const TURNOS = [
@@ -217,7 +216,6 @@ function ComprasEditor({ compras, onChange, nuevo, setNuevo, etiqueta }) {
         </div>
         {err && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>{err}</p>}
       </div>
-      <MiniCalculadora onUsar={(n) => setNuevo({ ...f, monto: String(n) })} />
       <div className="flex flex-wrap gap-4 text-sm px-3 py-2 rounded-md" style={{ background: 'var(--accent-soft)' }}>
         <span>PPV facturado: <strong className="tabular-nums" style={{ color: 'var(--success)' }}>{fmt$(t.ppv)}</strong></span>
         <span>Tips: <strong className="tabular-nums" style={{ color: 'var(--gold)' }}>{fmt$(t.tips)}</strong></span>

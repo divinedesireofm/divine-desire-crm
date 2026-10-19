@@ -8,12 +8,14 @@ import { ModelAvatar } from '../components/ModelAvatar'
 const TIPO_META = {
   personalizado: { n: 'Personalizado', cat: 'custom' },
   videollamada: { n: 'Videollamada', cat: 'custom' },
+  sala_vip: { n: 'Sala Vip', cat: 'custom' },
+  close_friends: { n: 'Close Friends Instagram', cat: 'custom' },
   video: { n: 'Video', cat: 'interno' },
   foto: { n: 'Foto', cat: 'interno' },
   audio: { n: 'Audio', cat: 'interno' },
   otro: { n: 'Otro', cat: 'interno' },
 }
-const QUEES = { personalizado: 'vídeo personalizado', videollamada: 'videollamada', video: 'vídeo', foto: 'foto', audio: 'audio', otro: 'contenido' }
+const QUEES = { personalizado: 'vídeo personalizado', videollamada: 'videollamada', sala_vip: 'acceso a Sala Vip', close_friends: 'acceso a Close Friends de Instagram', video: 'vídeo', foto: 'foto', audio: 'audio', otro: 'contenido' }
 const USOS = [
   { id: 'masivo', n: 'Masivo' },
   { id: 'activacion', n: 'Activación' },
@@ -214,6 +216,8 @@ export default function Requests() {
               <optgroup label="Customs de fans">
                 <option value="personalizado">Personalizado</option>
                 <option value="videollamada">Videollamada</option>
+                <option value="sala_vip">Sala Vip</option>
+                <option value="close_friends">Close Friends Instagram</option>
               </optgroup>
               <optgroup label="Contenido del equipo">
                 <option value="video">Video</option>

@@ -6,6 +6,8 @@ import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader, DeltaBadge } from '../components/ui'
 import InformeIAModal from '../components/InformeIAModal'
 import { exportarFichasChatters } from '../lib/excelExport'
+import { reducirImagen } from '../lib/leerCapturas'
+import { leerEstadisticasInflow } from '../lib/leerInflow'
 import { leerLibro, parsearChatters, norm, fmtF, lunesDe, tiempoASegundos, segundosATexto } from '../lib/excelImport'
 
 // Mismas métricas y fórmulas que el Excel SEGUIMIENTO_CHATTERS
@@ -92,6 +94,13 @@ export default function ChatterMetrics() {
   const [impBusy, setImpBusy] = useState(false)
   const [impMsg, setImpMsg] = useState('')
   const [impErr, setImpErr] = useState('')
+
+  // capturas de Infloww -> métricas
+  const [inf, setInf] = useState(null) // { semana, notas, filas:[{nombre, chatterId, incluir, v:{...}}] }
+  const [infBusy, setInfBusy] = useState(false)
+  const [infMsg, setInfMsg] = useState('')
+  const [infErr, setInfErr] = useState('')
+  const [copiado, setCopiado] = useState('')
 
   const [exportando, setExportando] = useState(false)
   const [informeIA, setInformeIA] = useState(null) // 'chatter' | 'equipo' | null
@@ -233,6 +242,84 @@ export default function ChatterMetrics() {
     setImpBusy(false)
   }
 
+  // ---------- copiar todas las métricas de una fila ----------
+  function textoMetricas(r) {
+    const cab = `${nombreDe(r.chatter_id)} · semana del ${fmtF(r.week_start)}`
+    return [cab, ...METRICAS.map((m) => `${m.label}: ${fmtMetrica(m, r[m.key])}`)].join('\n')
+  }
+  async function copiarFila(r) {
+    const t = textoMetricas(r)
+    try { await navigator.clipboard.writeText(t) } catch {
+      const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select()
+      try { document.execCommand('copy') } catch {}
+      document.body.removeChild(ta)
+    }
+    setCopiado(r.id); setTimeout(() => setCopiado((c) => (c === r.id ? '' : c)), 1400)
+  }
+
+  // ---------- subir capturas de Infloww ----------
+  const CAMPOS_INF = ['ventas_total', 'ventas_ppv', 'propinas', 'mensajes_enviados', 'ppv_enviados', 'ppv_desbloqueados', 'fans_chateados', 'tiempo_respuesta_seg', 'horas_trabajadas']
+  async function elegirCapturas(e) {
+    const files = Array.from(e.target.files || []).slice(0, 10)
+    e.target.value = ''
+    if (!files.length) return
+    setInfErr(''); setInfMsg(''); setInf(null); setInfBusy(true)
+    try {
+      const imgs = []
+      for (const f of files) imgs.push(await reducirImagen(f))
+      const r = await leerEstadisticasInflow(imgs)
+      if (!r.chatters.length) throw new Error('No he encontrado filas de chatters en las capturas. Sube una captura de la tabla de estadísticas de empleados de Infloww.')
+      const hojas = r.chatters.map((c) => ({ hoja: c.nombre || '' }))
+      const ids = emparejar(hojas, chatters)
+      const base = r.fecha_inicio && /^\d{4}-\d{2}-\d{2}$/.test(r.fecha_inicio) ? r.fecha_inicio : ''
+      setInf({
+        semana: base,
+        rango: r.fecha_inicio && r.fecha_fin ? `${r.fecha_inicio} → ${r.fecha_fin}` : '',
+        notas: r.notas,
+        filas: r.chatters.map((c, i) => ({
+          nombre: c.nombre, chatterId: ids[i], incluir: !!ids[i],
+          v: Object.fromEntries(CAMPOS_INF.map((k) => {
+            if (k === 'tiempo_respuesta_seg') return [k, c.tiempo_respuesta ? c.tiempo_respuesta.replace(/\s+/g, '') : '']
+            return [k, c[k] === null || c[k] === undefined ? '' : String(c[k])]
+          })),
+        })),
+      })
+    } catch (err) { setInfErr(err.message || 'No he podido leer las capturas.') }
+    setInfBusy(false)
+  }
+  function setFilaInf(i, cambios) { setInf((s) => ({ ...s, filas: s.filas.map((f, j) => (j === i ? { ...f, ...cambios } : f)) })) }
+  function setValInf(i, k, val) { setInf((s) => ({ ...s, filas: s.filas.map((f, j) => (j === i ? { ...f, v: { ...f.v, [k]: val } } : f)) })) }
+  const infRepetidos = useMemo(() => {
+    if (!inf) return false
+    const ids = inf.filas.filter((f) => f.incluir && f.chatterId).map((f) => f.chatterId)
+    return new Set(ids).size !== ids.length
+  }, [inf])
+  async function volcarInf() {
+    setInfErr(''); setInfMsg('')
+    if (!inf.semana) { setInfErr('Indica la semana (cualquier día de esa semana).'); return }
+    const lunes = lunesDe(inf.semana)
+    setInfBusy(true)
+    try {
+      const lote = inf.filas.filter((f) => f.incluir && f.chatterId).map((f) => {
+        const previo = stats.find((r) => r.chatter_id === f.chatterId && r.week_start === lunes) || {}
+        const row = { chatter_id: f.chatterId, week_start: lunes }
+        CAMPOS_INF.forEach((k) => {
+          const nuevo = k === 'tiempo_respuesta_seg' ? tiempoASegundos(f.v[k]) : num(f.v[k])
+          row[k] = nuevo !== null && nuevo !== undefined ? nuevo : (previo[k] ?? null) // lo que no se leyó no pisa lo que ya había
+        })
+        return row
+      })
+      if (!lote.length) throw new Error('No hay filas seleccionadas con una persona asignada.')
+      const { error: err } = await supabase.from('chatter_weekly_stats').upsert(lote, { onConflict: 'chatter_id,week_start' })
+      if (err) throw new Error(err.message)
+      const nuevas = lote.filter((r) => !claves.has(r.chatter_id + '|' + r.week_start)).length
+      setInfMsg(`Listo: ${lote.length} chatters volcados en la semana del ${fmtF(lunes)} (${nuevas} nuevos, ${lote.length - nuevas} actualizados).`)
+      setInf(null)
+      await cargar()
+    } catch (err) { setInfErr(err.message || 'No se pudo volcar.') }
+    setInfBusy(false)
+  }
+
   // ---------- análisis IA (informes) ----------
   const metr = (r) => ({
     semana: r.week_start, ventas: r.ventas_total, ventas_ppv: r.ventas_ppv, propinas: r.propinas, mensajes: r.mensajes_enviados,
@@ -275,12 +362,75 @@ export default function ChatterMetrics() {
         subtitle="Las mismas métricas de tu Excel de seguimiento de chatters, semana a semana, con análisis automático."
         action={canEdit && (
           <div className="flex gap-2 flex-wrap">
+            <Button variant="ghost" onClick={() => { setPanel(panel === 'inflow' ? null : 'inflow'); setInfErr(''); setInfMsg('') }}>{panel === 'inflow' ? 'Cancelar' : '🖼️ Subir capturas de Inflow'}</Button>
             <Button variant="ghost" onClick={() => { setPanel(panel === 'excel' ? null : 'excel'); setImpErr(''); setImpMsg('') }}>{panel === 'excel' ? 'Cancelar' : '📥 Subir Excel'}</Button>
             <Button variant="ghost" onClick={() => setInformeIA('equipo')} disabled={!stats.length}>✨ Generar análisis del equipo</Button>
             <Button onClick={() => (panel === 'form' ? cerrarForm() : abrirNueva())} disabled={!selectedChatter}>{panel === 'form' ? 'Cancelar' : 'Añadir semana'}</Button>
           </div>
         )}
       />
+
+      {panel === 'inflow' && (
+        <Panel className="p-5 mb-6">
+          <p className="text-sm font-medium mb-2">Subir capturas de las estadísticas de Inflow</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+            Sube hasta 10 capturas de la tabla de estadísticas de empleados de Infloww. La IA lee a todos los chatters, te enseña lo que ha leído para que lo revises y lo vuelca en la semana que elijas. Lo que no se vea en las capturas no pisa lo que ya había guardado.
+          </p>
+          <input type="file" accept="image/*" multiple onChange={elegirCapturas} className="text-sm mb-3 block" disabled={infBusy} />
+          {infBusy && !inf && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Leyendo las capturas con la IA…</p>}
+          {infErr && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{infErr}</p>}
+          {infMsg && <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>{infMsg}</p>}
+          {inf && (
+            <div>
+              <div className="flex flex-wrap items-end gap-4 mb-3">
+                <div>
+                  <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Cualquier día de la semana a la que corresponden</label>
+                  <Input type="date" value={inf.semana} onChange={(e) => setInf({ ...inf, semana: e.target.value })} />
+                </div>
+                <p className="text-xs pb-2" style={{ color: 'var(--text-muted)' }}>
+                  {inf.semana ? `Se guardará en la semana del lunes ${fmtF(lunesDe(inf.semana))}.` : 'La IA no ha visto la fecha en las capturas: elígela.'}
+                  {inf.rango && ` Rango visto en la captura: ${inf.rango}.`}
+                </p>
+              </div>
+              {inf.notas && <p className="text-xs mb-3" style={{ color: 'var(--gold)' }}>⚠ {inf.notas}</p>}
+              <div className="overflow-x-auto mb-3">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <th />
+                      <th className="text-left px-2 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>Leído</th>
+                      <th className="text-left px-2 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>Chatter del CRM</th>
+                      {CAMPOS_INF.map((k) => <th key={k} className="text-left px-2 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{POR_KEY[k].label}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inf.filas.map((f, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)', opacity: f.incluir ? 1 : 0.5 }}>
+                        <td className="px-2 py-2"><input type="checkbox" checked={f.incluir} onChange={(e) => setFilaInf(i, { incluir: e.target.checked })} /></td>
+                        <td className="px-2 py-2 whitespace-nowrap">{f.nombre}</td>
+                        <td className="px-2 py-2 min-w-[160px]">
+                          <Select value={f.chatterId} onChange={(e) => setFilaInf(i, { chatterId: e.target.value, incluir: !!e.target.value })}>
+                            <option value="">— Elegir —</option>
+                            {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                          </Select>
+                        </td>
+                        {CAMPOS_INF.map((k) => (
+                          <td key={k} className="px-2 py-2"><Input style={{ minWidth: 84 }} value={f.v[k]} onChange={(e) => setValInf(i, k, e.target.value)} /></td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {infRepetidos && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>Has asignado a la misma persona en dos filas. Cada fila debe ir a un chatter distinto (o desmarca una).</p>}
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={volcarInf} disabled={infBusy || infRepetidos || !inf.filas.some((f) => f.incluir && f.chatterId)}>{infBusy ? 'Volcando…' : 'Volcar en el CRM'}</Button>
+                <Button variant="ghost" onClick={() => setInf(null)} disabled={infBusy}>Descartar</Button>
+              </div>
+            </div>
+          )}
+        </Panel>
+      )}
 
       {panel === 'excel' && (
         <Panel className="p-5 mb-6">
@@ -416,7 +566,10 @@ export default function ChatterMetrics() {
               {filasEquipo.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No hay datos de esa semana.</td></tr>}
               {filasEquipo.map((r) => (
                 <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td className="px-4 py-3 font-medium whitespace-nowrap">{nombreDe(r.chatter_id)}</td>
+                  <td className="px-4 py-3 font-medium whitespace-nowrap">
+                    <button className="text-xs underline mr-3 font-normal" title="Copiar todas las métricas de esta fila" onClick={() => copiarFila(r)}>{copiado === r.id ? '✓ Copiado' : '📋 Copiar'}</button>
+                    {nombreDe(r.chatter_id)}
+                  </td>
                   {KEYS_TABLA_EQUIPO.map((k) => <td key={k} className="px-4 py-3 tabular-nums whitespace-nowrap">{fmtMetrica(POR_KEY[k], r[k])}</td>)}
                 </tr>
               ))}
@@ -487,7 +640,10 @@ export default function ChatterMetrics() {
                   <tbody>
                     {[...filas].reverse().map((r) => (
                       <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td className="px-4 py-3 whitespace-nowrap">{fmtF(r.week_start)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button className="text-xs underline mr-3" title="Copiar todas las métricas de esta fila" onClick={() => copiarFila(r)}>{copiado === r.id ? '✓ Copiado' : '📋 Copiar'}</button>
+                          {fmtF(r.week_start)}
+                        </td>
                         {METRICAS.map((m) => <td key={m.key} className="px-4 py-3 tabular-nums whitespace-nowrap" style={m.calc ? { color: 'var(--text-muted)' } : undefined}>{fmtMetrica(m, r[m.key])}</td>)}
                         {canEdit && (
                           <td className="px-4 py-3 whitespace-nowrap">

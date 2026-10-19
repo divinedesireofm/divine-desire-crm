@@ -35,6 +35,29 @@ function puedeGestionar(rolesGestor, rolesObjetivo) {
   return false
 }
 
+const TURNOS = [
+  { id: 'madrugada', n: 'Madrugada' },
+  { id: 'mañana', n: 'Mañana' },
+  { id: 'tarde', n: 'Tarde' },
+]
+function TurnoSelector({ value, onChange }) {
+  const sel = (value || '').split(',').map((x) => x.trim()).filter(Boolean)
+  const toggle = (id) => onChange((sel.includes(id) ? sel.filter((x) => x !== id) : sel.concat([id])).join(','))
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {TURNOS.map((t) => {
+        const on = sel.includes(t.id)
+        return (
+          <button key={t.id} type="button" onClick={() => toggle(t.id)} className="px-3 py-1 rounded-full text-xs"
+            style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}>
+            {t.n}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Team() {
   const { profile, roles, hasRole } = useAuth()
   const esAdmin = hasRole('admin')
@@ -117,7 +140,7 @@ export default function Team() {
         title="Equipo"
         subtitle="Gestiona a tu equipo. Cada persona puede tener uno o varios roles a la vez."
         action={asignables.length > 0 && (
-          <Button onClick={() => setNuevo({ email: '', full_name: '', roles: [], password: '', model_id: '' })}>+ Nuevo usuario</Button>
+          <Button onClick={() => setNuevo({ email: '', full_name: '', roles: [], password: '', model_id: '', shift: '' })}>+ Nuevo usuario</Button>
         )}
       />
 
@@ -301,7 +324,7 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
     setBusy(true); setErr('')
     const { data, error } = await supabase.functions.invoke('team-admin', {
       body: {
-        action: 'create', email: f.email.trim(), full_name: f.full_name.trim(), roles: f.roles,
+        action: 'create', email: f.email.trim(), full_name: f.full_name.trim(), roles: f.roles, shift: f.roles.includes('chatter') ? (f.shift || '') : undefined,
         password: f.password || undefined, model_id: f.roles.includes('modelo') ? f.model_id : undefined,
         redirect_to: `${window.location.origin}/restablecer-contrasena`,
       },
@@ -338,6 +361,12 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
           <div className="mb-3">
             <RoleCheckboxes asignables={asignables} selected={f.roles} onChange={(r) => setF({ ...f, roles: r })} />
           </div>
+          {f.roles.includes('chatter') && (
+            <div className="mb-3">
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Turno del chatter (puedes marcar varios)</label>
+              <TurnoSelector value={f.shift || ''} onChange={(v) => setF({ ...f, shift: v })} />
+            </div>
+          )}
           {f.roles.includes('modelo') && (
             <div className="mb-3">
               <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>A qué modelo se enlaza esta cuenta</label>
@@ -369,11 +398,16 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
 function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
   const [nombre, setNombre] = useState(usuario.full_name)
   const [rolesSel, setRolesSel] = useState(usuario.roles)
+  const [turno, setTurno] = useState('')
+  const [turnoTocado, setTurnoTocado] = useState(false)
   const [email, setEmail] = useState('')
   const [emailOriginal, setEmailOriginal] = useState(null) // null = aún cargando
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
+  useEffect(() => {
+    supabase.from('chatters').select('shift').eq('id', usuario.id).maybeSingle().then(({ data }) => setTurno(data?.shift || ''))
+  }, [usuario.id])
   useEffect(() => {
     supabase.functions.invoke('team-admin', { body: { action: 'get_email', user_id: usuario.id } }).then(({ data }) => {
       setEmail(data?.email || '')
@@ -389,7 +423,7 @@ function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
     setBusy(true); setErr('')
     const cambiaEmail = emailOriginal !== null && emailNuevo && emailNuevo.toLowerCase() !== emailOriginal.toLowerCase()
     const { data, error } = await supabase.functions.invoke('team-admin', {
-      body: { action: 'update_roles', user_id: usuario.id, full_name: nombre.trim(), roles: rolesSel, email: cambiaEmail ? emailNuevo : undefined },
+      body: { action: 'update_roles', user_id: usuario.id, full_name: nombre.trim(), roles: rolesSel, email: cambiaEmail ? emailNuevo : undefined, shift: rolesSel.includes('chatter') && turnoTocado ? turno : undefined },
     })
     setBusy(false)
     if (error) { setErr(await readFunctionError(error)); return }
@@ -409,6 +443,12 @@ function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
       <div className="mb-3">
         <RoleCheckboxes asignables={asignables} selected={rolesSel} onChange={setRolesSel} />
       </div>
+      {rolesSel.includes('chatter') && (
+        <div className="mb-3">
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Turno del chatter (puedes marcar varios)</label>
+          <TurnoSelector value={turno} onChange={(v) => { setTurno(v); setTurnoTocado(true) }} />
+        </div>
+      )}
       {err && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{err}</p>}
       <div className="flex gap-2">
         <Button onClick={guardar} disabled={busy}>{busy ? 'Guardando…' : 'Guardar cambios'}</Button>

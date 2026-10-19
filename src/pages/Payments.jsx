@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
+import { getProfilesByRoles } from '../lib/roles'
 
 // ---------- utilidades ----------
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
@@ -17,7 +18,7 @@ export function calcPago(p) {
   return r2(num(p.fact_neta) * num(p.pct) + num(p.bonos) + num(p.adelanto) + num(p.penalizacion) + num(p.deuda))
 }
 
-const VACIO = { account_id: '', fecha: hoyISO(), bruta: '', neta: '', pct: '', bonos: '', adelanto: '', penalizacion: '', deuda: '', notas: '', estado: 'Pendiente', cuotasN: 2, adelantoOriginal: 0, selC: [] }
+const VACIO = { account_id: '', fecha: hoyISO(), bruta: '', neta: '', pct: '', bonos: '', adelanto: '', penalizacion: '', deuda: '', notas: '', estado: 'Pendiente', cuotasN: 2, cuotasFilas: [], adelantoOriginal: 0, selC: [] }
 
 // ---------- calendario de cobros ----------
 // Pago de nómina: un lunes sí y otro no (cada 14 días a partir del último lunes de pago registrado).
@@ -54,6 +55,66 @@ function proximoBono(desde) {
 const NOMBRE_MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
 const DIAS_SEM = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 
+const normNombre = (v) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\(extrabajador\)/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+// ¿Esta cuenta de pago ya es de esta persona? (por enlace o por nombre parecido)
+function cuentaEsDe(cuenta, perfil) {
+  if (cuenta.profile_id) return cuenta.profile_id === perfil.id
+  const a = normNombre(cuenta.nombre), b = normNombre(perfil.full_name)
+  if (!a || !b) return false
+  return a === b || (a.length >= 3 && b.includes(a)) || (b.length >= 3 && a.includes(b))
+}
+const fmtAlta = (ts) => (ts ? new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '')
+
+// Reparto por defecto de un adelanto en n cuotas con sus fechas
+function cuotasPorDefecto(total, n, fechaBase, ancla, previas) {
+  const fechas = siguientesDiasPago(fechaBase, ancla, n)
+  const base = r2(total / n)
+  return Array.from({ length: n }, (_, i) => {
+    const prev = previas?.[i]
+    return {
+      fecha: prev?.ft ? prev.fecha : (fechas[i] || sumarDias(fechaBase, 14 * (i + 1))),
+      ft: !!prev?.ft,
+      monto: i === n - 1 ? r2(total - base * (n - 1)) : base,
+    }
+  })
+}
+const sumaCuotas = (filas) => r2((filas || []).reduce((t, x) => t + num(x.monto), 0))
+
+// Selector de «en cuántas veces» + fecha y importe de cada cuota
+function Fraccionador({ total, fechaBase, ancla, n, setN, filas, setFilas }) {
+  const lbl = { color: 'var(--text-muted)' }
+  const sel = { background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }
+  useEffect(() => {
+    if (!(total > 0) || !fechaBase) return
+    setFilas(cuotasPorDefecto(total, n, fechaBase, ancla, filas))
+  }, [total, n, fechaBase, ancla])
+  const suma = sumaCuotas(filas)
+  const cuadra = Math.abs(suma - r2(total)) < 0.011
+  function cambiar(i, patch) { setFilas(filas.map((f, j) => (j === i ? { ...f, ...patch } : f))) }
+  return (
+    <div className="rounded-md p-3 mt-2" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+      <div className="flex items-center gap-2 flex-wrap text-sm mb-2">
+        <span style={lbl}>Se descuenta en</span>
+        <select value={n} onChange={(e) => setN(Number(e.target.value))} className="rounded px-2 py-1 text-sm" style={sel}>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((k) => <option key={k} value={k}>{k} {k === 1 ? 'vez' : 'veces'}</option>)}
+        </select>
+        <span className="text-xs" style={lbl}>Elige la fecha de cada cobro; por defecto, los siguientes días de pago.</span>
+      </div>
+      <div className="grid gap-2">
+        {filas.map((f, i) => (
+          <div key={i} className="flex items-center gap-2 flex-wrap text-sm">
+            <span className="w-16 text-xs" style={lbl}>Cuota {i + 1}/{n}</span>
+            <input type="date" value={f.fecha} onChange={(e) => cambiar(i, { fecha: e.target.value, ft: true })} className="rounded px-2 py-1 text-sm" style={sel} />
+            <span style={lbl}>−$</span>
+            <input type="number" step="0.01" min="0" value={f.monto} onChange={(e) => cambiar(i, { monto: e.target.value })} className="rounded px-2 py-1 text-sm w-28" style={sel} />
+          </div>
+        ))}
+      </div>
+      {!cuadra && <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>Las cuotas suman {money(suma)} y el adelanto es de {money(total)}. Ajusta los importes para que cuadren.</p>}
+    </div>
+  )
+}
+
 export default function Payments() {
   const { hasRole } = useAuth()
   return hasRole('admin') ? <PagosAdmin /> : <MisPagos />
@@ -76,6 +137,24 @@ function PagosAdmin() {
   const [bonos, setBonos] = useState([])
   const [sanciones, setSanciones] = useState([])
   const [cuotas, setCuotas] = useState([])
+  const creandoCuentas = useRef(false)
+
+  // Cada chatter activo del equipo tiene su cuenta de pago: si falta, se crea sola y queda marcada «pendiente de editar»
+  async function asegurarCuentas(actuales) {
+    if (creandoCuentas.current) return []
+    creandoCuentas.current = true
+    try {
+      const chatters = await getProfilesByRoles(['chatter'], { onlyActive: true })
+      const nuevos = chatters.filter((pf) => !actuales.some((c) => cuentaEsDe(c, pf)))
+      if (!nuevos.length) return []
+      const filas = nuevos.map((pf) => ({ nombre: pf.full_name, profile_id: pf.id, fecha_inicio: hoyISO(), pct_defecto: 0.15, activa: true, pendiente_editar: true }))
+      let { data, error } = await supabase.from('payout_accounts').insert(filas).select()
+      if (error) { // sin la migración 62 no existe la columna del aviso: se crean igualmente
+        ;({ data, error } = await supabase.from('payout_accounts').insert(filas.map(({ pendiente_editar, ...r }) => r)).select())
+      }
+      return error ? [] : (data || [])
+    } catch { return [] } finally { creandoCuentas.current = false }
+  }
 
   async function cargar() {
     const [{ data: c }, { data: p }, { data: pr }, { data: bn }, { data: sn }, { data: cu }] = await Promise.all([
@@ -86,7 +165,8 @@ function PagosAdmin() {
       supabase.from('sanctions').select('id, chatter_id, motivo, monto, fecha, payout_id').order('fecha', { ascending: false }).limit(2000),
       supabase.from('payout_advance_installments').select('*').order('fecha_prevista').limit(2000),
     ])
-    setCuentas(c || []); setPagos(p || []); setPerfiles(pr || []); setBonos(bn || []); setSanciones(sn || []); setCuotas(cu || []); setCargando(false)
+    const nuevasCuentas = await asegurarCuentas(c || [])
+    setCuentas([...(c || []), ...nuevasCuentas]); setPagos(p || []); setPerfiles(pr || []); setBonos(bn || []); setSanciones(sn || []); setCuotas(cu || []); setCargando(false)
   }
   useEffect(() => { cargar() }, [])
 
@@ -146,7 +226,7 @@ function PagosAdmin() {
       selB: bonos.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
       selS: sanciones.filter((x) => x.payout_id === p.id).map((x) => x.id),
       selC: cuotas.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
-      cuotasN: cuotas.filter((x) => x.origen_id === p.id).length || 2,
+      cuotasN: cuotas.filter((x) => x.origen_id === p.id).length || 2, cuotasFilas: [],
       adelantoOriginal: num(p.adelanto),
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -181,6 +261,10 @@ function PagosAdmin() {
   async function guardarPago(e) {
     e.preventDefault()
     if (!form.account_id || !form.fecha) return
+    const cambiaAdelanto = !editId ? num(form.adelanto) > 0 : num(form.adelanto) !== form.adelantoOriginal
+    if (cambiaAdelanto && num(form.adelanto) > 0 && form.cuotasFilas.length && Math.abs(sumaCuotas(form.cuotasFilas) - r2(num(form.adelanto))) > 0.011) {
+      setMsg('Las cuotas del adelanto no suman lo mismo que el adelanto. Ajusta los importes.'); return
+    }
     const payload = {
       account_id: form.account_id, fecha: form.fecha,
       fact_bruta: form.bruta === '' ? null : num(form.bruta), fact_neta: form.neta === '' ? null : num(form.neta),
@@ -217,10 +301,9 @@ function PagosAdmin() {
       } else {
         if (propias.length) res.push(await supabase.from('payout_advance_installments').delete().eq('origen_id', pid))
         if (adel > 0) {
-          const n = Math.min(6, Math.max(1, Math.round(num(form.cuotasN)) || 2))
-          const fechas = siguientesDiasPago(form.fecha, anclaPagos(pagos), n)
-          const primera = r2(adel / n)
-          const filas = fechas.map((fp, i) => ({ account_id: form.account_id, origen_id: pid, num: i + 1, total: n, monto: i === n - 1 ? r2(adel - primera * (n - 1)) : primera, fecha_prevista: fp }))
+          const base = form.cuotasFilas.length ? form.cuotasFilas : cuotasPorDefecto(adel, Math.min(12, Math.max(1, Math.round(num(form.cuotasN)) || 2)), form.fecha, anclaPagos(pagos), [])
+          const n = base.length
+          const filas = base.map((f, i) => ({ account_id: form.account_id, origen_id: pid, num: i + 1, total: n, monto: num(f.monto), fecha_prevista: f.fecha }))
           res.push(await supabase.from('payout_advance_installments').insert(filas))
         }
       }
@@ -251,9 +334,17 @@ function PagosAdmin() {
       wallet_usdt_bsc: cform.wallet_usdt_bsc?.trim() || null, wallet_binance: cform.wallet_binance?.trim() || null, activa: cform.activa,
     }
     if (!payload.nombre) return
-    const { error } = cform.id
+    payload.pendiente_editar = false
+    let res = cform.id
       ? await supabase.from('payout_accounts').update(payload).eq('id', cform.id)
       : await supabase.from('payout_accounts').insert([payload])
+    if (res.error && /pendiente_editar/.test(res.error.message || '')) { // aún sin migración 62
+      const { pendiente_editar, ...resto } = payload
+      res = cform.id
+        ? await supabase.from('payout_accounts').update(resto).eq('id', cform.id)
+        : await supabase.from('payout_accounts').insert([resto])
+    }
+    const { error } = res
     if (error) { setMsg('No se pudo guardar la cuenta: ' + error.message); return }
     setMsg(''); setCform(null); cargar()
   }
@@ -273,7 +364,7 @@ function PagosAdmin() {
       <PageHeader
         title="Pagos a chatters"
         subtitle="Registro de lo pagado a cada chatter. Introduces la facturación de Infloww y el pago se calcula solo con la misma fórmula del Excel."
-        action={<div className="flex flex-wrap gap-2"><Button variant="ghost" onClick={() => editarCuenta(null)}>+ Cuenta</Button><Button onClick={() => nuevoPago()} disabled={!cuentas.length}>+ Registrar pago</Button></div>}
+        action={<div className="flex flex-wrap gap-2"><Button onClick={() => nuevoPago()} disabled={!cuentas.length}>+ Registrar pago</Button></div>}
       />
 
       {msg && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{msg}</p>}
@@ -307,6 +398,16 @@ function PagosAdmin() {
         ))}
       </div>
 
+      {cuentas.some((c) => c.pendiente_editar) && (
+        <Panel className="p-4 mb-4" style={{ borderColor: 'var(--gold)' }}>
+          <p className="text-sm">
+            <strong style={{ color: 'var(--gold)' }}>⚠ Pendiente de editar:</strong>{' '}
+            {cuentas.filter((c) => c.pendiente_editar).map((c) => c.nombre).join(', ')}
+            <span style={lbl}> · Se han dado de alta solos al entrar en activo en el equipo. Ábrelos y completa su % y sus direcciones de cobro.</span>
+          </p>
+        </Panel>
+      )}
+
       {/* Selector de cuenta */}
       <div className="flex flex-wrap gap-2 mb-4">
         {[{ id: 'todas', nombre: 'Todos' }, ...cuentas].map((c) => {
@@ -314,7 +415,7 @@ function PagosAdmin() {
           return (
             <button key={c.id} onClick={() => setSel(c.id)} className="px-3 py-1.5 rounded-full text-sm"
               style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)', opacity: c.activa === false ? 0.55 : 1 }}>
-              {c.nombre}
+              {c.pendiente_editar && <span title="Pendiente de editar" style={{ color: 'var(--gold)' }}>⚠ </span>}{c.nombre}
             </button>
           )
         })}
@@ -336,6 +437,12 @@ function PagosAdmin() {
               <button onClick={() => borrarCuenta(cuentaSel)} className="hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>
             </div>
           </div>
+          {cuentaSel.pendiente_editar && (
+            <div className="mt-3 flex items-center gap-3 flex-wrap rounded-md px-3 py-2 text-sm" style={{ background: 'color-mix(in srgb, var(--gold) 14%, transparent)', border: '1px solid var(--gold)' }}>
+              <span>⚠ <strong>Pendiente de editar</strong>: cuenta creada automáticamente. Revisa el % y añade sus direcciones de cobro.</span>
+              <Button variant="ghost" onClick={() => editarCuenta(cuentaSel)}>Editar ahora</Button>
+            </div>
+          )}
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {[['USDC · ETH', cuentaSel.wallet_usdc_eth], ['USDC · BSC', cuentaSel.wallet_usdc_bsc], ['USDT · BSC', cuentaSel.wallet_usdt_bsc], ['Binance', cuentaSel.wallet_binance]].filter(([, v]) => v).map(([k, v]) => (
               <div key={k} className="flex items-center gap-2 text-xs rounded-md px-2.5 py-1.5" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
@@ -388,13 +495,7 @@ function PagosAdmin() {
               <div><label className="text-xs block mb-1" style={lbl}>% para el chatter (0.15)</label><Input type="number" step="0.01" value={form.pct} onChange={(e) => setF({ pct: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Bonos (+)</label><Input type="number" step="0.01" value={form.bonos} onChange={(e) => setF({ bonos: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Adelanto pagado (+)</label><Input type="number" step="0.01" value={form.adelanto} onChange={(e) => setF({ adelanto: e.target.value })} />
-                {num(form.adelanto) > 0 && (!editId || num(form.adelanto) !== form.adelantoOriginal) && (
-                  <p className="text-[11px] mt-1 flex items-center gap-1" style={lbl}>Se descuenta en
-                    <select value={form.cuotasN} onChange={(e) => setF({ cuotasN: e.target.value })} className="rounded px-1 py-0.5 text-[11px]" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}>
-                      {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                    pagos siguientes (sin contar días de bonos)</p>
-                )}</div>
+                </div>
               <div><label className="text-xs block mb-1" style={lbl}>Sanciones (se descuenta)</label><Input type="number" step="0.01" min="0" value={form.penalizacion} onChange={(e) => setF({ penalizacion: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Deuda a descontar (se resta)</label><Input type="number" step="0.01" min="0" value={form.deuda} onChange={(e) => setF({ deuda: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Estado</label>
@@ -402,6 +503,10 @@ function PagosAdmin() {
                 <p className="text-[11px] mt-1" style={lbl}>Se guarda Pendiente hasta que confirmes el pago.</p></div>
               <div className="col-span-2"><label className="text-xs block mb-1" style={lbl}>Notas</label><Input value={form.notas} onChange={(e) => setF({ notas: e.target.value })} placeholder="Notas propias (los bonos y sanciones se añaden solos)" /></div>
             </div>
+            {num(form.adelanto) > 0 && (!editId || num(form.adelanto) !== form.adelantoOriginal) && (
+              <Fraccionador total={num(form.adelanto)} fechaBase={form.fecha} ancla={anclaPagos(pagos)} n={Number(form.cuotasN) || 2}
+                setN={(k) => setF({ cuotasN: k })} filas={form.cuotasFilas} setFilas={(f) => setF({ cuotasFilas: f })} />
+            )}
             {(() => {
               const pd = pendientesDe(form.account_id, form.fecha, editId)
               if (!pd.bonos.length && !pd.sanciones.length && !pd.cuotas.length) return null
@@ -413,7 +518,7 @@ function PagosAdmin() {
                       {pd.bonos.map((b) => (
                         <label key={b.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
                           <input type="checkbox" checked={form.selB.includes(b.id)} onChange={() => alternarBono(b)} />
-                          <span className="flex-1">{b.nombre} <span className="text-xs" style={lbl}>· cobro {fmtF(b.fecha_cobro)}</span></span>
+                          <span className="flex-1">{b.nombre} <span className="text-xs" style={lbl}>· cobro {fmtF(b.fecha_cobro)}</span>{b.created_at && <span className="block text-[11px]" style={lbl}>Añadido el {fmtAlta(b.created_at)}</span>}</span>
                           <strong className="tabular-nums">+{money(b.monto)}</strong>
                         </label>
                       ))}
@@ -477,10 +582,13 @@ function PagosAdmin() {
                 </tr>
               </thead>
               <tbody>
-                {visibles.map((p) => {
+                {visibles.map((p, idx) => {
                   const celda = (v) => (num(v) ? money(v) : <span style={lbl}>—</span>)
+                  // la línea es algo más gruesa cuando el siguiente pago es de otra fecha
+                  const sig = visibles[idx + 1]
+                  const cambiaFecha = !!sig && sig.fecha !== p.fecha
                   return (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <tr key={p.id} style={{ borderBottom: cambiaFecha ? '3px solid color-mix(in srgb, var(--text-muted) 55%, var(--border))' : '1px solid var(--border)' }}>
                       <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(p.fecha)}</td>
                       {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{cuentaDe(p.account_id)?.nombre}</td>}
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_bruta)}</td>
@@ -520,20 +628,52 @@ function PagosAdmin() {
 function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
   const lbl = { color: 'var(--text-muted)' }
   const cuentaDe = (id) => cuentas.find((c) => c.id === id)
-  // agrupa las cuotas por pago de origen
+  const activas = cuentas.filter((c) => c.activa !== false)
+  const ancla = useMemo(() => anclaPagos(pagos), [pagos])
+  const [abierto, setAbierto] = useState(false)
+  const [cuenta, setCuenta] = useState('')
+  const [fecha, setFecha] = useState(hoyISO())
+  const [monto, setMonto] = useState('')
+  const [nota, setNota] = useState('')
+  const [n, setN] = useState(2)
+  const [filas, setFilas] = useState([])
+  const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  // agrupa las cuotas por adelanto (el pago donde se entregó, o el adelanto creado a mano)
   const grupos = useMemo(() => {
     const m = {}
-    cuotas.forEach((x) => { (m[x.origen_id] = m[x.origen_id] || []).push(x) })
-    return Object.entries(m).map(([origen, cs]) => {
-      const o = pagos.find((p) => p.id === origen)
-      return { origen, o, cs: cs.sort((a, b) => a.num - b.num), total: r2(cs.reduce((t, x) => t + num(x.monto), 0)) }
-    }).sort((a, b) => (b.o?.fecha || '').localeCompare(a.o?.fecha || ''))
+    cuotas.forEach((x) => { const k = x.origen_id || x.adelanto_id || x.id; (m[k] = m[k] || []).push(x) })
+    return Object.entries(m).map(([clave, cs]) => {
+      const o = pagos.find((p) => p.id === clave)
+      const ordenadas = cs.sort((a, b) => a.num - b.num)
+      return { clave, o, cs: ordenadas, total: r2(cs.reduce((t, x) => t + num(x.monto), 0)), fechaAdelanto: o?.fecha || cs[0].fecha_adelanto || cs[0].created_at?.slice(0, 10) || '', nota: cs[0].nota || '' }
+    }).sort((a, b) => (b.fechaAdelanto || '').localeCompare(a.fechaAdelanto || ''))
   }, [cuotas, pagos])
   const porRecuperar = r2(cuotas.filter((x) => !x.aplicado_en).reduce((t, x) => t + num(x.monto), 0))
 
+  async function crear(e) {
+    e.preventDefault(); setError('')
+    const total = num(monto)
+    if (!cuenta) { setError('Elige al chatter.'); return }
+    if (!(total > 0)) { setError('Indica el importe del adelanto.'); return }
+    if (!filas.length || Math.abs(sumaCuotas(filas) - r2(total)) > 0.011) { setError('Las cuotas deben sumar exactamente el importe del adelanto.'); return }
+    if (filas.some((f) => !f.fecha || !(num(f.monto) > 0))) { setError('Cada cuota necesita fecha e importe.'); return }
+    setGuardando(true)
+    const gid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : null
+    const rows = [...filas].sort((a, b) => a.fecha.localeCompare(b.fecha)).map((f, i) => ({
+      account_id: cuenta, origen_id: null, adelanto_id: gid, fecha_adelanto: fecha, nota: nota.trim() || null,
+      num: i + 1, total: filas.length, monto: num(f.monto), fecha_prevista: f.fecha,
+    }))
+    const { error: err } = await supabase.from('payout_advance_installments').insert(rows)
+    setGuardando(false)
+    if (err) { setError(/adelanto_id|fecha_adelanto|nota|null value|origen_id/.test(err.message || '') ? 'Falta ejecutar la migración 62 en Supabase (adelantos manuales).' : 'No se pudo guardar: ' + err.message); return }
+    setMonto(''); setNota(''); setFilas([]); setN(2); setAbierto(false); onCambio()
+  }
   async function cancelarPendientes(g) {
     if (!confirm('¿Cancelar las cuotas pendientes de este adelanto? Las ya descontadas se mantienen.')) return
-    await supabase.from('payout_advance_installments').delete().eq('origen_id', g.origen).is('aplicado_en', null)
+    const q = supabase.from('payout_advance_installments').delete().is('aplicado_en', null)
+    await (g.cs[0].origen_id ? q.eq('origen_id', g.cs[0].origen_id) : g.cs[0].adelanto_id ? q.eq('adelanto_id', g.cs[0].adelanto_id) : q.eq('id', g.cs[0].id))
     onCambio()
   }
   async function cambiarFecha(x, fecha) {
@@ -545,21 +685,50 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
   return (
     <div>
       <Panel className="p-4 mb-4">
-        <p className="text-sm" style={lbl}>Cuando guardas un pago con <strong style={{ color: 'var(--text)' }}>Adelanto</strong>, el importe se divide en cuotas que se descuentan en los siguientes días de pago de nómina (lunes alternos, sin contar los días de bonos). Al registrar esos pagos, la cuota aparece marcada en «Deuda» y en las notas.</p>
-        <p className="text-sm mt-2">Pendiente por recuperar: <strong className="gold-text tabular-nums">{money(porRecuperar)}</strong></p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm" style={lbl}>Un adelanto se fracciona en cuotas con la fecha que elijas para cada una. Al registrar el pago de esa fecha, la cuota se descuenta sola en «Deuda». También se crean al guardar un pago con «Adelanto».</p>
+            <p className="text-sm mt-2">Pendiente por recuperar: <strong className="gold-text tabular-nums">{money(porRecuperar)}</strong></p>
+          </div>
+          <Button onClick={() => { setAbierto(!abierto); setError(''); if (!cuenta && activas[0]) setCuenta(activas[0].id) }}>{abierto ? 'Cancelar' : '+ Nuevo adelanto'}</Button>
+        </div>
       </Panel>
-      {grupos.length === 0 ? <Panel className="p-6 text-sm text-center" style={lbl}>Todavía no hay adelantos con cuotas. Se crean solos al guardar un pago con adelanto.</Panel> : grupos.map((g) => {
+
+      {abierto && (
+        <Panel className="p-5 mb-4">
+          <p className="text-sm font-medium mb-3">Nuevo adelanto</p>
+          <form onSubmit={crear}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div><label className="text-xs block mb-1" style={lbl}>Chatter</label>
+                <Select value={cuenta} onChange={(e) => setCuenta(e.target.value)} required>
+                  <option value="">Elegir…</option>
+                  {activas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </Select></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Fecha del adelanto</label><Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Importe total ($)</label><Input type="number" step="0.01" min="0" value={monto} onChange={(e) => setMonto(e.target.value)} required /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Motivo / nota (opcional)</label><Input value={nota} onChange={(e) => setNota(e.target.value)} /></div>
+            </div>
+            {num(monto) > 0
+              ? <Fraccionador total={num(monto)} fechaBase={fecha} ancla={ancla} n={n} setN={setN} filas={filas} setFilas={setFilas} />
+              : <p className="text-xs mt-3" style={lbl}>Escribe el importe para elegir en cuántas veces se cobra y en qué fechas.</p>}
+            {error && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{error}</p>}
+            <div className="mt-4"><Button type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar adelanto'}</Button></div>
+          </form>
+        </Panel>
+      )}
+
+      {grupos.length === 0 ? <Panel className="p-6 text-sm text-center" style={lbl}>Todavía no hay adelantos. Pulsa «+ Nuevo adelanto» para crear el primero.</Panel> : grupos.map((g) => {
         const pend = g.cs.filter((x) => !x.aplicado_en).length
         return (
-          <Panel key={g.origen} className="p-4 mb-3">
+          <Panel key={g.clave} className="p-4 mb-3">
             <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-              <p className="text-sm"><strong>{cuentaDe(g.cs[0].account_id)?.nombre}</strong> · adelanto de <strong className="tabular-nums">{money(g.total)}</strong> {g.o ? <span style={lbl}>el {fmtF(g.o.fecha)}</span> : null}</p>
+              <p className="text-sm"><strong>{cuentaDe(g.cs[0].account_id)?.nombre}</strong> · adelanto de <strong className="tabular-nums">{money(g.total)}</strong> {g.fechaAdelanto ? <span style={lbl}>el {fmtF(g.fechaAdelanto)}</span> : null}{g.nota ? <span style={lbl}> · {g.nota}</span> : null}</p>
               {pend > 0 && <button onClick={() => cancelarPendientes(g)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Cancelar cuotas pendientes</button>}
             </div>
             {g.cs.map((x) => {
               const ap = x.aplicado_en ? pagos.find((p) => p.id === x.aplicado_en) : null
               return (
-                <div key={x.id} className="flex items-center gap-3 py-1.5 text-sm" style={{ borderTop: '1px solid var(--border)' }}>
+                <div key={x.id} className="flex items-center gap-3 py-1.5 text-sm flex-wrap" style={{ borderTop: '1px solid var(--border)' }}>
                   <span style={lbl} className="w-16">Cuota {x.num}/{x.total}</span>
                   <span className="tabular-nums font-medium w-24">−{money(x.monto)}</span>
                   {x.aplicado_en
@@ -747,6 +916,7 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
   const [filtro, setFiltro] = useState('pendientes')
   const [edit, setEdit] = useState(null)
   const [error, setError] = useState('')
+  const [aviso, setAviso] = useState('')
   const lbl = { color: 'var(--text-muted)' }
   const cuentaDe = (id) => cuentas.find((c) => c.id === id)
   const nombres = [...new Set(bonos.map((b) => b.nombre))]
@@ -758,9 +928,23 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
     const filas = activas.filter((c) => num(montos[c.id]) > 0).map((c) => ({ account_id: c.id, nombre: nombre.trim(), monto: num(montos[c.id]), fecha_cobro: fecha, nota: nota.trim() || null }))
     if (!nombre.trim()) { setError('Ponle un nombre al bono.'); return }
     if (!filas.length) { setError('Indica el importe de al menos un chatter.'); return }
-    const { error: err } = await supabase.from('payout_bonuses').insert(filas)
+    const { data: creados, error: err } = await supabase.from('payout_bonuses').insert(filas).select()
     if (err) { setError('No se pudo guardar: ' + err.message); return }
-    setNombre(''); setNota(''); setMontos({}); setComun(''); onCambio()
+    // Si ya hay un pago programado para esa fecha, el bono se suma solo a ese pago
+    const avisos = []
+    let sumados = 0
+    for (const b of creados || []) {
+      const pago = pagos.find((x) => x.account_id === b.account_id && x.fecha === b.fecha_cobro)
+      if (!pago) continue
+      if (pago.estado === 'Pagado') { avisos.push(`${cuentaDe(b.account_id)?.nombre}: el pago del ${fmtF(pago.fecha)} ya estaba pagado, el bono queda pendiente`); continue }
+      const r1 = await supabase.from('payout_bonuses').update({ aplicado_en: pago.id }).eq('id', b.id)
+      const r2_ = await supabase.from('chatter_payouts').update({ bonos: r2(num(pago.bonos) + num(b.monto)) }).eq('id', pago.id)
+      if (r1.error || r2_.error) avisos.push(`${cuentaDe(b.account_id)?.nombre}: no se pudo sumar al pago del ${fmtF(pago.fecha)}`)
+      else { sumados++; pago.bonos = r2(num(pago.bonos) + num(b.monto)) }
+    }
+    setNombre(''); setNota(''); setMontos({}); setComun('')
+    setAviso([sumados ? `✓ ${sumados} ${sumados === 1 ? 'bono sumado' : 'bonos sumados'} automáticamente al pago ya programado de esa fecha.` : '', ...avisos].filter(Boolean).join(' · '))
+    onCambio()
   }
   async function guardarEdicion(e) {
     e.preventDefault()
@@ -803,6 +987,7 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
           </div>
           {error && <p className="text-sm mb-2" style={{ color: 'var(--danger)' }}>{error}</p>}
           <Button type="submit">Crear bono</Button>
+          {aviso && <p className="text-sm mt-3" style={{ color: 'var(--success)' }}>{aviso}</p>}
         </form>
       </Panel>
 
@@ -840,7 +1025,7 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
                   return (
                     <tr key={b.id} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(b.fecha_cobro)}</td>
-                      <td className="px-3 py-2.5">{b.nombre}</td>
+                      <td className="px-3 py-2.5">{b.nombre}{b.created_at && <span className="block text-[11px]" style={lbl}>Añadido el {fmtAlta(b.created_at)}</span>}</td>
                       <td className="px-3 py-2.5">{cuentaDe(b.account_id)?.nombre}</td>
                       <td className="px-3 py-2.5 tabular-nums font-semibold gold-text">{money(b.monto)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
