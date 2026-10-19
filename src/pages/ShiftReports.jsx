@@ -8,11 +8,11 @@ import ModelName from '../components/ModelAvatar'
 import { reducirImagen, leerVentasDeCapturas } from '../lib/leerCapturas'
 
 const TURNOS = [
-  { id: 'madrugada', n: 'Madrugada', h: '2:00 – 10:00 VE' },
-  { id: 'mañana', n: 'Mañana', h: '10:00 – 18:00 VE' },
-  { id: 'tarde', n: 'Tarde', h: '18:00 – 2:00 VE' },
+  { id: 'noche', n: 'Noche', h: '4:00 – 12:00 VE' },
+  { id: 'mañana', n: 'Mañana', h: '12:00 – 20:00 VE' },
+  { id: 'tarde', n: 'Tarde', h: '20:00 – 4:00 VE' },
 ]
-const T_NAME = (id) => TURNOS.find((t) => t.id === id)?.n || id
+const T_NAME = (id) => TURNOS.find((t) => t.id === (id === 'madrugada' ? 'noche' : id))?.n || id
 const TRAFICO = [
   { id: 'bajo', n: 'Bajo', color: 'var(--danger)' },
   { id: 'medio', n: 'Medio', color: 'var(--gold)' },
@@ -21,8 +21,8 @@ const TRAFICO = [
 
 function turnoActualVE() {
   const h = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Caracas', hour: 'numeric', hour12: false }).format(new Date()), 10)
-  if (h >= 2 && h < 10) return 'madrugada'
-  if (h >= 10 && h < 18) return 'mañana'
+  if (h >= 4 && h < 12) return 'noche'
+  if (h >= 12 && h < 20) return 'mañana'
   return 'tarde'
 }
 function fechaHoyISO() {
@@ -233,7 +233,7 @@ function EditarReporte({ rep, det, modelos, onDone, onCancel }) {
     return m
   }, [modelos, det])
   const [fecha, setFecha] = useState(rep.fecha)
-  const [turno, setTurno] = useState(rep.turno)
+  const [turno, setTurno] = useState(rep.turno === 'madrugada' ? 'noche' : rep.turno)
   const [sel, setSel] = useState(det.map((d) => d.model_id))
   const [campos, setCampos] = useState(() => {
     const c = {}

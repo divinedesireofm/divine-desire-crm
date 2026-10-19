@@ -7,7 +7,7 @@ import { Panel, PageHeader } from '../components/ui'
 import Icon from '../components/Icon'
 import ModelName from '../components/ModelAvatar'
 
-const TURNOS = { madrugada: 'Madrugada', 'mañana': 'Mañana', tarde: 'Tarde' }
+const TURNOS = { noche: 'Noche', madrugada: 'Noche', 'mañana': 'Mañana', tarde: 'Tarde' }
 const TRAFICO = { bajo: { n: 'Bajo', c: 'var(--danger)' }, medio: { n: 'Medio', c: 'var(--gold)' }, alto: { n: 'Alto', c: 'var(--success)' } }
 const TIPOS_ESTADO = { entrada: 'trabajando', fin_break: 'trabajando', break: 'en break', salida: 'fuera' }
 const POR_PAGINA = 3

@@ -36,12 +36,12 @@ function puedeGestionar(rolesGestor, rolesObjetivo) {
 }
 
 const TURNOS = [
-  { id: 'madrugada', n: 'Madrugada' },
+  { id: 'noche', n: 'Noche' },
   { id: 'mañana', n: 'Mañana' },
   { id: 'tarde', n: 'Tarde' },
 ]
 function TurnoSelector({ value, onChange }) {
-  const sel = (value || '').split(',').map((x) => x.trim()).filter(Boolean)
+  const sel = (value || '').split(',').map((x) => x.trim()).filter(Boolean).map((x) => (x === 'madrugada' ? 'noche' : x))
   const toggle = (id) => onChange((sel.includes(id) ? sel.filter((x) => x !== id) : sel.concat([id])).join(','))
   return (
     <div className="flex flex-wrap gap-1.5">

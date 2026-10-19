@@ -6,9 +6,9 @@ import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { ModelAvatar } from '../components/ModelAvatar'
 
 const TURNOS = [
-  { id: 'madrugada', n: 'Madrugada', h: '2:00–10:00' },
-  { id: 'mañana', n: 'Mañana', h: '10:00–18:00' },
-  { id: 'tarde', n: 'Tarde', h: '18:00–2:00' },
+  { id: 'noche', n: 'Noche', h: '4:00–12:00' },
+  { id: 'mañana', n: 'Mañana', h: '12:00–20:00' },
+  { id: 'tarde', n: 'Tarde', h: '20:00–4:00' },
 ]
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 
@@ -71,7 +71,7 @@ function HorarioSemana({ esMgr }) {
       supabase.from('shift_groups').select('id, nombre').eq('activo', true).order('nombre'),
       getExtrabajadorIds(),
     ])
-    setRows((r || []).filter((x) => !ex.has(x.chatter_id))); setChatters(u); setGrupos(g || [])
+    setRows((r || []).filter((x) => !ex.has(x.chatter_id)).map((x) => (x.turno === 'madrugada' ? { ...x, turno: 'noche' } : x))); setChatters(u); setGrupos(g || [])
   }
   useEffect(() => { load() }, [lunes])
 

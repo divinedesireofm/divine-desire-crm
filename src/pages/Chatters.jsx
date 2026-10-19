@@ -6,7 +6,7 @@ import { Panel, Button, Table, Td, PageHeader } from '../components/ui'
 import { ModelAvatar } from '../components/ModelAvatar'
 
 const TURNOS = [
-  { id: 'madrugada', n: 'Madrugada' },
+  { id: 'noche', n: 'Noche' },
   { id: 'mañana', n: 'Mañana' },
   { id: 'tarde', n: 'Tarde' },
 ]
@@ -103,7 +103,7 @@ export default function Chatters() {
 
   function startEdit(c) {
     setEditando(c.id)
-    setEditTurnos((c.shift || '').split(',').map((s) => s.trim()).filter(Boolean))
+    setEditTurnos((c.shift || '').split(',').map((s) => s.trim()).filter(Boolean).map((s) => (s === 'madrugada' ? 'noche' : s)))
     setEditModelos(c.models_assigned || [])
     setErrorGuardar('')
   }
@@ -146,7 +146,7 @@ export default function Chatters() {
                     {editando === c.id ? (
                       <TurnoChips selected={editTurnos} onChange={setEditTurnos} />
                     ) : (
-                      (c.shift || '').split(',').filter(Boolean).map((s) => TURNOS.find((t) => t.id === s)?.n || s).join(', ') || '—'
+                      (c.shift || '').split(',').filter(Boolean).map((s) => TURNOS.find((t) => t.id === (s === 'madrugada' ? 'noche' : s))?.n || s).join(', ') || '—'
                     )}
                   </Td>
                   <Td>{c.active ? 'Activo' : 'Inactivo'}</Td>
