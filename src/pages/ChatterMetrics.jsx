@@ -287,7 +287,7 @@ export default function ChatterMetrics() {
         notas: r.notas,
         columnas: r.columnas,
         filas: r.chatters.map((c, i) => ({
-          nombre: c.nombre, chatterId: ids[i], incluir: !!ids[i], otras: Array.isArray(c.otras) ? c.otras : [],
+          nombre: c.nombre, chatterId: ids[i], incluir: !!ids[i], otras: Array.isArray(c.otras) ? c.otras : [], crudas: Array.isArray(c.columnas) ? c.columnas : [],
           v: Object.fromEntries(CAMPOS_INF.map((k) => {
             if (POR_KEY[k].tiempo) { const t = k === 'tiempo_respuesta_seg' ? c.tiempo_respuesta : c.tiempo_respuesta_programadas; return [k, t ? String(t).replace(/\s+/g, '') : ''] }
             return [k, c[k] === null || c[k] === undefined ? '' : String(c[k])]
@@ -447,6 +447,12 @@ export default function ChatterMetrics() {
                   </tbody>
                 </table>
               </div>
+              <details className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                <summary className="cursor-pointer">Ver todo lo que ha leído la IA, columna por columna</summary>
+                <div className="mt-2 space-y-1">
+                  {inf.filas.map((f, i) => <p key={i}><strong style={{ color: 'var(--text)' }}>{f.nombre}</strong>: {f.crudas.length ? f.crudas.map((o) => `${o.columna} = ${o.valor}`).join(' · ') : 'sin detalle'}</p>)}
+                </div>
+              </details>
               {infRepetidos && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>Has asignado a la misma persona en dos filas. Cada fila debe ir a un chatter distinto (o desmarca una).</p>}
               <div className="flex flex-wrap gap-2">
                 <Button onClick={volcarInf} disabled={infBusy || infRepetidos || !inf.filas.some((f) => f.incluir && f.chatterId)}>{infBusy ? 'Volcando…' : 'Volcar en el CRM'}</Button>
