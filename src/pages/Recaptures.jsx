@@ -484,7 +484,24 @@ export default function Recaptures() {
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {esMgr ? 'Aún no hay fans repartidos esta semana.' : 'Todavía no te han asignado fans esta semana.'}
           </p>
-        ) : grupos.map((g) => {
+        ) : (<>
+        {(() => {
+          const total = asign.length
+          const res = asign.filter((a) => a.hecho || a.desaparecido).length
+          const pct = total ? Math.round((100 * res) / total) : 0
+          return (
+            <div className="mb-5 px-4 py-3 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+              <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                <p className="text-sm font-medium">Progreso de todo el equipo esta semana</p>
+                <p className="text-sm tabular-nums"><strong style={{ color: pct === 100 ? 'var(--success)' : 'var(--accent)' }}>{pct}%</strong> <span style={{ color: 'var(--text-muted)' }}>· {res}/{total} fans resueltos</span></p>
+              </div>
+              <div className="h-3 rounded-full overflow-hidden" style={{ background: 'var(--border)' }} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? 'var(--success)' : 'var(--accent)', transition: 'width .3s' }} />
+              </div>
+            </div>
+          )
+        })()}
+        {grupos.map((g) => {
           const hechos = g.items.filter((a) => a.hecho || a.desaparecido).length
           return (
             <div key={g.id} className="mb-5">
@@ -553,6 +570,7 @@ export default function Recaptures() {
             </div>
           )
         })}
+        </>)}
       </Panel>
       )}
 

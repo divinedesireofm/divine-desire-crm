@@ -45,7 +45,6 @@ import ModelRequests from './pages/ModelRequests'
 import Resources from './pages/Resources'
 import Rules from './pages/Rules'
 import ChatterMetrics from './pages/ChatterMetrics'
-import MetricReports from './pages/MetricReports'
 import Requests from './pages/Requests'
 import Recaptures from './pages/Recaptures'
 import IGPlans from './pages/IGPlans'
@@ -137,7 +136,7 @@ function AppRoutes() {
         <Route path="recursos" element={<Resources />} />
         <Route path="normas" element={<Rules />} />
         <Route path="metricas-chatters" element={<ChatterMetrics />} />
-        <Route path="informes-metricas" element={<MetricReports />} />
+        <Route path="informes-metricas" element={<Navigate to="/metricas-chatters?vista=informes" replace />} />
         <Route path="solicitudes" element={<Requests />} />
         <Route path="recaptaciones" element={<Recaptures />} />
         <Route path="planificaciones" element={<IGPlans />} />

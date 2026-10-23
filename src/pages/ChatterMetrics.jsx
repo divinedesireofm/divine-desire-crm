@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -6,6 +7,8 @@ import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader, DeltaBadge } from '../components/ui'
 import InformeIAModal from '../components/InformeIAModal'
 import InfoTip from '../components/InfoTip'
+import TablaScroll from '../components/TablaScroll'
+import MetricReports from './MetricReports'
 import { exportarFichasChatters } from '../lib/excelExport'
 import { reducirImagen } from '../lib/leerCapturas'
 import { leerEstadisticasInflow } from '../lib/leerInflow'
@@ -85,7 +88,8 @@ export default function ChatterMetrics() {
   const canEdit = hasAnyRole(['admin', 'manager'])
   const [chatters, setChatters] = useState([])
   const [stats, setStats] = useState([])
-  const [vista, setVista] = useState('chatter') // 'chatter' | 'equipo'
+  const [params] = useSearchParams()
+  const [vista, setVista] = useState(params.get('vista') === 'informes' ? 'informes' : 'chatter') // 'chatter' | 'equipo' | 'informes'
   const [selectedChatter, setSelectedChatter] = useState('')
   const [semanaEquipo, setSemanaEquipo] = useState('')
   const [loading, setLoading] = useState(true)
@@ -540,7 +544,7 @@ export default function ChatterMetrics() {
 
       <div className="flex flex-wrap gap-3 mb-6 items-center">
         <div className="flex rounded-md overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-          {[['chatter', 'Por chatter'], ['equipo', 'Equipo por semana']].map(([k, t]) => (
+          {[['chatter', 'Por chatter'], ['equipo', 'Equipo por semana'], ...(canEdit ? [['informes', 'Informes de IA']] : [])].map(([k, t]) => (
             <button key={k} onClick={() => setVista(k)} className="px-4 py-2 text-sm" style={{ background: vista === k ? 'var(--accent-soft)' : 'transparent', color: vista === k ? 'var(--accent)' : 'var(--text-muted)' }}>{t}</button>
           ))}
         </div>
@@ -552,13 +556,13 @@ export default function ChatterMetrics() {
               </Select>
             </div>
           )
-        ) : (
+        ) : vista === 'equipo' ? (
           <div className="min-w-[200px]">
             <Select value={semanaEquipo} onChange={(e) => setSemanaEquipo(e.target.value)}>
               {semanasDisponibles.map((s) => <option key={s} value={s}>Semana del {fmtF(s)}</option>)}
             </Select>
           </div>
-        )}
+        ) : null}
         {canEdit && vista === 'chatter' && (
           <>
             <Button variant="ghost" onClick={() => exportar(false)} disabled={exportando || !filas.length}>{exportando ? 'Creando Excel…' : '⬇ Exportar ficha (Excel)'}</Button>
@@ -582,11 +586,13 @@ export default function ChatterMetrics() {
         </Panel>
       )}
 
-      {loading ? (
+      {vista === 'informes' ? (
+        <MetricReports embedded />
+      ) : loading ? (
         <Panel><p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p></Panel>
       ) : vista === 'equipo' ? (
-        <Panel className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <Panel>
+          <TablaScroll><table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-muted)' }}>Chatter</th>
@@ -613,7 +619,7 @@ export default function ChatterMetrics() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></TablaScroll>
         </Panel>
       ) : (
         <>
@@ -659,8 +665,8 @@ export default function ChatterMetrics() {
                 )}
               </Panel>
 
-              <Panel className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <Panel>
+                <TablaScroll><table className="w-full text-sm">
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border)' }}>
                       <th className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>Semana</th>
@@ -685,7 +691,7 @@ export default function ChatterMetrics() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </table></TablaScroll>
               </Panel>
             </>
           )}

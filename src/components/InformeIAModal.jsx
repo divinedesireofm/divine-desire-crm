@@ -243,7 +243,7 @@ export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos
         {informe && (
           <>
             {aviso === 'ok'
-              ? <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>✓ Informe guardado. Lo encontrarás siempre en <Link to="/informes-metricas" className="underline" onClick={onClose}>Informes de métricas</Link>.</p>
+              ? <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>✓ Informe guardado. Lo encontrarás siempre en <Link to="/metricas-chatters?vista=informes" className="underline" onClick={onClose}>Métricas de chatters › Informes de IA</Link>.</p>
               : aviso && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{aviso}</p>}
             <InformeView
               titulo={informe.titulo} subtitulo={`Generado el ${new Date().toLocaleDateString('es-ES')} · ${periodo}`} markdown={informe.contenido}

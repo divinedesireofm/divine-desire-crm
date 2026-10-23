@@ -5,7 +5,7 @@ import InformeView from '../components/InformeView'
 
 const fmt = (d) => new Date(d).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
-export default function MetricReports() {
+export default function MetricReports({ embedded = false }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
@@ -53,7 +53,9 @@ export default function MetricReports() {
 
   return (
     <div>
-      <PageHeader title="Informes de métricas" subtitle="Los análisis con IA que generas desde Métricas de chatters se guardan aquí. Ábrelos y expórtalos a PDF cuando quieras." />
+      {embedded
+        ? <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Los análisis con IA que generas se guardan aquí. Ábrelos y expórtalos a PDF cuando quieras.</p>
+        : <PageHeader title="Informes de métricas" subtitle="Los análisis con IA que generas desde Métricas de chatters se guardan aquí. Ábrelos y expórtalos a PDF cuando quieras." />}
       <div className="mb-4 max-w-[220px]">
         <Select value={filtro} onChange={(e) => setFiltro(e.target.value)}>
           <option value="todos">Todos</option>
