@@ -48,6 +48,7 @@ import ChatterMetrics from './pages/ChatterMetrics'
 import Requests from './pages/Requests'
 import Recaptures from './pages/Recaptures'
 import IGPlans from './pages/IGPlans'
+import IGPlanView from './pages/IGPlanView'
 import Massives from './pages/Massives'
 import SetPassword from './pages/SetPassword'
 
@@ -140,6 +141,7 @@ function AppRoutes() {
         <Route path="solicitudes" element={<Requests />} />
         <Route path="recaptaciones" element={<Recaptures />} />
         <Route path="planificaciones" element={<IGPlans />} />
+        <Route path="planificaciones/:id" element={<IGPlanView />} />
         <Route path="masivos" element={<Massives />} />
       </Route>
     </Routes>

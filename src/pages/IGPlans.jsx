@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
+import { Link } from 'react-router-dom'
 import CopyButton from '../components/CopyButton'
 
 const ORIGENES = [{ id: 'nuevo', n: 'Nuevo' }, { id: 'ganador', n: 'Ganador' }]
@@ -466,6 +467,8 @@ export default function IGPlans() {
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
+                        <Link to={`/planificaciones/${p.id}`} className="text-xs underline mr-3" style={{ color: 'var(--accent)' }}>👁 Ver</Link>
+                        <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/planificaciones/${p.id}`).catch(() => {}); alert('Link copiado.') }}>🔗 Copiar link</button>
                         <button className="text-xs underline mr-3" onClick={() => abrir(p)}>Abrir / editar</button>
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(textoPlan(p, usuarioDe(p.account_id))).catch(() => {}); setMsg(''); alert('Texto copiado.') }}>Copiar texto</button>
                         {p.estado !== 'borrador' && (p.enviado_at
