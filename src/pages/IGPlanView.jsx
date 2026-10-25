@@ -1,64 +1,22 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
-import { Panel, PageHeader } from '../components/ui'
+import { useMemo } from 'react'
+import { Panel } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import { textoPlan, textoDia } from './IGPlans'
 
 const nOrigen = (id) => (id === 'ganador' ? 'Ganador' : 'Nuevo')
 const nTipo = (id) => (id === 'marca_personal' ? 'Marca personal' : 'Sugerente')
-const sinArroba = (u) => String(u || '').replace(/^@/, '')
-const fmtExacta = (ts) => (ts ? new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
 const esUrl = (t) => /^https?:\/\//i.test(String(t || '').trim())
 
-// Vista de solo lectura de una planificación: se abre directamente desde un link, sin entrar a editarla
-export default function IGPlanView() {
-  const { id } = useParams()
-  const [plan, setPlan] = useState(null)
-  const [usuario, setUsuario] = useState('')
-  const [estado, setEstado] = useState('cargando') // cargando | ok | noexiste
-  const linkPlan = `${window.location.origin}/planificaciones/${id}`
-
-  useEffect(() => {
-    let vivo = true
-    ;(async () => {
-      const { data } = await supabase.from('ig_plans').select('*').eq('id', id).maybeSingle()
-      if (!vivo) return
-      if (!data) { setEstado('noexiste'); return }
-      const { data: c } = await supabase.from('instagram_accounts').select('username').eq('id', data.account_id).maybeSingle()
-      if (!vivo) return
-      setPlan(data); setUsuario(c?.username || ''); setEstado('ok')
-    })()
-    return () => { vivo = false }
-  }, [id])
-
-  const texto = useMemo(() => (plan ? textoPlan(plan, usuario || 'cuenta') : ''), [plan, usuario])
+// Contenido de una planificación en solo lectura (se muestra desplegado dentro de la lista)
+export default function PlanContenido({ plan, usuario, linkPlan }) {
+  const texto = useMemo(() => textoPlan(plan, usuario || 'cuenta'), [plan, usuario])
   const lbl = { color: 'var(--text-muted)' }
-
-  if (estado === 'cargando') return <p className="text-sm" style={lbl}>Cargando…</p>
-  if (estado === 'noexiste') return (
-    <div>
-      <Link to="/planificaciones" className="text-sm underline">← Volver a planificaciones</Link>
-      <Panel className="p-6 mt-4 text-sm" style={lbl}>No se encuentra esta planificación (puede que se haya borrado o que no tengas acceso).</Panel>
-    </div>
-  )
-
   return (
     <div>
-      <Link to="/planificaciones" className="text-sm underline">← Volver a planificaciones</Link>
-      <div className="mt-3">
-        <PageHeader
-          title={`Reels @${sinArroba(usuario)} · ${plan.titulo || ''}`}
-          subtitle={`Creada el ${fmtExacta(plan.created_at)}${plan.enviado_at ? ` · ✓ Enviada el ${fmtExacta(plan.enviado_at)}` : ''}${plan.estado === 'borrador' ? ' · Borrador' : ''}`}
-          action={<div className="flex flex-wrap gap-2"><CopyButton text={linkPlan} label="🔗 Copiar link de esta planificación" /><CopyButton text={texto} label="Copiar texto" /></div>}
-        />
+      <div className="flex flex-wrap gap-2 mb-3">
+        <CopyButton text={linkPlan} label="🔗 Copiar link de esta planificación" />
+        <CopyButton text={texto} label="Copiar texto" />
       </div>
-
-      <Panel className="p-3 mb-4 text-sm flex items-center gap-2 flex-wrap">
-        <span style={lbl}>Link:</span>
-        <a href={linkPlan} className="underline break-all" style={{ color: 'var(--accent)' }}>{linkPlan}</a>
-      </Panel>
-
       {plan.reglas?.trim() && (
         <Panel className="p-4 mb-4">
           <p className="text-xs mb-1" style={lbl}>Reglas / avisos</p>

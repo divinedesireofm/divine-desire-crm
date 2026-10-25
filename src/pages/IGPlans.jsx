@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
-import { Link } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
+import PlanContenido from './IGPlanView'
 import CopyButton from '../components/CopyButton'
 
 const ORIGENES = [{ id: 'nuevo', n: 'Nuevo' }, { id: 'ganador', n: 'Ganador' }]
@@ -77,6 +78,10 @@ export default function IGPlans() {
   const [equipo, setEquipo] = useState([])
   const [todosNombres, setTodosNombres] = useState({})
   const [toast, setToast] = useState('')
+  const [params] = useSearchParams()
+  const [abiertos, setAbiertos] = useState(() => new Set(params.get('ver') ? [params.get('ver')] : []))
+  const alternar = (id) => setAbiertos((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const linkDe = (id) => `${window.location.origin}/planificaciones?ver=${id}`
 
   async function cargar(silencioso = false) {
     if (!silencioso) setLoading(true)
@@ -457,7 +462,8 @@ export default function IGPlans() {
                 {(vista === 'planes' ? visibles : borradores).map((p) => {
                   const est = ESTADOS[p.estado] || ESTADOS.guardada
                   return (
-                    <tr key={p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <Fragment key={p.id}>
+                    <tr style={{ borderBottom: abiertos.has(p.id) ? 'none' : '1px solid var(--border)' }}>
                       <td className="px-3 py-2 whitespace-nowrap"><strong>@{sinArroba(usuarioDe(p.account_id))}</strong></td>
                       <td className="px-3 py-2 whitespace-nowrap">{fmtExacta(p.created_at)}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{nombreDe(p.responsable_id || p.created_by)}</td>
@@ -467,8 +473,8 @@ export default function IGPlans() {
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <Link to={`/planificaciones/${p.id}`} className="text-xs underline mr-3" style={{ color: 'var(--accent)' }}>👁 Ver</Link>
-                        <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/planificaciones/${p.id}`).catch(() => {}); alert('Link copiado.') }}>🔗 Copiar link</button>
+                        <button className="text-xs underline mr-3" style={{ color: 'var(--accent)' }} aria-expanded={abiertos.has(p.id)} onClick={() => alternar(p.id)}>{abiertos.has(p.id) ? '▲ Ocultar' : '▼ Ver'}</button>
+                        <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(linkDe(p.id)).catch(() => {}); alert('Link copiado.') }}>🔗 Copiar link</button>
                         <button className="text-xs underline mr-3" onClick={() => abrir(p)}>Abrir / editar</button>
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(textoPlan(p, usuarioDe(p.account_id))).catch(() => {}); setMsg(''); alert('Texto copiado.') }}>Copiar texto</button>
                         {p.estado !== 'borrador' && (p.enviado_at
@@ -478,6 +484,14 @@ export default function IGPlans() {
                         {puedeBorrar && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(p)}>Borrar</button>}
                       </td>
                     </tr>
+                    {abiertos.has(p.id) && (
+                      <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td colSpan={6} className="px-3 pb-4 pt-1">
+                          <PlanContenido plan={p} usuario={usuarioDe(p.account_id)} linkPlan={linkDe(p.id)} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>
