@@ -24,7 +24,7 @@ export default function ManagerReports({ area = 'chatting' }) {
   const cfg = AREAS[area]
   const { profile, hasRole } = useAuth()
   const esAdmin = hasRole('admin')
-  const puedeEscribir = hasRole(cfg.rolManager)
+  const puedeEscribir = esAdmin || hasRole(cfg.rolManager) // el admin también puede crear sus propios informes
   const [semana, setSemana] = useState(lunesDe(hoy()))
   const [informes, setInformes] = useState([])
   const [nombres, setNombres] = useState({})
@@ -92,7 +92,7 @@ export default function ManagerReports({ area = 'chatting' }) {
           )}
           {visibles.length === 0 && (
             <Panel className="p-6 text-sm text-center" style={lbl}>
-              {esAdmin ? 'Todavía no hay informes esta semana.' : puedeEscribir ? 'Aún no has añadido el informe de esta semana. Pulsa «+ Añadir informe de la semana».' : 'No hay informe esta semana.'}
+              {esAdmin ? 'Todavía no hay informes esta semana. Puedes crear el tuyo con «+ Añadir informe de la semana».' : puedeEscribir ? 'Aún no has añadido el informe de esta semana. Pulsa «+ Añadir informe de la semana».' : 'No hay informe esta semana.'}
             </Panel>
           )}
           {visibles.map((r) => (
@@ -140,7 +140,7 @@ function Informe({ informe, editable, mostrarManager, nombreManager, equipo, tod
   return (
     <Panel className="p-5 mb-6">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-        <p className="font-medium">{mostrarManager ? nombreManager : 'Mi informe'} <span className="text-xs font-normal ml-2" style={lbl}>semana del {fmtF(informe.week_start)}</span></p>
+        <p className="font-medium">{mostrarManager && !editable ? nombreManager : 'Mi informe'} <span className="text-xs font-normal ml-2" style={lbl}>semana del {fmtF(informe.week_start)}</span></p>
         <div className="flex items-center gap-2 flex-wrap">
           {editable && <span className="text-xs" style={{ color: estado === 'guardado' && !cambiado ? 'var(--success)' : cambiado ? 'var(--gold)' : 'var(--text-muted)' }}>{estado === 'guardando' ? 'Guardando…' : cambiado ? 'Cambios sin guardar' : estado === 'guardado' ? '✓ Guardado' : ''}</span>}
           <CopyButton text={texto} label="Copiar informe" />
