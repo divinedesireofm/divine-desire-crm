@@ -40,7 +40,7 @@ export default function ManagerReports({ area = 'chatting' }) {
       supabase.from('profiles').select('id, full_name'),
       getProfilesByRoles(cfg.rolesEquipo, { onlyActive: true }),
       esAdmin ? getProfilesByRoles([cfg.rolManager]) : Promise.resolve([]),
-      getProfilesByRoles(['chatter', 'ig_assistant', 'manager', 'ig_manager'], { onlyActive: true }),
+      getProfilesByRoles(cfg.rolesEquipo), // para añadir a mano: solo gente de esta área (p. ej. chatters inactivos)
     ])
     if (error) { setErr(/manager_weekly_reports|area/.test(error.message) ? 'Falta ejecutar la migración 66 en Supabase.' : error.message); setCargando(false); return }
     setErr('')
