@@ -141,7 +141,8 @@ function AppRoutes() {
         <Route path="solicitudes" element={<Requests />} />
         <Route path="recaptaciones" element={<Recaptures />} />
         <Route path="planificaciones" element={<IGPlans />} />
-        <Route path="informes-manager" element={<ManagerReports />} />
+        <Route path="informes-manager" element={<ManagerReports area="chatting" />} />
+        <Route path="informes-manager-ig" element={<ManagerReports area="instagram" />} />
         <Route path="masivos" element={<Massives />} />
       </Route>
     </Routes>
