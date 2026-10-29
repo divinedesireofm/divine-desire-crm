@@ -14,7 +14,7 @@ const Ctx = createContext(null)
 // Cada aviso tiene una clave; al marcarlo como leído se guarda esa clave y desaparece para esa persona.
 export function NotificationsProvider({ children }) {
   const { profile, hasAnyRole } = useAuth()
-  const activo = !!profile && hasAnyRole(['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'])
+  const activo = !!profile && hasAnyRole(['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant', 'modelo'])
   const gestiona = hasAnyRole(['admin', 'manager', 'ig_manager'])
   const esModelo = hasAnyRole(['modelo'])
   const [items, setItems] = useState([])

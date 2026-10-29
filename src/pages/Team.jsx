@@ -5,11 +5,11 @@ import { readFunctionError } from '../lib/functions'
 import { Panel, Button, Input, Select, StatusBadge, PageHeader } from '../components/ui'
 import PermissionsMatrix from '../components/PermissionsMatrix'
 
-const ROLE_LABEL = { admin: 'Admin', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente IG', modelo: 'Modelo' }
-const TODOS_LOS_ROLES = ['manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo']
+const ROLE_LABEL = { admin: 'Admin', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente IG', reddit_manager: 'Manager de Reddit', reddit_assistant: 'Personal de Reddit', modelo: 'Modelo' }
+const TODOS_LOS_ROLES = ['manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant', 'modelo']
 // Orden en que se muestran los grupos: cada persona sale una sola vez, en el grupo de su rol más alto
-const ORDEN_GRUPOS = ['admin', 'manager', 'ig_manager', 'chatter', 'ig_assistant', 'modelo']
-const GRUPO_PLURAL = { admin: 'Administración', manager: 'Managers de Chatting', ig_manager: 'Managers de Instagram', chatter: 'Chatters', ig_assistant: 'Asistentes de Instagram', modelo: 'Modelos' }
+const ORDEN_GRUPOS = ['admin', 'manager', 'ig_manager', 'reddit_manager', 'chatter', 'ig_assistant', 'reddit_assistant', 'modelo']
+const GRUPO_PLURAL = { admin: 'Administración', manager: 'Managers de Chatting', ig_manager: 'Managers de Instagram', chatter: 'Chatters', ig_assistant: 'Asistentes de Instagram', reddit_manager: 'Managers de Reddit', reddit_assistant: 'Personal de Reddit', modelo: 'Modelos' }
 
 // Qué roles puede ASIGNAR cada tipo de manager (marcando varias casillas)
 function rolesAsignables(roles) {
@@ -17,6 +17,7 @@ function rolesAsignables(roles) {
   const s = new Set()
   if (roles.includes('manager')) s.add('chatter')
   if (roles.includes('ig_manager')) s.add('ig_assistant')
+  if (roles.includes('reddit_manager')) s.add('reddit_assistant')
   return Array.from(s)
 }
 // Qué filas de la tabla puede VER cada tipo de manager (si el usuario tiene AL MENOS uno de estos roles, se lista)
@@ -25,6 +26,7 @@ function rolesVisibles(roles) {
   const s = new Set()
   if (roles.includes('manager')) { s.add('manager'); s.add('chatter') }
   if (roles.includes('ig_manager')) { s.add('ig_manager'); s.add('ig_assistant') }
+  if (roles.includes('reddit_manager')) { s.add('reddit_manager'); s.add('reddit_assistant') }
   return Array.from(s)
 }
 // Sobre qué filas puede activar/desactivar y borrar cada tipo de manager
@@ -32,6 +34,7 @@ function puedeGestionar(rolesGestor, rolesObjetivo) {
   if (rolesGestor.includes('admin')) return true
   if (rolesGestor.includes('manager') && rolesObjetivo.includes('chatter')) return true
   if (rolesGestor.includes('ig_manager') && rolesObjetivo.includes('ig_assistant')) return true
+  if (rolesGestor.includes('reddit_manager') && rolesObjetivo.includes('reddit_assistant')) return true
   return false
 }
 

@@ -20,6 +20,8 @@ const ROLE_LABELS = {
   chatter: 'Chatter',
   ig_manager: 'Manager de Instagram',
   ig_assistant: 'Asistente de Instagram',
+  reddit_manager: 'Manager de Reddit',
+  reddit_assistant: 'Personal de Reddit',
   modelo: 'Modelo',
 }
 
@@ -30,6 +32,8 @@ const SECCION_FIJA_POR_ROL = {
   chatter: 'chatting',
   ig_manager: 'instagram',
   ig_assistant: 'instagram',
+  reddit_manager: 'reddit',
+  reddit_assistant: 'reddit',
 }
 
 export default function Layout() {

@@ -5,7 +5,7 @@ export const SECTIONS = [
     id: 'general',
     label: null, // sin cabecera, siempre visible arriba del todo
     items: [
-      { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'], end: true },
+      { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant', 'modelo'], end: true },
       { to: '/asistente', label: 'Asistente IA', icon: 'sparkle', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/tareas', label: 'Tareas pendientes', icon: 'file', roles: ['admin'] },
       { to: '/fechas', label: 'Fechas importantes', icon: 'calendar', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'] },
@@ -73,6 +73,15 @@ export const SECTIONS = [
     ],
   },
   {
+    id: 'reddit',
+    label: 'Reddit',
+    icon: 'target',
+    items: [
+      { to: '/reddit/cuentas', label: 'Cuentas de Reddit', icon: 'users', roles: ['admin', 'reddit_manager', 'reddit_assistant'] },
+      { to: '/reddit/reportes', label: 'Reportes del día', icon: 'file', roles: ['admin', 'reddit_manager', 'reddit_assistant'] },
+    ],
+  },
+  {
     id: 'recursos',
     label: 'Recursos compartidos',
     icon: 'file',
@@ -90,6 +99,8 @@ export const ROLES_EDITABLES = [
   { id: 'chatter', label: 'Chatter' },
   { id: 'ig_manager', label: 'Manager de Instagram' },
   { id: 'ig_assistant', label: 'Asistente IG' },
+  { id: 'reddit_manager', label: 'Manager de Reddit' },
+  { id: 'reddit_assistant', label: 'Personal de Reddit' },
   { id: 'modelo', label: 'Modelo' },
 ]
 
