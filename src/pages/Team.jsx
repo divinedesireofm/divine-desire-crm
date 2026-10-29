@@ -5,11 +5,11 @@ import { readFunctionError } from '../lib/functions'
 import { Panel, Button, Input, Select, StatusBadge, PageHeader } from '../components/ui'
 import PermissionsMatrix from '../components/PermissionsMatrix'
 
-const ROLE_LABEL = { admin: 'Admin', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente IG', reddit_manager: 'Manager de Reddit', reddit_assistant: 'Personal de Reddit', modelo: 'Modelo' }
+const ROLE_LABEL = { admin: 'Admin', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente IG', reddit_manager: 'Manager de Reddit', reddit_assistant: 'Asistente de Reddit', modelo: 'Modelo' }
 const TODOS_LOS_ROLES = ['manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant', 'modelo']
 // Orden en que se muestran los grupos: cada persona sale una sola vez, en el grupo de su rol más alto
 const ORDEN_GRUPOS = ['admin', 'manager', 'ig_manager', 'reddit_manager', 'chatter', 'ig_assistant', 'reddit_assistant', 'modelo']
-const GRUPO_PLURAL = { admin: 'Administración', manager: 'Managers de Chatting', ig_manager: 'Managers de Instagram', chatter: 'Chatters', ig_assistant: 'Asistentes de Instagram', reddit_manager: 'Managers de Reddit', reddit_assistant: 'Personal de Reddit', modelo: 'Modelos' }
+const GRUPO_PLURAL = { admin: 'Administración', manager: 'Managers de Chatting', ig_manager: 'Managers de Instagram', chatter: 'Chatters', ig_assistant: 'Asistentes de Instagram', reddit_manager: 'Managers de Reddit', reddit_assistant: 'Asistentes de Reddit', modelo: 'Modelos' }
 
 // Qué roles puede ASIGNAR cada tipo de manager (marcando varias casillas)
 function rolesAsignables(roles) {

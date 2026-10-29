@@ -21,7 +21,7 @@ const ROLE_LABELS = {
   ig_manager: 'Manager de Instagram',
   ig_assistant: 'Asistente de Instagram',
   reddit_manager: 'Manager de Reddit',
-  reddit_assistant: 'Personal de Reddit',
+  reddit_assistant: 'Asistente de Reddit',
   modelo: 'Modelo',
 }
 

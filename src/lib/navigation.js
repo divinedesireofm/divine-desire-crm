@@ -100,7 +100,7 @@ export const ROLES_EDITABLES = [
   { id: 'ig_manager', label: 'Manager de Instagram' },
   { id: 'ig_assistant', label: 'Asistente IG' },
   { id: 'reddit_manager', label: 'Manager de Reddit' },
-  { id: 'reddit_assistant', label: 'Personal de Reddit' },
+  { id: 'reddit_assistant', label: 'Asistente de Reddit' },
   { id: 'modelo', label: 'Modelo' },
 ]
 

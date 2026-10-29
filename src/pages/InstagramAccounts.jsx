@@ -5,8 +5,12 @@ import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
 import ModelName from '../components/ModelAvatar'
+import CeldaCopia from '../components/CeldaCopia'
 import ZeroAccounts from './ZeroAccounts'
 import IGProfileMetrics from './IGProfileMetrics'
+
+// [cabecera, ancho en px]: todas las filas miden lo mismo; lo que no cabe se corta con «ver más»
+const COLS = [['IG original', 200], ['Correo', 250], ['Cuenta actual', 200], ['Seguidores', 130], ['Modelo', 180], ['Público', 180], ['Estado', 180], ['Responsable', 180], ['2FA', 140], ['Asignación', 130], ['Días', 90], ['Observaciones', 260], ['Restricciones', 260], ['', 150]]
 
 const STATUS_OPTIONS = ['calentando', 'activa', 'en_revision', 'suspendida', 'baneada']
 
@@ -280,37 +284,38 @@ export default function InstagramAccounts() {
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="text-sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: COLS.reduce((t, c) => t + c[1], 0) }}>
+              <colgroup>{COLS.map(([n, w]) => <col key={n} style={{ width: w }} />)}</colgroup>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['IG original', 'Correo', 'Cuenta actual', 'Seguidores', 'Modelo', 'Público', 'Estado', 'Responsable', '2FA', 'Asignación', 'Días', 'Observaciones', 'Restricciones', ''].map((c) => (
-                    <th key={c} className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>
+                  {COLS.map(([c]) => (
+                    <th key={c} className="text-left px-3 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {accounts.length === 0 ? (
-                  <tr><td colSpan={14} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay cuentas.</td></tr>
+                  <tr><td colSpan={COLS.length} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay cuentas.</td></tr>
                 ) : accounts.map((a) => (
-                  <tr key={a.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <Td>{a.original_username || '—'}</Td>
-                    <Td style={{ color: 'var(--text-muted)' }}>{a.email || '—'}</Td>
-                    <Td>
-                      {a.profile_link ? (
-                        <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a>
-                      ) : `@${a.username}`}
-                    </Td>
-                    <Td>{seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : '—'}</Td>
-                    <Td><ModelName name={a.models?.stage_name} /></Td>
-                    <Td>{(a.target_audience || []).join(', ') || '—'}</Td>
-                    <Td><StatusBadge status={a.status} /></Td>
-                    <Td>{a.profiles?.full_name || '—'}</Td>
-                    <Td style={{ color: 'var(--text-muted)' }}>{a.two_fa_code || '—'}</Td>
-                    <Td>{a.assigned_at || '—'}</Td>
-                    <Td>{diasTranscurridos(a.assigned_at)}</Td>
-                    <Td style={{ color: 'var(--text-muted)' }}>{a.observations || '—'}</Td>
-                    <Td style={{ color: 'var(--text-muted)' }}>{a.restrictions || '—'}</Td>
-                    <Td>
+                  <tr key={a.id} style={{ borderBottom: '1px solid var(--border)', height: 56 }}>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="IG original" texto={a.original_username} /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Correo" texto={a.email} muted /></td>
+                    <td className="px-3 align-middle">
+                      <CeldaCopia titulo="Cuenta actual" texto={`@${a.username}`}>
+                        {a.profile_link ? <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a> : `@${a.username}`}
+                      </CeldaCopia>
+                    </td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Modelo" texto={a.models?.stage_name}><ModelName name={a.models?.stage_name} /></CeldaCopia></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Público" texto={(a.target_audience || []).join(', ')} /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Estado" texto={String(a.status || '').replace(/_/g, ' ')}><StatusBadge status={a.status} /></CeldaCopia></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Responsable" texto={a.profiles?.full_name} /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="2FA" texto={a.two_fa_code} muted /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Asignación" texto={a.assigned_at} /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Días" texto={a.assigned_at ? String(diasTranscurridos(a.assigned_at)) : ''} /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Observaciones" texto={a.observations} muted /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Restricciones" texto={a.restrictions} muted /></td>
+                    <td className="px-3 align-middle">
                       <div className="flex gap-3 whitespace-nowrap">
                         {canEdit && (
                           <button onClick={() => startEdit(a)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
@@ -323,7 +328,7 @@ export default function InstagramAccounts() {
                           </button>
                         )}
                       </div>
-                    </Td>
+                    </td>
                   </tr>
                 ))}
               </tbody>

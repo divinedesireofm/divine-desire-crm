@@ -9,7 +9,7 @@ const ROLES_REDDIT = ['reddit_manager', 'reddit_assistant']
 export default function Home() {
   const { roles, profile } = useAuth()
   const soloModelo = roles.length > 0 && roles.every((r) => r === 'modelo')
-  // El personal de Reddit solo trabaja en su departamento: su inicio son sus dos apartados
+  // Los asistentes de Reddit solo trabaja en su departamento: su inicio son sus dos apartados
   const soloReddit = roles.length > 0 && roles.every((r) => ROLES_REDDIT.includes(r))
   if (soloReddit) {
     return (

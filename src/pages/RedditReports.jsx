@@ -26,6 +26,7 @@ export default function RedditReports() {
   const [reportes, setReportes] = useState([])   // del día elegido
   const [form, setForm] = useState({ ...VACIO })
   const [guardando, setGuardando] = useState(false)
+  const [abierto, setAbierto] = useState(false) // el formulario solo aparece al pulsar «Hacer informe»
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
 
@@ -43,7 +44,7 @@ export default function RedditReports() {
     setReportes(data || [])
   }
   useEffect(() => { cargarBase() }, [])
-  useEffect(() => { cargarDia() }, [fecha])
+  useEffect(() => { cargarDia(); setAbierto(false); setForm({ ...VACIO }); setErr(''); setMsg('') }, [fecha]) // eslint-disable-line
 
   const cuenta = (id) => cuentas.find((c) => c.id === id)
   const nombre = (id) => equipo.find((x) => x.id === id)?.full_name || '—'
@@ -78,7 +79,7 @@ export default function RedditReports() {
     setGuardando(false)
     if (error) { setErr(/guardar_reporte/.test(error.message) && /function/i.test(error.message) ? 'Falta ejecutar la migración 68 en Supabase.' : error.message); return }
     setMsg(`✓ Reporte del ${fmtF(fecha)} guardado y cuenta u/${cuenta(form.account_id)?.username || ''} actualizada.`)
-    setForm({ ...VACIO }); cargarDia(); cargarBase()
+    setForm({ ...VACIO }); setAbierto(false); cargarDia(); cargarBase()
   }
   async function borrar(r) {
     if (!window.confirm('¿Borrar este reporte?')) return
@@ -92,12 +93,12 @@ export default function RedditReports() {
 
   return (
     <div>
-      <PageHeader title="Reportes del día" subtitle="Elige el día (también puedes rellenar uno pasado), la cuenta con la que has operado y apunta su estado. La información de la cuenta se actualiza sola en «Cuentas de Reddit»." />
+      <PageHeader title="Reportes del día" subtitle="Elige el día en el calendario para ver sus reportes. Con «Hacer informe» apuntas el estado de la cuenta con la que has operado (también de días pasados); la cuenta se actualiza sola en «Cuentas de Reddit»." />
       {err && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{err}</p>}
       {msg && <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>{msg}</p>}
 
       <Panel className="p-5 mb-6">
-        <div className="flex items-end gap-3 flex-wrap mb-4">
+        <div className="flex items-end gap-3 flex-wrap">
           <div>
             <label className="text-xs mb-1 block" style={lbl}>Día del reporte</label>
             <Input type="date" value={fecha} max={hoy()} onChange={(e) => e.target.value && setFecha(e.target.value > hoy() ? hoy() : e.target.value)} style={{ minWidth: 170 }} />
@@ -106,7 +107,15 @@ export default function RedditReports() {
           <Button variant="ghost" onClick={() => setFecha(ayer())} disabled={fecha === ayer()}>Ayer</Button>
           {fecha !== hoy() && <span className="text-xs pb-2" style={{ color: 'var(--gold)' }}>Estás rellenando un día pasado.</span>}
         </div>
+      </Panel>
 
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+        <p className="text-sm font-medium">{gestiona ? `Reportes del ${fmtF(fecha)} (todo el equipo)` : `Mis reportes del ${fmtF(fecha)}`}</p>
+        {!abierto && <Button onClick={() => { setAbierto(true); setMsg('') }}>+ Hacer informe del {fmtF(fecha)}</Button>}
+      </div>
+      {abierto && (
+      <Panel className="p-5 mb-6">
+        <p className="text-sm font-medium mb-3">{editando ? 'Editar informe' : 'Nuevo informe'} del {fmtF(fecha)}</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <div className="sm:col-span-2">
             <label className="text-xs mb-1 block" style={lbl}>Cuenta con la que operas <Req /></label>
@@ -138,11 +147,12 @@ export default function RedditReports() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Button onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : editando ? 'Actualizar reporte' : 'Guardar reporte'}</Button>
+          <Button variant="ghost" onClick={() => { setAbierto(false); setForm({ ...VACIO }); setErr('') }}>Cancelar</Button>
           <span className="text-xs" style={lbl}><Req /> Obligatorio · solo los baneos son opcionales</span>
         </div>
       </Panel>
+      )}
 
-      <p className="text-sm font-medium mb-2">{gestiona ? `Reportes del ${fmtF(fecha)} (todo el equipo)` : `Mis reportes del ${fmtF(fecha)}`}</p>
       {(gestiona ? reportes : mios).length === 0 ? (
         <Panel className="p-6 text-sm text-center" style={lbl}>No hay reportes este día.</Panel>
       ) : (
@@ -152,7 +162,7 @@ export default function RedditReports() {
               <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
                 <p className="text-sm"><strong>u/{cuenta(r.account_id)?.username || '—'}</strong>{gestiona && <span className="ml-2 text-xs" style={lbl}>· {nombre(r.worker_id)}</span>}</p>
                 <div className="flex gap-3 text-xs">
-                  {r.worker_id === profile?.id && <button className="underline" onClick={() => { elegirCuenta(r.account_id); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>Editar</button>}
+                  {r.worker_id === profile?.id && <button className="underline" onClick={() => { setAbierto(true); elegirCuenta(r.account_id); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>Editar</button>}
                   {gestiona && <button className="underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(r)}>Borrar</button>}
                 </div>
               </div>
