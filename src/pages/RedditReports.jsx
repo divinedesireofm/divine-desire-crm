@@ -12,6 +12,7 @@ const ayer = () => { const d = new Date(); d.setDate(d.getDate() - 1); return is
 const aNum = (v) => { if (v === '' || v == null) return null; const n = Number(String(v).replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) ? Math.round(n) : null }
 const fmtN = (n) => (n == null ? '—' : Number(n).toLocaleString('es-ES'))
 const VACIO = { account_id: '', comment_karma: '', post_karma: '', creada: '', baneos: '', observaciones: '' }
+const Req = () => <span title="Obligatorio" style={{ color: 'var(--danger)' }}>*</span>
 function Area(props) {
   return <textarea {...props} className="w-full px-3 py-2 rounded-md text-sm outline-none focus:ring-1" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', minHeight: 80, ...props.style }} />
 }
@@ -59,11 +60,16 @@ export default function RedditReports() {
   useEffect(() => { if (form.account_id) elegirCuenta(form.account_id) }, [reportes]) // eslint-disable-line
 
   async function guardar() {
-    if (!form.account_id) { setErr('Elige la cuenta con la que operas.'); return }
-    if (form.comment_karma === '' && form.post_karma === '') { setErr('Apunta al menos el comment karma o el post karma.'); return }
     const cta = cuenta(form.account_id)
     const creada = cta?.fecha_creacion || form.creada
-    if (!creada) { setErr('Indica la fecha de creación de la cuenta (solo se pide esta primera vez).'); return }
+    // Todo es obligatorio salvo los baneos (si no ha habido ninguno, no hay nada que poner)
+    const faltan = []
+    if (!form.account_id) faltan.push('la cuenta')
+    if (aNum(form.comment_karma) == null) faltan.push('el comment karma')
+    if (aNum(form.post_karma) == null) faltan.push('el post karma')
+    if (form.account_id && !creada) faltan.push('la fecha de creación de la cuenta')
+    if (!form.observaciones.trim()) faltan.push('las observaciones generales del día')
+    if (faltan.length) { setErr('Antes de enviar el reporte falta rellenar: ' + faltan.join(', ') + '.'); return }
     setErr(''); setMsg(''); setGuardando(true)
     const { error } = await supabase.rpc('reddit_guardar_reporte', {
       p_fecha: fecha, p_account: form.account_id, p_comment: aNum(form.comment_karma), p_post: aNum(form.post_karma),
@@ -103,7 +109,7 @@ export default function RedditReports() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <div className="sm:col-span-2">
-            <label className="text-xs mb-1 block" style={lbl}>Cuenta con la que operas</label>
+            <label className="text-xs mb-1 block" style={lbl}>Cuenta con la que operas <Req /></label>
             <Select value={form.account_id} onChange={(e) => elegirCuenta(e.target.value)}>
               <option value="">— Elige la cuenta —</option>
               {elegibles.map((c) => <option key={c.id} value={c.id}>u/{c.username}{c.activa ? '' : ' (inactiva)'}</option>)}
@@ -112,11 +118,11 @@ export default function RedditReports() {
             {sel && <p className="text-xs mt-1" style={lbl}>Datos actuales de la cuenta: comment karma {fmtN(sel.comment_karma)} · post karma {fmtN(sel.post_karma)} · antigüedad {(sel.fecha_creacion ? antiguedadDe(sel.fecha_creacion) : sel.antiguedad) || '—'}{sel.ultimo_reporte_fecha ? ` · último reporte ${fmtF(sel.ultimo_reporte_fecha)}` : ''}</p>}
             {editando && <p className="text-xs mt-1" style={{ color: 'var(--gold)' }}>Ya reportaste esta cuenta este día: al guardar se actualiza ese reporte.</p>}
           </div>
-          <div><label className="text-xs mb-1 block" style={lbl}>Comment karma</label><Input inputMode="numeric" value={form.comment_karma} onChange={(e) => set('comment_karma', e.target.value)} placeholder="Ej.: 1250" /></div>
-          <div><label className="text-xs mb-1 block" style={lbl}>Post karma</label><Input inputMode="numeric" value={form.post_karma} onChange={(e) => set('post_karma', e.target.value)} placeholder="Ej.: 430" /></div>
+          <div><label className="text-xs mb-1 block" style={lbl}>Comment karma <Req /></label><Input inputMode="numeric" value={form.comment_karma} onChange={(e) => set('comment_karma', e.target.value)} placeholder="Ej.: 1250" /></div>
+          <div><label className="text-xs mb-1 block" style={lbl}>Post karma <Req /></label><Input inputMode="numeric" value={form.post_karma} onChange={(e) => set('post_karma', e.target.value)} placeholder="Ej.: 430" /></div>
           {sel && (
             <div className="sm:col-span-2">
-              <label className="text-xs mb-1 block" style={lbl}>Antigüedad de la cuenta</label>
+              <label className="text-xs mb-1 block" style={lbl}>Antigüedad de la cuenta <Req /></label>
               {sel.fecha_creacion ? (
                 <p className="text-sm px-3 py-2 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>{antiguedadDe(sel.fecha_creacion, fecha)} <span className="text-xs" style={lbl}>· cuenta creada el {fmtF(sel.fecha_creacion)} (se calcula sola)</span></p>
               ) : (
@@ -127,10 +133,13 @@ export default function RedditReports() {
               )}
             </div>
           )}
-          <div className="sm:col-span-2"><label className="text-xs mb-1 block" style={lbl}>Baneos o suspensiones en la cuenta (déjalo vacío si no ha habido)</label><Area value={form.baneos} onChange={(e) => set('baneos', e.target.value)} placeholder="Qué ha pasado, en qué subreddit, si se ha apelado…" /></div>
-          <div className="sm:col-span-2"><label className="text-xs mb-1 block" style={lbl}>Observaciones generales del día</label><Area value={form.observaciones} style={{ minHeight: 120 }} onChange={(e) => set('observaciones', e.target.value)} placeholder="Qué has hecho, qué funciona, problemas, ideas…" /></div>
+          <div className="sm:col-span-2"><label className="text-xs mb-1 block" style={lbl}>Baneos o suspensiones en la cuenta <span style={{ color: 'var(--text-muted)' }}>(opcional: déjalo vacío si no ha habido ninguno)</span></label><Area value={form.baneos} onChange={(e) => set('baneos', e.target.value)} placeholder="Qué ha pasado, en qué subreddit, si se ha apelado…" /></div>
+          <div className="sm:col-span-2"><label className="text-xs mb-1 block" style={lbl}>Observaciones generales del día <Req /></label><Area value={form.observaciones} style={{ minHeight: 120 }} onChange={(e) => set('observaciones', e.target.value)} placeholder="Qué has hecho, qué funciona, problemas, ideas…" /></div>
         </div>
-        <Button onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : editando ? 'Actualizar reporte' : 'Guardar reporte'}</Button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <Button onClick={guardar} disabled={guardando}>{guardando ? 'Guardando…' : editando ? 'Actualizar reporte' : 'Guardar reporte'}</Button>
+          <span className="text-xs" style={lbl}><Req /> Obligatorio · solo los baneos son opcionales</span>
+        </div>
       </Panel>
 
       <p className="text-sm font-medium mb-2">{gestiona ? `Reportes del ${fmtF(fecha)} (todo el equipo)` : `Mis reportes del ${fmtF(fecha)}`}</p>
