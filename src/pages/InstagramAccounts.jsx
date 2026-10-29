@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
-import ModelName from '../components/ModelAvatar'
 import CeldaCopia from '../components/CeldaCopia'
 import ScrollSuperior from '../components/ScrollSuperior'
 import ZeroAccounts from './ZeroAccounts'
@@ -18,10 +17,18 @@ const COLS = [
   { k: 'asignacion', n: 'Asignación', w: 130 }, { k: 'dias', n: 'Días', w: 90 }, { k: 'obs', n: 'Observaciones', w: 260 },
   { k: 'restr', n: 'Restricciones', w: 260 }, { k: 'acc', n: '', w: 150 },
 ]
+// Foto de perfil del propio Instagram (la última leída con ScrapeCreators); si no hay o no carga, la inicial de la cuenta
+function FotoIG({ url, nombre, size = 36 }) {
+  const [fallo, setFallo] = useState(false)
+  const base = { width: size, height: size, minWidth: size, borderRadius: '50%', flexShrink: 0 }
+  if (url && !fallo) return <img src={url} alt={nombre} loading="lazy" referrerPolicy="no-referrer" onError={() => setFallo(true)} style={{ ...base, objectFit: 'cover', border: '1px solid var(--border)' }} />
+  return <span aria-hidden="true" style={{ ...base, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, fontSize: 14 }}>{(nombre || '?').charAt(0).toUpperCase()}</span>
+}
+
 const ORDENABLES = COLS.filter((c) => c.k !== 'acc')
 const vacio = (v) => v === null || v === undefined || v === ''
 
-const STATUS_OPTIONS = ['calentando', 'activa', 'en_revision', 'suspendida', 'baneada']
+const STATUS_OPTIONS = ['calentando', 'activa', 'en_pausa', 'en_revision', 'suspendida', 'baneada']
 
 const EMPTY_FORM = {
   original_username: '',
@@ -60,6 +67,7 @@ export default function InstagramAccounts() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
   const [seguidores, setSeguidores] = useState({}) // account_id -> última lectura de seguidores
+  const [fotos, setFotos] = useState({}) // account_id -> foto de perfil de Instagram
   const [ordenK, setOrdenK] = useState('modelo')   // por defecto: por modelo
   const [ordenDir, setOrdenDir] = useState('asc')
   const [fModelo, setFModelo] = useState('todos')
@@ -121,10 +129,10 @@ export default function InstagramAccounts() {
       getProfilesByRoles(['ig_assistant']),
     ])
     setAccounts(acc || [])
-    supabase.from('ig_profile_stats').select('account_id, followers, captured_at').order('captured_at', { ascending: false }).limit(2000).then(({ data: st }) => {
-      const m = {}
-      ;(st || []).forEach((r) => { if (!(r.account_id in m)) m[r.account_id] = r.followers })
-      setSeguidores(m)
+    supabase.from('ig_profile_stats').select('account_id, followers, profile_pic_url, captured_at').order('captured_at', { ascending: false }).limit(2000).then(({ data: st }) => {
+      const m = {}, ft = {}
+      ;(st || []).forEach((r) => { if (!(r.account_id in m)) m[r.account_id] = r.followers; if (r.profile_pic_url && !(r.account_id in ft)) ft[r.account_id] = r.profile_pic_url })
+      setSeguidores(m); setFotos(ft)
     })
     setModels(mods || [])
     setAssistants(profs)
@@ -415,10 +423,13 @@ export default function InstagramAccounts() {
                   <tr key={a.id} style={{ borderBottom: '1px solid var(--border)', height: 56 }}>
                     <td className="px-3 align-middle" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)' }}>
                       <CeldaCopia titulo="Cuenta actual" texto={`@${a.username}`}>
-                        {a.profile_link ? <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a> : `@${a.username}`}
+                        <span className="inline-flex items-center gap-2 align-middle">
+                          <FotoIG url={fotos[a.id]} nombre={a.username} />
+                          {a.profile_link ? <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a> : `@${a.username}`}
+                        </span>
                       </CeldaCopia>
                     </td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Modelo" texto={a.models?.stage_name}><ModelName name={a.models?.stage_name} /></CeldaCopia></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Modelo" texto={a.models?.stage_name} /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Estado" texto={String(a.status || '').replace(/_/g, ' ')}><StatusBadge status={a.status} /></CeldaCopia></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Responsable" texto={a.profiles?.full_name} /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>

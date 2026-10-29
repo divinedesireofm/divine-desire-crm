@@ -31,6 +31,7 @@ const STATUS_COLORS = {
   activa: 'var(--success)',
   firmado: 'var(--success)',
   pausada: 'var(--gold)',
+  en_pausa: 'var(--gold)',
   en_negociacion: 'var(--gold)',
   en_preparacion: 'var(--accent)',
   negociando: 'var(--gold)',
