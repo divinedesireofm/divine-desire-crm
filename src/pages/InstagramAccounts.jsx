@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -6,11 +6,20 @@ import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
 import ModelName from '../components/ModelAvatar'
 import CeldaCopia from '../components/CeldaCopia'
+import ScrollSuperior from '../components/ScrollSuperior'
 import ZeroAccounts from './ZeroAccounts'
 import IGProfileMetrics from './IGProfileMetrics'
 
-// [cabecera, ancho en px]: todas las filas miden lo mismo; lo que no cabe se corta con «ver más»
-const COLS = [['IG original', 200], ['Correo', 250], ['Cuenta actual', 200], ['Seguidores', 130], ['Modelo', 180], ['Público', 180], ['Estado', 180], ['Responsable', 180], ['2FA', 140], ['Asignación', 130], ['Días', 90], ['Observaciones', 260], ['Restricciones', 260], ['', 150]]
+// Columnas: k = clave de orden, n = cabecera, w = ancho en px. Todas las filas miden lo mismo; lo que no cabe se corta con «ver más».
+const COLS = [
+  { k: 'cuenta', n: 'Cuenta actual', w: 200 }, { k: 'modelo', n: 'Modelo', w: 180 }, { k: 'estado', n: 'Estado', w: 180 },
+  { k: 'responsable', n: 'Responsable', w: 180 }, { k: 'seguidores', n: 'Seguidores', w: 130 }, { k: 'original', n: 'IG original', w: 200 },
+  { k: 'correo', n: 'Correo', w: 250 }, { k: 'dosfa', n: '2FA', w: 140 }, { k: 'publico', n: 'Público', w: 180 },
+  { k: 'asignacion', n: 'Asignación', w: 130 }, { k: 'dias', n: 'Días', w: 90 }, { k: 'obs', n: 'Observaciones', w: 260 },
+  { k: 'restr', n: 'Restricciones', w: 260 }, { k: 'acc', n: '', w: 150 },
+]
+const ORDENABLES = COLS.filter((c) => c.k !== 'acc')
+const vacio = (v) => v === null || v === undefined || v === ''
 
 const STATUS_OPTIONS = ['calentando', 'activa', 'en_revision', 'suspendida', 'baneada']
 
@@ -51,6 +60,58 @@ export default function InstagramAccounts() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
   const [seguidores, setSeguidores] = useState({}) // account_id -> última lectura de seguidores
+  const [ordenK, setOrdenK] = useState('modelo')   // por defecto: por modelo
+  const [ordenDir, setOrdenDir] = useState('asc')
+  const [fModelo, setFModelo] = useState('todos')
+  const [fEstado, setFEstado] = useState('todos')
+  const [fResp, setFResp] = useState('todos')
+  const [busca, setBusca] = useState('')
+
+  // Valor de cada columna para ordenar
+  function valorDe(a, k) {
+    switch (k) {
+      case 'cuenta': return (a.username || '').toLowerCase()
+      case 'modelo': return a.models?.stage_name ? a.models.stage_name.toLowerCase() : null
+      case 'estado': return STATUS_OPTIONS.indexOf(a.status)
+      case 'responsable': return a.profiles?.full_name ? a.profiles.full_name.toLowerCase() : null
+      case 'seguidores': return seguidores[a.id] != null ? Number(seguidores[a.id]) : null
+      case 'original': return a.original_username ? a.original_username.toLowerCase() : null
+      case 'correo': return a.email ? a.email.toLowerCase() : null
+      case 'dosfa': return a.two_fa_code || null
+      case 'publico': return (a.target_audience || []).join(', ').toLowerCase() || null
+      case 'asignacion': return a.assigned_at || null
+      case 'dias': return a.assigned_at ? Number(diasTranscurridos(a.assigned_at)) : null
+      case 'obs': return a.observations ? a.observations.toLowerCase() : null
+      case 'restr': return a.restrictions ? a.restrictions.toLowerCase() : null
+      default: return null
+    }
+  }
+  const cmp = (x, y) => (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true }))
+
+  const visibles = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    const lista = accounts.filter((a) => {
+      if (fModelo !== 'todos' && (fModelo === 'sin' ? a.model_id : a.model_id !== fModelo)) return false
+      if (fEstado !== 'todos' && a.status !== fEstado) return false
+      if (fResp !== 'todos' && (fResp === 'sin' ? a.assigned_to : a.assigned_to !== fResp)) return false
+      if (q && ![a.username, a.original_username, a.email, a.models?.stage_name, a.profiles?.full_name, a.observations, a.restrictions].some((v) => String(v || '').toLowerCase().includes(q))) return false
+      return true
+    })
+    const dir = ordenDir === 'asc' ? 1 : -1
+    return lista.sort((p, q2) => {
+      const vp = valorDe(p, ordenK), vq = valorDe(q2, ordenK)
+      // Lo que no tiene valor (sin modelo, sin responsable…) va siempre al final, ordenes como ordenes
+      if (vacio(vp) !== vacio(vq)) return vacio(vp) ? 1 : -1
+      if (!vacio(vp)) { const c = cmp(vp, vq); if (c) return c * dir }
+      // Desempate: modelo y después nombre de cuenta
+      const mp = valorDe(p, 'modelo'), mq = valorDe(q2, 'modelo')
+      if (vacio(mp) !== vacio(mq)) return vacio(mp) ? 1 : -1
+      if (!vacio(mp) && mp !== mq) return cmp(mp, mq)
+      return cmp(valorDe(p, 'cuenta'), valorDe(q2, 'cuenta'))
+    })
+  }, [accounts, seguidores, ordenK, ordenDir, fModelo, fEstado, fResp, busca]) // eslint-disable-line
+  const hayFiltros = fModelo !== 'todos' || fEstado !== 'todos' || fResp !== 'todos' || busca.trim() !== ''
+  function ordenarPor(k) { if (k === ordenK) setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc')); else { setOrdenK(k); setOrdenDir('asc') } }
 
   async function load() {
     setLoading(true)
@@ -279,38 +340,92 @@ export default function InstagramAccounts() {
         </Panel>
       )}
 
+      {/* Orden y filtros */}
+      <Panel className="p-4 mb-4">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+          <div className="col-span-2 lg:col-span-1">
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Ordenar por</label>
+            <div className="flex gap-2">
+              <Select value={ordenK} onChange={(e) => { setOrdenK(e.target.value); setOrdenDir('asc') }}>
+                {ORDENABLES.map((c) => <option key={c.k} value={c.k}>{c.n}</option>)}
+              </Select>
+              <button type="button" onClick={() => setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc'))} title={ordenDir === 'asc' ? 'Ascendente (A→Z, menor a mayor)' : 'Descendente (Z→A, mayor a menor)'}
+                className="px-3 rounded-md text-sm whitespace-nowrap" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>{ordenDir === 'asc' ? '▲ A→Z' : '▼ Z→A'}</button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Modelo</label>
+            <Select value={fModelo} onChange={(e) => setFModelo(e.target.value)}>
+              <option value="todos">Todas</option><option value="sin">Sin modelo</option>
+              {models.slice().sort((x, y) => String(x.stage_name).localeCompare(String(y.stage_name), 'es')).map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Estado</label>
+            <Select value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
+              <option value="todos">Todos</option>
+              {STATUS_OPTIONS.map((st) => <option key={st} value={st}>{st.replace(/_/g, ' ')}</option>)}
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Responsable</label>
+            <Select value={fResp} onChange={(e) => setFResp(e.target.value)}>
+              <option value="todos">Todos</option><option value="sin">Sin asignar</option>
+              {assistants.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+            </Select>
+          </div>
+          <div className="col-span-2 lg:col-span-1">
+            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Buscar</label>
+            <Input placeholder="Cuenta, correo, texto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex items-center gap-3 mt-3 text-xs flex-wrap" style={{ color: 'var(--text-muted)' }}>
+          <span>{visibles.length} de {accounts.length} cuentas · orden: {ORDENABLES.find((c) => c.k === ordenK)?.n} ({ordenDir === 'asc' ? 'ascendente' : 'descendente'})</span>
+          {(hayFiltros || ordenK !== 'modelo' || ordenDir !== 'asc') && (
+            <button type="button" className="underline" onClick={() => { setFModelo('todos'); setFEstado('todos'); setFResp('todos'); setBusca(''); setOrdenK('modelo'); setOrdenDir('asc') }}>Restablecer (orden por modelo)</button>
+          )}
+        </div>
+      </Panel>
+
       <Panel>
         {loading ? (
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="text-sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: COLS.reduce((t, c) => t + c[1], 0) }}>
-              <colgroup>{COLS.map(([n, w]) => <col key={n} style={{ width: w }} />)}</colgroup>
+          <ScrollSuperior>
+            <table className="text-sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: COLS.reduce((t, c) => t + c.w, 0) }}>
+              <colgroup>{COLS.map((c) => <col key={c.k} style={{ width: c.w }} />)}</colgroup>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {COLS.map(([c]) => (
-                    <th key={c} className="text-left px-3 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>
+                  {COLS.map((c, i) => (
+                    <th key={c.k} className="text-left px-3 py-3 font-medium whitespace-nowrap"
+                      style={{ color: ordenK === c.k ? 'var(--accent)' : 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}) }}>
+                      {c.k === 'acc' ? '' : (
+                        <button type="button" onClick={() => ordenarPor(c.k)} className="hover:underline" title="Ordenar por esta columna">
+                          {c.n}{ordenK === c.k ? (ordenDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                        </button>
+                      )}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {accounts.length === 0 ? (
-                  <tr><td colSpan={COLS.length} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay cuentas.</td></tr>
-                ) : accounts.map((a) => (
+                {visibles.length === 0 ? (
+                  <tr><td colSpan={COLS.length} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>{accounts.length ? 'Ninguna cuenta coincide con los filtros.' : 'Todavía no hay cuentas.'}</td></tr>
+                ) : visibles.map((a) => (
                   <tr key={a.id} style={{ borderBottom: '1px solid var(--border)', height: 56 }}>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="IG original" texto={a.original_username} /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Correo" texto={a.email} muted /></td>
-                    <td className="px-3 align-middle">
+                    <td className="px-3 align-middle" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)' }}>
                       <CeldaCopia titulo="Cuenta actual" texto={`@${a.username}`}>
                         {a.profile_link ? <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a> : `@${a.username}`}
                       </CeldaCopia>
                     </td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Modelo" texto={a.models?.stage_name}><ModelName name={a.models?.stage_name} /></CeldaCopia></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Público" texto={(a.target_audience || []).join(', ')} /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Estado" texto={String(a.status || '').replace(/_/g, ' ')}><StatusBadge status={a.status} /></CeldaCopia></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Responsable" texto={a.profiles?.full_name} /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="IG original" texto={a.original_username} /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Correo" texto={a.email} muted /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="2FA" texto={a.two_fa_code} muted /></td>
+                    <td className="px-3 align-middle"><CeldaCopia titulo="Público" texto={(a.target_audience || []).join(', ')} /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Asignación" texto={a.assigned_at} /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Días" texto={a.assigned_at ? String(diasTranscurridos(a.assigned_at)) : ''} /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Observaciones" texto={a.observations} muted /></td>
@@ -333,7 +448,7 @@ export default function InstagramAccounts() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollSuperior>
         )}
       </Panel>
     </div>
