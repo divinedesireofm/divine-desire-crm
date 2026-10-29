@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { fmtF } from '../lib/excelImport'
+import { antiguedadDe } from '../lib/redditAntiguedad'
 
 const BANEOS = [
   { id: 'ninguno', n: 'Sin baneo', c: 'var(--success)' },
@@ -12,7 +13,9 @@ const BANEOS = [
 ]
 const BN = Object.fromEntries(BANEOS.map((b) => [b.id, b]))
 const lbl = { color: 'var(--text-muted)' }
-const VACIO = { username: '', model_id: '', responsable_id: '', activa: true, estado_baneo: 'ninguno', baneo_notas: '', comment_karma: '', post_karma: '', antiguedad: '', notas: '' }
+const VACIO = { username: '', link: '', model_id: '', responsable_id: '', activa: true, estado_baneo: 'ninguno', baneo_notas: '', comment_karma: '', post_karma: '', fecha_creacion: '', notas: '' }
+const urlDe = (c) => (c.link && c.link.trim()) || `https://www.reddit.com/user/${c.username}`
+const edadDe = (c) => antiguedadDe(c.fecha_creacion) || c.antiguedad || ''
 
 const limpiarUsuario = (u) => String(u || '').trim().replace(/^https?:\/\/(www\.|old\.)?reddit\.com\/(user|u)\//i, '').replace(/^\/?u\//i, '').replace(/[\/?#].*$/, '').trim()
 const aNum = (v) => { if (v === '' || v == null) return null; const n = Number(String(v).replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) ? Math.round(n) : null }
@@ -73,18 +76,19 @@ export default function RedditAccounts() {
   function editar(c) {
     setEditId(c.id); setErr('')
     setForm({
-      username: c.username, model_id: c.model_id || '', responsable_id: c.responsable_id || '', activa: !!c.activa, estado_baneo: c.estado_baneo || 'ninguno',
-      baneo_notas: c.baneo_notas || '', comment_karma: c.comment_karma ?? '', post_karma: c.post_karma ?? '', antiguedad: c.antiguedad || '', notas: c.notas || '',
+      username: c.username, link: c.link || '', model_id: c.model_id || '', responsable_id: c.responsable_id || '', activa: !!c.activa, estado_baneo: c.estado_baneo || 'ninguno',
+      baneo_notas: c.baneo_notas || '', comment_karma: c.comment_karma ?? '', post_karma: c.post_karma ?? '', fecha_creacion: c.fecha_creacion || '', notas: c.notas || '',
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   async function guardar() {
-    const username = limpiarUsuario(form.username)
+    const username = limpiarUsuario(form.username) || limpiarUsuario(form.link)
+    const link = form.link.trim() ? (/^https?:\/\//i.test(form.link.trim()) ? form.link.trim() : `https://${form.link.trim()}`) : null
     if (!username) { setErr('Escribe el nombre de usuario de la cuenta.'); return }
     const payload = {
-      username, model_id: form.model_id || null, responsable_id: form.responsable_id || null, activa: !!form.activa, estado_baneo: form.estado_baneo,
+      username, link, model_id: form.model_id || null, responsable_id: form.responsable_id || null, activa: !!form.activa, estado_baneo: form.estado_baneo,
       baneo_notas: form.baneo_notas.trim() || null, comment_karma: aNum(form.comment_karma), post_karma: aNum(form.post_karma),
-      antiguedad: form.antiguedad.trim() || null, notas: form.notas.trim() || null, updated_at: new Date().toISOString(),
+      fecha_creacion: form.fecha_creacion || null, notas: form.notas.trim() || null, updated_at: new Date().toISOString(),
     }
     setGuardando(true)
     const { error } = editId
@@ -117,6 +121,7 @@ export default function RedditAccounts() {
           <p className="text-sm font-medium mb-3">{editId ? 'Editar cuenta' : 'Nueva cuenta de Reddit'}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
             <div><label className="text-xs mb-1 block" style={lbl}>Usuario (sin u/)</label><Input value={form.username} onChange={(e) => set('username', e.target.value)} placeholder="nombre_de_usuario" /></div>
+            <div className="sm:col-span-2 lg:col-span-1"><label className="text-xs mb-1 block" style={lbl}>Link directo de la cuenta</label><Input value={form.link} onChange={(e) => set('link', e.target.value)} placeholder="https://www.reddit.com/user/…" /></div>
             <div><label className="text-xs mb-1 block" style={lbl}>Modelo</label>
               <Select value={form.model_id} onChange={(e) => set('model_id', e.target.value)}>
                 <option value="">— Sin modelo —</option>
@@ -135,7 +140,8 @@ export default function RedditAccounts() {
               <Select value={form.estado_baneo} onChange={(e) => set('estado_baneo', e.target.value)}>
                 {BANEOS.map((b) => <option key={b.id} value={b.id}>{b.n}</option>)}
               </Select></div>
-            <div><label className="text-xs mb-1 block" style={lbl}>Antigüedad de la cuenta</label><Input value={form.antiguedad} onChange={(e) => set('antiguedad', e.target.value)} placeholder="Ej.: 2 años y 3 meses" /></div>
+            <div><label className="text-xs mb-1 block" style={lbl}>Fecha de creación de la cuenta</label><Input type="date" value={form.fecha_creacion} max={new Date().toISOString().slice(0, 10)} onChange={(e) => set('fecha_creacion', e.target.value)} />
+              <p className="text-xs mt-1" style={lbl}>{form.fecha_creacion ? `Antigüedad: ${antiguedadDe(form.fecha_creacion)}` : 'La antigüedad se calcula sola a partir de esta fecha.'}</p></div>
             <div><label className="text-xs mb-1 block" style={lbl}>Comment karma</label><Input inputMode="numeric" value={form.comment_karma} onChange={(e) => set('comment_karma', e.target.value)} /></div>
             <div><label className="text-xs mb-1 block" style={lbl}>Post karma</label><Input inputMode="numeric" value={form.post_karma} onChange={(e) => set('post_karma', e.target.value)} /></div>
           </div>
@@ -184,7 +190,7 @@ export default function RedditAccounts() {
                   return (
                     <tr key={c.id} style={{ borderBottom: '1px solid var(--border)', opacity: c.activa ? 1 : 0.6 }}>
                       <td className="px-3 py-2.5 whitespace-nowrap font-medium">
-                        <a href={`https://www.reddit.com/user/${c.username}`} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent)' }}>u/{c.username}</a>
+                        <a href={urlDe(c)} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent)' }} title="Abrir la cuenta en una pestaña nueva">u/{c.username} ↗</a>
                         {c.notas && <span className="block text-xs font-normal max-w-[220px] truncate" style={lbl} title={c.notas}>{c.notas}</span>}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">{nombreModelo(c.model_id) || <span style={lbl}>—</span>}</td>
@@ -197,7 +203,7 @@ export default function RedditAccounts() {
                       </td>
                       <td className="px-3 py-2.5 tabular-nums">{fmtN(c.comment_karma)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{fmtN(c.post_karma)}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">{c.antiguedad || <span style={lbl}>—</span>}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">{edadDe(c) || <span style={lbl}>—</span>}{c.fecha_creacion && <span className="block text-xs" style={lbl}>desde {fmtF(c.fecha_creacion)}</span>}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={lbl}>{c.ultimo_reporte_fecha ? <>{fmtF(c.ultimo_reporte_fecha)}{nombrePersona(c.ultimo_reporte_por) ? <span className="block">{nombrePersona(c.ultimo_reporte_por)}</span> : null}</> : 'Sin reportes'}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs text-right">
                         {gestiona && <><button className="underline mr-3" onClick={() => editar(c)}>Editar</button><button className="underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(c)}>Borrar</button></>}
