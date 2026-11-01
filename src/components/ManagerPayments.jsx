@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Panel, Button, Input } from './ui'
 import { getProfilesByRoles } from '../lib/roles'
@@ -51,6 +51,19 @@ export function calcularPeriodo({ mensual, desde, hasta, libres = new Set(), ini
   return { base, dias, trabajados: dias - sinFuncion, libres: sinFuncion, descuento, aPagar: r2(base - descuento) }
 }
 
+// Tramos de calendario realmente trabajados dentro de un periodo (sin días marcados ni días fuera de contrato)
+export function rangosTrabajados(desde, hasta, libres, inicio, fin) {
+  const out = []; let ini = null, ult = null
+  for (let f = desde; f <= hasta; f = sumarDias(f, 1)) {
+    const no = libres.has(f) || (inicio && f < inicio) || (fin && f > fin)
+    if (!no) { if (!ini) ini = f; ult = f } else if (ini) { out.push([ini, ult]); ini = null }
+  }
+  if (ini) out.push([ini, ult])
+  return out
+}
+const textoRangos = (r) => (r.length ? r.map(([a, b]) => (a === b ? fmtC(a) : `${fmtC(a)} → ${fmtC(b)}`)).join(' · ') : 'ningún día')
+const pagoChatter = (p) => r2(num(p.fact_neta) * num(p.pct) + num(p.bonos) + num(p.adelanto) + num(p.penalizacion) + num(p.deuda))
+
 export default function ManagerPayments() {
   const hoy = hoyISO()
   const [y, setY] = useState(Number(hoy.slice(0, 4)))
@@ -61,6 +74,10 @@ export default function ManagerPayments() {
   const [libresRows, setLibresRows] = useState([])
   const [pagos, setPagos] = useState([])
   const [tareas, setTareas] = useState([])   // cobros de tareas
+  const [ajustes, setAjustes] = useState([]) // ediciones manuales de periodos
+  const [cuentasPago, setCuentasPago] = useState([]) // payout_accounts (para sumar su pago como chatter el mismo día)
+  const [pagosChatter, setPagosChatter] = useState([])
+  const [editando, setEditando] = useState(null) // { key, mgId, pago, desde, hasta, ajuste, nota }
   const [sel, setSel] = useState('')
   const [msg, setMsg] = useState('')
   const [desde, setDesde] = useState('')
@@ -68,14 +85,18 @@ export default function ManagerPayments() {
   const [cargando, setCargando] = useState(true)
 
   async function cargar() {
-    const [profs, c, l, p, tk] = await Promise.all([
+    const [profs, c, l, p, tk, aj, ca, pc] = await Promise.all([
       getProfilesByRoles(ROLES_MANAGER, { onlyActive: true }),
       supabase.from('manager_pay_config').select('*'),
       supabase.from('manager_days_off').select('*').limit(5000),
       supabase.from('manager_pay_periods').select('*').limit(5000),
       cargarTareas(),
+      supabase.from('manager_pay_ajustes').select('*').limit(5000),
+      supabase.from('payout_accounts').select('id, profile_id'),
+      supabase.from('chatter_payouts').select('account_id, fecha, fact_neta, pct, bonos, adelanto, penalizacion, deuda, estado').order('fecha', { ascending: false }).limit(3000),
     ])
-    setMsg(c.error || l.error || p.error ? 'Falta ejecutar las migraciones 72, 73 y 74 en Supabase (pagos de managers).' : '')
+    setMsg(c.error || l.error || p.error ? 'Falta ejecutar las migraciones 72, 73 y 74 en Supabase (pagos de managers).' : aj.error ? 'Falta ejecutar la migración 75 en Supabase (editar periodos).' : '')
+    setAjustes(aj.data || []); setCuentasPago(ca.data || []); setPagosChatter(pc.data || [])
     setManagers(profs)
     const g = {}; (c.data || []).forEach((r) => { g[r.manager_id] = { sueldo: num(r.monto_mensual), inicio: r.fecha_inicio || '', fin: r.fecha_fin || '', d1: r.dia_pago_1 || 16, d2: r.dia_pago_2 || 1 } })
     setCfg(g)
@@ -126,16 +147,24 @@ export default function ManagerPayments() {
       periodosPago({ dia1: g.d1, dia2: g.d2 }, ini, fin).forEach((pr) => {
         const fuera = (g.inicio && pr.hasta < g.inicio) || (g.fin && pr.desde > g.fin)
         const p = pagos.find((x) => x.manager_id === mg.id && x.fecha_pago === pr.pago)
-        if (fuera && !p) return
-        const c = calcularPeriodo({ mensual: g.sueldo, desde: pr.desde, hasta: pr.hasta, libres, inicio: g.inicio || null, fin: g.fin || null })
+        const aj = ajustes.find((x) => x.manager_id === mg.id && x.fecha_pago === pr.pago)
+        if (fuera && !p && !aj) return
+        // periodo efectivo: el guardado si ya está pagado, el editado a mano si lo hay, o el que toca por fechas
+        const per = p?.periodo_desde ? { pago: pr.pago, desde: p.periodo_desde, hasta: p.periodo_hasta } : aj?.periodo_desde ? { pago: pr.pago, desde: aj.periodo_desde, hasta: aj.periodo_hasta || pr.hasta } : pr
+        const c = calcularPeriodo({ mensual: g.sueldo, desde: per.desde, hasta: per.hasta, libres, inicio: g.inicio || null, fin: g.fin || null })
+        const ajuste = r2(num(p ? p.ajuste : aj?.ajuste))
+        const trabajado = rangosTrabajados(per.desde, per.hasta, libres, g.inicio || null, g.fin || null)
+        // pago como chatter ese mismo día (si el manager también tiene cuenta de chatter)
+        const ids = cuentasPago.filter((x) => x.profile_id === mg.id).map((x) => x.id)
+        const otros = r2(pagosChatter.filter((x) => ids.includes(x.account_id) && x.fecha === pr.pago).reduce((a, x) => a + pagoChatter(x), 0))
         // tareas: las pendientes (sin aplicar) con fecha de cobro ≤ fecha de este pago, o las ya incluidas en este pago
         const tk = tareas.filter((t) => t.responsable_id === mg.id && ((p && t.aplicado_en === p.id) || (!p && !t.aplicado_en && !t.pagado_at && t.fecha_pago <= pr.pago)))
         const sumaT = r2(tk.reduce((a, t) => a + num(t.monto), 0))
-        out.push({ mg, pr, c, p, tk, sumaT, total: r2(c.aPagar + sumaT) })
+        out.push({ mg, pr: per, c, p, tk, sumaT, ajuste, aj, trabajado, otros, total: r2(c.aPagar + sumaT + ajuste) })
       })
     })
     return out.sort((a, b) => a.pr.pago.localeCompare(b.pr.pago) || a.mg.full_name.localeCompare(b.mg.full_name))
-  }, [managers, cfg, libresRows, pagos, tareas]) // eslint-disable-line
+  }, [managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter]) // eslint-disable-line
 
   // Tareas ya incluidas en un pago anterior no deben repetirse en filas futuras (las pendientes solo cuelgan del primer pago sin pagar)
   const filasUnicas = useMemo(() => {
@@ -145,7 +174,7 @@ export default function ManagerPayments() {
       const tk = f.tk.filter((t) => !usadas.has(t.id))
       tk.forEach((t) => usadas.add(t.id))
       const sumaT = r2(tk.reduce((a, t) => a + num(t.monto), 0))
-      return { ...f, tk, sumaT, total: r2(f.c.aPagar + sumaT) }
+      return { ...f, tk, sumaT, total: r2(f.c.aPagar + sumaT + f.ajuste) }
     })
   }, [filas])
 
@@ -158,7 +187,7 @@ export default function ManagerPayments() {
   async function marcarPagado(f) {
     const { data, error } = await supabase.from('manager_pay_periods').upsert({
       manager_id: f.mg.id, fecha_pago: f.pr.pago, periodo_desde: f.pr.desde, periodo_hasta: f.pr.hasta,
-      importe_base: f.c.base, descuento: f.c.descuento, dias_descontados: f.c.libres, importe_tareas: f.sumaT, importe_pagado: f.total,
+      importe_base: f.c.base, descuento: f.c.descuento, dias_descontados: f.c.libres, importe_tareas: f.sumaT, ajuste: f.ajuste, importe_pagado: f.total,
       pagado: true, pagado_at: new Date().toISOString(),
     }, { onConflict: 'manager_id,fecha_pago' }).select().single()
     if (error) return setMsg(error.message)
@@ -167,6 +196,18 @@ export default function ManagerPayments() {
       if (r.error) setMsg('El pago se guardó, pero no se pudieron enlazar las tareas: ' + r.error.message)
     }
     cargar()
+  }
+  function abrirEdicion(f) { setEditando({ key: f.mg.id + f.pr.pago, mgId: f.mg.id, pago: f.pr.pago, desde: f.pr.desde, hasta: f.pr.hasta, ajuste: f.ajuste ? String(f.ajuste) : '', nota: f.aj?.nota || '', hay: !!f.aj }) }
+  async function guardarEdicion() {
+    const e = editando
+    if (!e.desde || !e.hasta || e.desde > e.hasta) return setMsg('El periodo no es válido: «desde» debe ser anterior o igual a «hasta».')
+    const { error } = await supabase.from('manager_pay_ajustes').upsert({ manager_id: e.mgId, fecha_pago: e.pago, periodo_desde: e.desde, periodo_hasta: e.hasta, ajuste: r2(num(e.ajuste)), nota: e.nota.trim() || null, updated_at: new Date().toISOString() }, { onConflict: 'manager_id,fecha_pago' })
+    if (error) return setMsg(error.message.includes('manager_pay_ajustes') ? 'Falta ejecutar la migración 75 en Supabase.' : error.message)
+    setEditando(null); setMsg(''); cargar()
+  }
+  async function restablecerEdicion() {
+    await supabase.from('manager_pay_ajustes').delete().eq('manager_id', editando.mgId).eq('fecha_pago', editando.pago)
+    setEditando(null); cargar()
   }
   async function deshacerPago(p) {
     await supabase.from('pay_task_items').update({ aplicado_en: null, aplicado_tipo: null, pagado_at: null }).eq('aplicado_en', p.id)
@@ -190,21 +231,47 @@ export default function ManagerPayments() {
   const Fila = ({ f, resaltar }) => {
     const pagado = !!f.p?.pagado
     const cambio = pagado && Math.abs(num(f.p.importe_pagado) - f.total) > 0.009
+    const key = f.mg.id + f.pr.pago
+    const abierto = editando?.key === key
+    const ed2 = (patch) => setEditando((e) => ({ ...e, ...patch }))
     return (
-      <tr style={{ borderBottom: '1px solid var(--border)', background: resaltar ? 'var(--accent-soft)' : undefined }}>
+      <>
+      <tr style={{ borderBottom: abierto ? 'none' : '1px solid var(--border)', background: resaltar ? 'var(--accent-soft)' : undefined }}>
         <td className="px-3 py-3 whitespace-nowrap"><strong>{fmtF(f.pr.pago)}</strong><span className="block text-xs" style={lbl}>{f.pr.pago === hoy ? 'HOY' : nombreDia(f.pr.pago)}</span></td>
         <td className="px-3 py-3 font-medium whitespace-nowrap">{f.mg.full_name}</td>
-        <td className="px-3 py-3 whitespace-nowrap">{fmtC(f.pr.desde)} → {fmtC(f.pr.hasta)}<span className="block text-xs" style={lbl}>{f.c.dias} días</span></td>
-        <td className="px-3 py-3 tabular-nums whitespace-nowrap">{pagado ? f.c.dias - f.p.dias_descontados : f.c.trabajados} de {f.c.dias}</td>
+        <td className="px-3 py-3 whitespace-nowrap">{fmtC(f.pr.desde)} → {fmtC(f.pr.hasta)}<span className="block text-xs" style={lbl}>{f.c.dias} días{f.aj?.periodo_desde && !pagado ? ' · editado' : ''}</span></td>
+        <td className="px-3 py-3 tabular-nums"><span className="whitespace-nowrap">{f.c.trabajados} de {f.c.dias}</span><span className="block text-xs" style={lbl}>Trabajó: {textoRangos(f.trabajado)}</span></td>
         <td className="px-3 py-3 tabular-nums" style={{ color: (pagado ? f.p.descuento : f.c.descuento) > 0 ? 'var(--danger)' : undefined }}>{(pagado ? f.p.descuento : f.c.descuento) > 0 ? '−' + money(pagado ? f.p.descuento : f.c.descuento) : '—'}</td>
         <td className="px-3 py-3 tabular-nums" title={f.tk.map((t) => `${t.titulo}: ${money(t.monto)}`).join('\n')}>{(pagado ? num(f.p.importe_tareas) : f.sumaT) > 0 ? '+' + money(pagado ? f.p.importe_tareas : f.sumaT) : '—'}{f.tk.length > 0 && <span className="block text-xs" style={lbl}>{f.tk.length} {f.tk.length === 1 ? 'tarea' : 'tareas'}</span>}</td>
-        <td className="px-3 py-3 tabular-nums font-semibold whitespace-nowrap">{money(pagado ? f.p.importe_pagado : f.total)}{cambio && <span className="block text-xs font-normal" style={{ color: 'var(--gold)' }}>ahora saldría {money(f.total)}</span>}</td>
+        <td className="px-3 py-3 tabular-nums font-semibold whitespace-nowrap">
+          {money(pagado ? f.p.importe_pagado : f.total)}
+          {f.ajuste !== 0 && <span className="block text-xs font-normal" style={lbl}>incluye ajuste {f.ajuste > 0 ? '+' : '−'}{money(f.ajuste)}</span>}
+          {cambio && <span className="block text-xs font-normal" style={{ color: 'var(--gold)' }}>ahora saldría {money(f.total)}</span>}
+          {f.otros > 0 && <span className="block text-xs font-normal" style={{ color: 'var(--accent)' }}>+ {money(f.otros)} como chatter · total del día {money((pagado ? num(f.p.importe_pagado) : f.total) + f.otros)}</span>}
+        </td>
         <td className="px-3 py-3 whitespace-nowrap"><span style={{ color: pagado ? 'var(--success)' : f.pr.pago <= hoy ? 'var(--danger)' : 'var(--gold)' }}>{pagado ? '✓ Pagado' : f.pr.pago < hoy ? 'Atrasado' : f.pr.pago === hoy ? 'Toca hoy' : 'Pendiente'}</span></td>
-        <td className="px-3 py-3 whitespace-nowrap">
-          {pagado ? <button className="text-xs underline" style={lbl} onClick={() => { if (window.confirm('¿Deshacer este pago y volver a dejarlo pendiente?')) deshacerPago(f.p) }}>Deshacer</button>
-            : <button className="text-xs underline" style={{ color: 'var(--accent)' }} disabled={!cfgDe(f.mg.id).sueldo && !f.sumaT} title={!cfgDe(f.mg.id).sueldo && !f.sumaT ? 'Primero pon su sueldo mensual' : ''} onClick={() => marcarPagado(f)}>Marcar pagado</button>}
+        <td className="px-3 py-3 whitespace-nowrap space-x-3">
+          {!pagado && <button className="text-xs underline" style={lbl} onClick={() => (abierto ? setEditando(null) : abrirEdicion(f))}>{abierto ? 'Cerrar' : 'Editar'}</button>}
+          {pagado ? <button className="text-xs underline" style={lbl} onClick={() => { if (window.confirm('¿Deshacer este pago y volver a dejarlo pendiente?\n\nDespués podrás editar su periodo.')) deshacerPago(f.p) }}>Deshacer</button>
+            : <button className="text-xs underline" style={{ color: 'var(--accent)' }} disabled={!cfgDe(f.mg.id).sueldo && !f.sumaT && !f.ajuste} title={!cfgDe(f.mg.id).sueldo && !f.sumaT && !f.ajuste ? 'Primero pon su sueldo mensual' : ''} onClick={() => marcarPagado(f)}>Marcar pagado</button>}
         </td>
       </tr>
+      {abierto && (
+        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel-alt)' }}>
+          <td colSpan={9} className="px-4 py-3">
+            <p className="text-xs mb-2" style={lbl}>Editar este periodo ({f.mg.full_name} · pago del {fmtF(f.pr.pago)}). Cambia las fechas que cubre el pago o suma/resta un ajuste manual.</p>
+            <div className="flex items-end gap-3 flex-wrap">
+              <div><label className="text-xs block mb-1" style={lbl}>Periodo desde</label><input type="date" value={editando.desde} onChange={(ev) => ed2({ desde: ev.target.value })} className="rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>hasta</label><input type="date" value={editando.hasta} onChange={(ev) => ed2({ hasta: ev.target.value })} className="rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Ajuste manual ($, + suma / − resta)</label><input type="number" step="0.01" value={editando.ajuste} onChange={(ev) => ed2({ ajuste: ev.target.value })} placeholder="0.00" className="w-36 rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div className="flex-1 min-w-[180px]"><label className="text-xs block mb-1" style={lbl}>Nota (opcional)</label><input value={editando.nota} onChange={(ev) => ed2({ nota: ev.target.value })} placeholder="Motivo del ajuste" className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <Button onClick={guardarEdicion}>Guardar periodo</Button>
+              {editando.hay && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={restablecerEdicion}>Restablecer al original</button>}
+            </div>
+          </td>
+        </tr>
+      )}
+      </>
     )
   }
   const Cab = () => <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Fecha de pago', 'Manager', 'Periodo que paga', 'Días trabajados', 'Descuento', 'Tareas', 'Importe exacto', 'Estado', ''].map((c) => <th key={c} className="text-left px-3 py-3 font-medium whitespace-nowrap" style={lbl}>{c}</th>)}</tr></thead>
@@ -216,7 +283,7 @@ export default function ManagerPayments() {
       {/* Lo que toca ahora */}
       <Panel className="p-4">
         <p className="font-medium mb-2">{hoyToca.length ? `💸 Hoy (${fmtF(hoy)}) toca pagar` : 'Hoy no toca pagar a ningún manager'}</p>
-        {hoyToca.map((f) => <p key={f.mg.id + f.pr.pago} className="text-sm py-0.5"><strong>{f.mg.full_name}</strong>: <strong className="gold-text tabular-nums">{money(f.total)}</strong> <span style={lbl}>· {f.c.trabajados} de {f.c.dias} días trabajados ({fmtC(f.pr.desde)} → {fmtC(f.pr.hasta)}){f.sumaT > 0 ? ` + ${money(f.sumaT)} de tareas` : ''}</span></p>)}
+        {hoyToca.map((f) => <p key={f.mg.id + f.pr.pago} className="text-sm py-0.5"><strong>{f.mg.full_name}</strong>: <strong className="gold-text tabular-nums">{money(f.total)}</strong> <span style={lbl}>· {f.c.trabajados} de {f.c.dias} días trabajados (periodo {fmtC(f.pr.desde)} → {fmtC(f.pr.hasta)}; trabajó {textoRangos(f.trabajado)}){f.sumaT > 0 ? ` + ${money(f.sumaT)} de tareas` : ''}{f.ajuste ? ` · ajuste ${f.ajuste > 0 ? '+' : '−'}${money(f.ajuste)}` : ''}</span>{f.otros > 0 && <span className="block text-xs" style={{ color: 'var(--accent)' }}>Ese mismo día también cobra {money(f.otros)} como chatter → total del día: <strong>{money(f.total + f.otros)}</strong></span>}</p>)}
         {atrasados.length > 0 && (
           <div className="mt-2"><p className="text-sm font-medium" style={{ color: 'var(--danger)' }}>Atrasados sin pagar</p>
             {atrasados.map((f) => <p key={f.mg.id + f.pr.pago} className="text-sm py-0.5">{fmtF(f.pr.pago)} · <strong>{f.mg.full_name}</strong>: <strong className="tabular-nums">{money(f.total)}</strong></p>)}</div>
@@ -237,7 +304,7 @@ export default function ManagerPayments() {
         </div>
         {managers.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay managers de chatting activos.</p>
           : delMes.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay pagos programados este mes (o aún no habían empezado a ejercer). El calendario de pagos está limitado a unos meses alrededor de hoy.</p> : (
-            <div className="overflow-x-auto"><table className="w-full text-sm"><Cab /><tbody>{delMes.map((f) => <Fila key={f.mg.id + f.pr.pago} f={f} resaltar={f.pr.pago === hoy} />)}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="w-full text-sm"><Cab /><tbody>{delMes.map((f) => <Fragment key={f.mg.id + f.pr.pago}>{Fila({ f, resaltar: f.pr.pago === hoy })}</Fragment>)}</tbody></table></div>
           )}
       </Panel>
 
