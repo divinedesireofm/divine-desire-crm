@@ -713,7 +713,7 @@ function PagosAdmin({ area = 'chatting' }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Fecha', ...(sel === 'todas' ? [IG ? 'Persona' : 'Chatter'] : []), 'Bruta', 'Neta', '%', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Pago', 'Manager', 'Estado', 'Notas', ''].map((h) => (
+                  {['Fecha', ...(sel === 'todas' ? [IG ? 'Persona' : 'Chatter'] : []), 'Bruta', 'Neta', '%', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Manager', 'Total', 'Estado', 'Notas', ''].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={lbl}>{h}</th>
                   ))}
                 </tr>
@@ -725,14 +725,13 @@ function PagosAdmin({ area = 'chatting' }) {
                   const sig = filasTabla[idx + 1]
                   const cambiaFecha = !!sig && sig.fecha !== fila.fecha
                   const bordeFila = cambiaFecha ? '3px solid color-mix(in srgb, var(--text-muted) 55%, var(--border))' : '1px solid var(--border)'
-                  const celdaMgr = (f, pagoCh) => {
+                  const celdaMgr = (f) => {
                     if (!f) return <span style={lbl}>—</span>
                     return (
                       <div className="leading-tight min-w-[150px]" title={`Periodo ${fmtF(f.pr.desde)} → ${fmtF(f.pr.hasta)}`}>
                         <span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(f.total)}</span>
                         <span className="block text-[11px]" style={lbl}>{fmtF(f.pr.desde)} → {fmtF(f.pr.hasta)}{f.sumaT ? ` · +${money(f.sumaT)} tareas` : ''}</span>
                         <span className="block text-[11px]" style={{ color: f.p ? 'var(--success)' : 'var(--gold)' }}>{f.p ? '✓ pagado' : 'pendiente'}</span>
-                        {pagoCh != null && <span className="block text-[11px] font-medium">Total del día: {money(r2(pagoCh + f.total))}</span>}
                       </div>
                     )
                   }
@@ -742,8 +741,9 @@ function PagosAdmin({ area = 'chatting' }) {
                       <tr key={'m' + f.mg.id + f.pr.pago} style={{ borderBottom: bordeFila, background: 'color-mix(in srgb, var(--accent) 5%, transparent)' }}>
                         <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(f.pr.pago)}</td>
                         {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{f.mg.full_name}</td>}
-                        {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
-                        <td className="px-3 py-2.5">{celdaMgr(f, null)}</td>
+                        {Array.from({ length: 7 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
+                        <td className="px-3 py-2.5">{celdaMgr(f)}</td>
+                        <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(f.total)}</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Solo manager</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Se gestiona en «Pago de managers»</td>
                         <td className="px-3 py-2.5"></td>
@@ -765,10 +765,10 @@ function PagosAdmin({ area = 'chatting' }) {
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.adelanto)}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.penalizacion) ? 'var(--danger)' : undefined }}>{celda(p.penalizacion)}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.deuda) ? 'var(--danger)' : undefined }}>{celda(p.deuda)}</td>
-                      <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(calcPago(p))}</td>
                       <td className="px-3 py-2.5" style={esMgr ? undefined : { background: 'color-mix(in srgb, var(--text-muted) 8%, transparent)' }} title={esMgr ? undefined : 'Esta persona no es manager'}>
-                        {esMgr ? celdaMgr(fm, calcPago(p)) : <span style={{ ...lbl, opacity: 0.5 }}>🔒</span>}
+                        {esMgr ? celdaMgr(fm) : <span style={{ ...lbl, opacity: 0.5 }}>🔒</span>}
                       </td>
+                      <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap" title={fm ? `Pago ${money(calcPago(p))} + manager ${money(fm.total)}` : undefined}>{money(r2(calcPago(p) + (fm ? fm.total : 0)))}</td>
                       <td className="px-3 py-2.5">
                         {p.estado === 'Pagado'
                           ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--success) 15%, transparent)', color: 'var(--success)' }}>Pagado</span>
