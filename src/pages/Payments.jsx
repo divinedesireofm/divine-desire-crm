@@ -7,7 +7,7 @@ import { getProfilesByRoles } from '../lib/roles'
 import ManagerPayments from '../components/ManagerPayments'
 import TareasPagos from '../components/TareasPagos'
 import { cargarTareas } from '../lib/payTasks'
-import { cargarDatosManagers, calcularFilasManagers, unicasTareas } from '../lib/managerPagos'
+import { cargarDatosManagers, calcularFilasManagers, unicasTareas, registrarPagoManager } from '../lib/managerPagos'
 
 // ---------- utilidades ----------
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
@@ -387,6 +387,7 @@ function PagosAdmin({ area = 'chatting' }) {
     if (avisoAdelanto) setMsg(avisoAdelanto)
     else if (res.some((r) => r.error)) setMsg('El pago se guardó, pero no se pudieron enlazar algunos bonos/sanciones: ' + res.find((r) => r.error).error.message)
     else setMsg('')
+    if (form.estado === 'Pagado') await pagarElResto(guardado)
     setForm(null); setEditId(null); cargar()
   }
   async function borrarPago(p) {
@@ -394,7 +395,19 @@ function PagosAdmin({ area = 'chatting' }) {
     await supabase.from('chatter_payouts').delete().eq('id', p.id); cargar()
   }
   async function marcarPagado(p) {
-    await supabase.from('chatter_payouts').update({ estado: 'Pagado' }).eq('id', p.id); cargar()
+    await supabase.from('chatter_payouts').update({ estado: 'Pagado' }).eq('id', p.id)
+    await pagarElResto(p); cargar()
+  }
+  // Si pagas el Total, también queda pagado lo que lo compone ese día: el pago de manager y las tareas pendientes que colgaban de esta fila
+  async function pagarElResto(p) {
+    try {
+      const perfilId = cuentaDe(p.account_id)?.profile_id
+      const fm = perfilId ? filasMgr.find((f) => f.mg.id === perfilId && f.pr.pago === p.fecha) : null
+      if (fm && !fm.p?.pagado) { const r = await registrarPagoManager(fm); if (r.error) setMsg('El pago se marcó, pero no el de manager: ' + r.error.message); else if (r.aviso) setMsg(r.aviso) }
+      const pend = tareasInfo.porPago[p.id]?.pend || []
+      if (pend.length) await supabase.from('pay_task_items').update({ pagado_at: new Date().toISOString() }).in('id', pend.map((t) => t.id))
+      refrescarMgr()
+    } catch { /* el pago principal ya está guardado */ }
   }
 
   // ---------- cuenta ----------

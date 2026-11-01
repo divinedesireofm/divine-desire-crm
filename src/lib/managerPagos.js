@@ -132,3 +132,18 @@ export function unicasTareas(filas) {
     return { ...f, tk, sumaT, total: r2(f.c.aPagar + sumaT + f.ajuste) }
   })
 }
+
+// Marca como pagado un pago de manager (guarda el importe exacto y enlaza sus tareas). Lo usan «Pago de managers» y la tabla general de Pagos.
+export async function registrarPagoManager(f) {
+  const { data, error } = await supabase.from('manager_pay_periods').upsert({
+    manager_id: f.mg.id, fecha_pago: f.orig, fecha_pago_real: f.pr.pago !== f.orig ? f.pr.pago : null, periodo_desde: f.pr.desde, periodo_hasta: f.pr.hasta, nota: f.aj?.nota || null,
+    importe_base: f.c.base, descuento: f.c.descuento, dias_descontados: f.c.libres, importe_tareas: f.sumaT, ajuste: f.ajuste, importe_pagado: f.total,
+    pagado: true, pagado_at: new Date().toISOString(),
+  }, { onConflict: 'manager_id,fecha_pago' }).select().single()
+  if (error) return { error }
+  if (f.tk.length) {
+    const r = await supabase.from('pay_task_items').update({ aplicado_en: data.id, aplicado_tipo: 'manager', pagado_at: new Date().toISOString() }).in('id', f.tk.map((t) => t.id))
+    if (r.error) return { data, aviso: 'El pago se guardó, pero no se pudieron enlazar las tareas: ' + r.error.message }
+  }
+  return { data }
+}

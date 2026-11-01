@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Panel, Button, Input } from './ui'
 import { hoyISO } from '../lib/payTasks'
-import { r2, num, aDate, aISO, sumarDias, difDias, periodosPago, calcularPeriodo, rangosTrabajados, cargarDatosManagers, calcularFilasManagers, unicasTareas } from '../lib/managerPagos'
+import { r2, num, aDate, aISO, sumarDias, difDias, periodosPago, calcularPeriodo, rangosTrabajados, cargarDatosManagers, calcularFilasManagers, unicasTareas, registrarPagoManager } from '../lib/managerPagos'
 
 // ---- utilidades ----
 const money = (n) => '$' + Math.abs(num(n)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -27,7 +27,7 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
   const [tareas, setTareas] = useState([])   // cobros de tareas
   const [ajustes, setAjustes] = useState([]) // ediciones manuales de periodos
   const [eliminados, setEliminados] = useState([]) // pagos eliminados (restaurables)
-  const [vistaM, setVistaM] = useState('mes')
+  const [vistaM, setVistaM] = useState('pendientes')
   const [cuentasPago, setCuentasPago] = useState([]) // payout_accounts (para sumar su pago como chatter el mismo día)
   const [pagosChatter, setPagosChatter] = useState([])
   const [editando, setEditando] = useState(null) // { key, mgId, pago, desde, hasta, ajuste, nota }
@@ -75,6 +75,7 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
   const filas = useMemo(() => calcularFilasManagers({ managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter, eliminados }, hoy), [managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter, eliminados]) // eslint-disable-line
   const filasUnicas = useMemo(() => unicasTareas(filas), [filas])
 
+  const listaVista = vistaM === 'pendientes' ? filasUnicas.filter((f) => !f.p?.pagado && f.total > 0) : vistaM === 'pagados' ? filasUnicas.filter((f) => f.p?.pagado).reverse() : null
   const delMes = filasUnicas.filter((f) => f.pr.pago.startsWith(`${y}-${String(m).padStart(2, '0')}`))
   const urgentes = filasUnicas.filter((f) => !f.p?.pagado && f.pr.pago <= hoy && f.total > 0 && f.pr.pago >= sumarDias(hoy, -90))
   const hoyToca = urgentes.filter((f) => f.pr.pago === hoy)
@@ -82,16 +83,9 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
   const proximos = filasUnicas.filter((f) => !f.p?.pagado && f.pr.pago > hoy && f.total > 0).slice(0, 4)
 
   async function marcarPagado(f) {
-    const { data, error } = await supabase.from('manager_pay_periods').upsert({
-      manager_id: f.mg.id, fecha_pago: f.orig, fecha_pago_real: f.pr.pago !== f.orig ? f.pr.pago : null, periodo_desde: f.pr.desde, periodo_hasta: f.pr.hasta, nota: f.aj?.nota || null,
-      importe_base: f.c.base, descuento: f.c.descuento, dias_descontados: f.c.libres, importe_tareas: f.sumaT, ajuste: f.ajuste, importe_pagado: f.total,
-      pagado: true, pagado_at: new Date().toISOString(),
-    }, { onConflict: 'manager_id,fecha_pago' }).select().single()
-    if (error) return setMsg(error.message)
-    if (f.tk.length) {
-      const r = await supabase.from('pay_task_items').update({ aplicado_en: data.id, aplicado_tipo: 'manager', pagado_at: new Date().toISOString() }).in('id', f.tk.map((t) => t.id))
-      if (r.error) setMsg('El pago se guardó, pero no se pudieron enlazar las tareas: ' + r.error.message)
-    }
+    const r = await registrarPagoManager(f)
+    if (r.error) return setMsg(r.error.message)
+    if (r.aviso) setMsg(r.aviso)
     cargar()
   }
   // Cálculo automático de un periodo para este manager (con sus fechas de contrato y días sin función)
@@ -315,9 +309,9 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
 
       <Panel>
         <div className="px-4 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: '1px solid var(--border)' }}>
-          {[['mes', 'Pagos de'], ['eliminados', `Eliminados${eliminados.length ? ` (${eliminados.length})` : ''}`]].map(([k, t]) => (
+          {[['pendientes', 'Pendientes'], ['pagados', 'Pagados'], ['eliminados', `Eliminados${eliminados.length ? ` (${eliminados.length})` : ''}`], ['todos', 'Todos']].map(([k, t]) => (
             <button key={k} onClick={() => setVistaM(k)} className="px-3 py-1 rounded-md text-xs" style={{ background: vistaM === k ? 'var(--accent)' : 'var(--panel-alt)', color: vistaM === k ? '#000' : 'var(--text)', border: '1px solid ' + (vistaM === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>))}
-          {vistaM === 'mes' && <>
+          {vistaM === 'todos' && <>
           <button className="px-3 py-1.5 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }} onClick={() => mover(-1)}>◀</button>
           <p className="font-display font-semibold w-40 text-center capitalize">{MESES[m - 1]} {y}</p>
           <button className="px-3 py-1.5 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }} onClick={() => mover(1)}>▶</button>
@@ -338,8 +332,8 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
               </tr>) })}</tbody>
           </table></div>
         )) : managers.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay managers de {area === 'instagram' ? 'Instagram' : 'chatting'} activos.</p>
-          : delMes.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay pagos programados este mes (o aún no habían empezado a ejercer). El calendario de pagos está limitado a unos meses alrededor de hoy.</p> : (
-            <div className="overflow-x-auto"><table className="w-full text-sm"><Cab /><tbody>{delMes.map((f) => <Fragment key={f.mg.id + f.pr.pago}>{Fila({ f, resaltar: f.pr.pago === hoy })}</Fragment>)}</tbody></table></div>
+          : (listaVista || delMes).length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>{vistaM === 'pendientes' ? 'No hay pagos pendientes. 🎉' : vistaM === 'pagados' ? 'Todavía no hay pagos marcados como pagados.' : 'No hay pagos programados este mes (o aún no habían empezado a ejercer). El calendario de pagos está limitado a unos meses alrededor de hoy.'}</p> : (
+            <div className="overflow-x-auto"><table className="w-full text-sm"><Cab /><tbody>{(listaVista || delMes).map((f) => <Fragment key={f.mg.id + f.pr.pago}>{Fila({ f, resaltar: f.pr.pago === hoy })}</Fragment>)}</tbody></table></div>
           )}
       </Panel>
 

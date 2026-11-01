@@ -305,7 +305,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
       <Panel>
         <div className="px-4 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: '1px solid var(--border)' }}>
           <p className="font-medium mr-2">Cobros de tareas</p>
-          {[['pendientes', 'Pendientes'], ['pagados', 'Pagados / incluidos'], ['todos', 'Todos'], ['eliminados', `Eliminados${papelera.length ? ` (${papelera.length})` : ''}`]].map(([k, t]) => (
+          {[['pendientes', 'Pendientes'], ['pagados', 'Pagados'], ['eliminados', `Eliminados${papelera.length ? ` (${papelera.length})` : ''}`], ['todos', 'Todos']].map(([k, t]) => (
             <button key={k} onClick={() => setFiltro(k)} className="px-3 py-1 rounded-md text-xs" style={{ background: filtro === k ? 'var(--accent)' : 'var(--panel-alt)', color: filtro === k ? '#000' : 'var(--text)', border: '1px solid ' + (filtro === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>))}
           <div className="ml-auto w-48"><Select value={fResp} onChange={(e) => setFResp(e.target.value)}><option value="todos">Todos los responsables</option>{personas.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select></div>
         </div>
