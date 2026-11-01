@@ -7,6 +7,7 @@ import { getProfilesByRoles } from '../lib/roles'
 import ManagerPayments from '../components/ManagerPayments'
 import TareasPagos from '../components/TareasPagos'
 import { cargarTareas } from '../lib/payTasks'
+import { cargarDatosManagers, calcularFilasManagers, unicasTareas } from '../lib/managerPagos'
 
 // ---------- utilidades ----------
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
@@ -148,15 +149,21 @@ function Fraccionador({ total, fechaBase, ancla, n, setN, filas, setFilas }) {
   )
 }
 
-export default function Payments() {
+// area: 'chatting' (pagos a chatters) o 'instagram' (pagos al personal de Instagram). Misma pantalla, datos separados.
+export default function Payments({ area = 'chatting' }) {
   const { hasRole } = useAuth()
-  return hasRole('admin') ? <PagosAdmin /> : <MisPagos />
+  return hasRole('admin') ? <PagosAdmin area={area} /> : <MisPagos />
 }
 
 // =====================================================================================
 // ADMIN
 // =====================================================================================
-function PagosAdmin() {
+function PagosAdmin({ area = 'chatting' }) {
+  const IG = area === 'instagram'
+  const rolesPersonal = IG ? ['ig_assistant'] : ['chatter']
+  const rolesManager = IG ? ['ig_manager'] : ['manager']
+  const quien = IG ? 'persona' : 'chatter'
+  const [datosMgr, setDatosMgr] = useState(null) // pagos de managers (columna «Manager»)
   const [cuentas, setCuentas] = useState([])
   const [pagos, setPagos] = useState([])
   const [perfiles, setPerfiles] = useState([])
@@ -178,14 +185,14 @@ function PagosAdmin() {
   const [qrGrande, setQrGrande] = useState(null) // { src, titulo }
 
   // Cada chatter activo del equipo tiene su cuenta de pago: si falta, se crea sola y queda marcada «pendiente de editar»
-  async function asegurarCuentas(actuales) {
+  async function asegurarCuentas(actuales, todasLasCuentas = actuales) {
     if (creandoCuentas.current) return []
     creandoCuentas.current = true
     try {
-      const chatters = await getProfilesByRoles(['chatter'], { onlyActive: true })
+      const chatters = await getProfilesByRoles(rolesPersonal, { onlyActive: true })
       const nuevos = chatters.filter((pf) => !actuales.some((c) => cuentaEsDe(c, pf)))
       if (!nuevos.length) return []
-      const filas = nuevos.map((pf) => ({ nombre: pf.full_name, profile_id: pf.id, fecha_inicio: hoyISO(), pct_defecto: 0.15, activa: true, pendiente_editar: true }))
+      const filas = nuevos.map((pf) => ({ nombre: todasLasCuentas.some((c) => normNombre(c.nombre) === normNombre(pf.full_name)) ? pf.full_name + (IG ? ' (IG)' : ' (chatting)') : pf.full_name, profile_id: pf.id, fecha_inicio: hoyISO(), pct_defecto: 0.15, activa: true, pendiente_editar: true, ...(IG ? { area: 'instagram' } : {}) }))
       let { data, error } = await supabase.from('payout_accounts').insert(filas).select()
       if (error) { // sin la migración 62 no existe la columna del aviso: se crean igualmente
         ;({ data, error } = await supabase.from('payout_accounts').insert(filas.map(({ pendiente_editar, ...r }) => r)).select())
@@ -195,16 +202,17 @@ function PagosAdmin() {
   }
 
   async function cargar() {
-    const [{ data: c }, { data: p }, { data: pr }, { data: bn }, { data: sn }, { data: cu }, tk] = await Promise.all([
+    const [{ data: c }, { data: p0 }, { data: pr }, { data: bn0 }, { data: sn }, { data: cu0 }, tk] = await Promise.all([
       supabase.from('payout_accounts').select('*').order('created_at'),
       supabase.from('chatter_payouts').select('*').order('fecha', { ascending: false }).limit(5000),
       supabase.from('profiles').select('id, full_name, extrabajador').order('full_name'),
       supabase.from('payout_bonuses').select('*').order('fecha_cobro', { ascending: false }).limit(2000),
       supabase.from('sanctions').select('id, chatter_id, motivo, monto, fecha, payout_id').order('fecha', { ascending: false }).limit(2000),
       supabase.from('payout_advance_installments').select('*').order('fecha_prevista').limit(2000),
-      cargarTareas().catch(() => ({ items: [] })),
+      cargarTareas(area).catch(() => ({ items: [] })),
     ])
     setTareas(tk.items || [])
+    cargarDatosManagers(rolesManager).then(setDatosMgr).catch(() => setDatosMgr(null))
     let perf = pr
     if (!perf) { // sin la migración 55 no existe la columna «extrabajador»
       const r = await supabase.from('profiles').select('id, full_name').order('full_name'); perf = r.data || []
@@ -213,11 +221,13 @@ function PagosAdmin() {
       const pf = perf.find((x) => x.id === cu.profile_id)
       return !!pf && (pf.extrabajador === true || /\(extrabajador\)\s*$/i.test(pf.full_name || ''))
     }
-    const todas = c || []
+    const todas = (c || []).filter((x) => (x.area || 'chatting') === area)
+    const idsArea = new Set(todas.map((x) => x.id))
+    const p = (p0 || []).filter((x) => idsArea.has(x.account_id))
     const exIds = new Set(todas.filter(esEx).map((x) => x.id))
-    const nuevasCuentas = await asegurarCuentas(todas)
+    const nuevasCuentas = await asegurarCuentas(todas, c || [])
     setCuentas([...todas.filter((x) => !exIds.has(x.id)), ...nuevasCuentas]); setCuentasEx(todas.filter((x) => exIds.has(x.id)))
-    setPagos((p || []).filter((x) => !exIds.has(x.account_id))); setPagosEx((p || []).filter((x) => exIds.has(x.account_id))); setPerfiles(perf); setBonos(bn || []); setSanciones(sn || []); setCuotas(cu || []); setCargando(false)
+    setPagos((p || []).filter((x) => !exIds.has(x.account_id))); setPagosEx((p || []).filter((x) => exIds.has(x.account_id))); setPerfiles(perf); setBonos((bn0 || []).filter((x) => idsArea.has(x.account_id))); setSanciones(sn || []); setCuotas((cu0 || []).filter((x) => idsArea.has(x.account_id))); setCargando(false)
   }
   useEffect(() => { cargar() }, [])
 
@@ -423,13 +433,34 @@ function PagosAdmin() {
   const notasDe = (p) => notasCompletas(p, bonos, sanciones, cuotas)
 
   const cuentaSel = sel !== 'todas' ? cuentaDe(sel) : null
+
+  // ---------- columna «Manager» ----------
+  // Pagos de manager (fecha exacta + importe exacto). Solo se rellena para quien es manager; para el resto la celda queda bloqueada.
+  const filasMgr = useMemo(() => (datosMgr ? unicasTareas(calcularFilasManagers(datosMgr, hoyISO())) : []), [datosMgr])
+  const idsManager = useMemo(() => new Set((datosMgr?.managers || []).map((m) => m.id)), [datosMgr])
+  const mgrDe = (profileId, fecha) => (profileId ? filasMgr.find((f) => f.mg.id === profileId && f.pr.pago === fecha) : null)
+  // Pagos de manager que no coinciden con ningún pago registrado de esa persona ese día: salen como fila propia
+  const filasTabla = useMemo(() => {
+    const out = visibles.map((p) => ({ tipo: 'pago', fecha: p.fecha, p }))
+    const idsCuentas = new Set(cuentas.map((c) => c.id))
+    const tope = sumarDias(hoyISO(), 20) // solo el pago de manager vigente y los ya pagados; no todo el calendario futuro
+    filasMgr.forEach((f) => {
+      if (!(f.total > 0 || f.p) || f.pr.pago > tope) return
+      const cs = cuentas.filter((c) => c.profile_id === f.mg.id)
+      if (!cs.length && sel !== 'todas') return
+      if (sel !== 'todas' && !cs.some((c) => c.id === sel)) return
+      const hay = pagos.some((x) => idsCuentas.has(x.account_id) && cs.some((c) => c.id === x.account_id) && x.fecha === f.pr.pago)
+      if (!hay) out.push({ tipo: 'mgr', fecha: f.pr.pago, f })
+    })
+    return out.sort((a, b) => b.fecha.localeCompare(a.fecha))
+  }, [visibles, filasMgr, cuentas, pagos, sel])
   const lbl = { color: 'var(--text-muted)' }
 
   return (
     <div>
       <PageHeader
-        title="Pagos a chatters"
-        subtitle="Registro de lo pagado a cada chatter. Introduces la facturación de Infloww y el pago se calcula solo con la misma fórmula del Excel."
+        title={IG ? 'Pagos de Instagram' : 'Pagos a chatters'}
+        subtitle={IG ? 'Registro de lo pagado al personal de Instagram (asistentes y managers). Mismo sistema que en chatting: pagos, calendario, bonos, adelantos, managers y tareas.' : 'Registro de lo pagado a cada chatter. Introduces la facturación de Infloww y el pago se calcula solo con la misma fórmula del Excel.'}
         action={<div className="flex flex-wrap gap-2"><Button onClick={() => nuevoPago()} disabled={!cuentas.length}>+ Registrar pago</Button></div>}
       />
 
@@ -443,9 +474,9 @@ function PagosAdmin() {
       </div>
 
       {vista === 'tareas' ? (
-        <TareasPagos onCambio={cargar} />
+        <TareasPagos onCambio={cargar} area={area} />
       ) : vista === 'managers' ? (
-        <ManagerPayments />
+        <ManagerPayments roles={rolesManager} area={area} />
       ) : vista === 'extrabajadores' ? (
         <ExtrabajadoresTab cuentas={cuentasEx} pagos={pagosEx} sel={selEx} setSel={setSelEx} notasDe={notasDe} />
       ) : vista === 'bonos' ? (
@@ -579,7 +610,7 @@ function PagosAdmin() {
           <p className="text-sm font-medium mb-3">{editId ? 'Editar pago' : 'Registrar pago'}</p>
           <form onSubmit={guardarPago}>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <div><label className="text-xs block mb-1" style={lbl}>Chatter</label>
+              <div><label className="text-xs block mb-1" style={lbl}>{IG ? 'Persona' : 'Chatter'}</label>
                 <Select value={form.account_id} onChange={(e) => alCambiarCuenta(e.target.value)} required>
                   {cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </Select></div>
@@ -667,7 +698,7 @@ function PagosAdmin() {
             <div className="flex items-center gap-3 mt-4 flex-wrap">
               <Button type="submit">{editId ? 'Guardar cambios' : 'Guardar pago'}</Button>
               <Button type="button" variant="ghost" onClick={() => { setForm(null); setEditId(null); setMsg('') }}>Cancelar</Button>
-              <span className="ml-auto text-sm">Pago al chatter: <strong className="gold-text text-base tabular-nums">{money(previo)}</strong></span>
+              <span className="ml-auto text-sm">Pago {IG ? 'a la persona' : 'al chatter'}: <strong className="gold-text text-base tabular-nums">{money(previo)}</strong></span>
             </div>
           </form>
         </Panel>
@@ -675,26 +706,56 @@ function PagosAdmin() {
 
       {/* Tabla */}
       <Panel>
-        {cargando ? <p className="p-6 text-sm" style={lbl}>Cargando…</p> : visibles.length === 0 ? (
+        {cargando ? <p className="p-6 text-sm" style={lbl}>Cargando…</p> : filasTabla.length === 0 ? (
           <p className="p-6 text-sm text-center" style={lbl}>No hay pagos registrados{cuentaSel ? ' para esta cuenta' : ''}.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Fecha', ...(sel === 'todas' ? ['Chatter'] : []), 'Bruta', 'Neta', '%', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Pago', 'Estado', 'Notas', ''].map((h) => (
+                  {['Fecha', ...(sel === 'todas' ? [IG ? 'Persona' : 'Chatter'] : []), 'Bruta', 'Neta', '%', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Pago', 'Manager', 'Estado', 'Notas', ''].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={lbl}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {visibles.map((p, idx) => {
+                {filasTabla.map((fila, idx) => {
                   const celda = (v) => (num(v) ? money(v) : <span style={lbl}>—</span>)
                   // la línea es algo más gruesa cuando el siguiente pago es de otra fecha
-                  const sig = visibles[idx + 1]
-                  const cambiaFecha = !!sig && sig.fecha !== p.fecha
+                  const sig = filasTabla[idx + 1]
+                  const cambiaFecha = !!sig && sig.fecha !== fila.fecha
+                  const bordeFila = cambiaFecha ? '3px solid color-mix(in srgb, var(--text-muted) 55%, var(--border))' : '1px solid var(--border)'
+                  const celdaMgr = (f, pagoCh) => {
+                    if (!f) return <span style={lbl}>—</span>
+                    return (
+                      <div className="leading-tight min-w-[150px]" title={`Periodo ${fmtF(f.pr.desde)} → ${fmtF(f.pr.hasta)}`}>
+                        <span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(f.total)}</span>
+                        <span className="block text-[11px]" style={lbl}>{fmtF(f.pr.desde)} → {fmtF(f.pr.hasta)}{f.sumaT ? ` · +${money(f.sumaT)} tareas` : ''}</span>
+                        <span className="block text-[11px]" style={{ color: f.p ? 'var(--success)' : 'var(--gold)' }}>{f.p ? '✓ pagado' : 'pendiente'}</span>
+                        {pagoCh != null && <span className="block text-[11px] font-medium">Total del día: {money(r2(pagoCh + f.total))}</span>}
+                      </div>
+                    )
+                  }
+                  if (fila.tipo === 'mgr') {
+                    const f = fila.f
+                    return (
+                      <tr key={'m' + f.mg.id + f.pr.pago} style={{ borderBottom: bordeFila, background: 'color-mix(in srgb, var(--accent) 5%, transparent)' }}>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(f.pr.pago)}</td>
+                        {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{f.mg.full_name}</td>}
+                        {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
+                        <td className="px-3 py-2.5">{celdaMgr(f, null)}</td>
+                        <td className="px-3 py-2.5 text-xs" style={lbl}>Solo manager</td>
+                        <td className="px-3 py-2.5 text-xs" style={lbl}>Se gestiona en «Pago de managers»</td>
+                        <td className="px-3 py-2.5"></td>
+                      </tr>
+                    )
+                  }
+                  const p = fila.p
+                  const perfilId = cuentaDe(p.account_id)?.profile_id
+                  const esMgr = !!perfilId && idsManager.has(perfilId)
+                  const fm = esMgr ? mgrDe(perfilId, p.fecha) : null
                   return (
-                    <tr key={p.id} style={{ borderBottom: cambiaFecha ? '3px solid color-mix(in srgb, var(--text-muted) 55%, var(--border))' : '1px solid var(--border)' }}>
+                    <tr key={p.id} style={{ borderBottom: bordeFila }}>
                       <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(p.fecha)}</td>
                       {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{cuentaDe(p.account_id)?.nombre}</td>}
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_bruta)}</td>
@@ -705,6 +766,9 @@ function PagosAdmin() {
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.penalizacion) ? 'var(--danger)' : undefined }}>{celda(p.penalizacion)}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.deuda) ? 'var(--danger)' : undefined }}>{celda(p.deuda)}</td>
                       <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(calcPago(p))}</td>
+                      <td className="px-3 py-2.5" style={esMgr ? undefined : { background: 'color-mix(in srgb, var(--text-muted) 8%, transparent)' }} title={esMgr ? undefined : 'Esta persona no es manager'}>
+                        {esMgr ? celdaMgr(fm, calcPago(p)) : <span style={{ ...lbl, opacity: 0.5 }}>🔒</span>}
+                      </td>
                       <td className="px-3 py-2.5">
                         {p.estado === 'Pagado'
                           ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--success) 15%, transparent)', color: 'var(--success)' }}>Pagado</span>

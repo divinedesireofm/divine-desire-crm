@@ -55,6 +55,7 @@ export const SECTIONS = [
       { to: '/trial-reels', label: 'Trial Reels', icon: 'target', roles: ['admin', 'ig_manager'] },
       { to: '/incidencias', label: 'Restricciones y apelaciones', icon: 'alert', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/proxies', label: 'Proxies', icon: 'package', roles: ['admin', 'ig_manager'] },
+      { to: '/pagos-instagram', label: 'Pagos Instagram', icon: 'dollar', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/incentivos-ig', label: 'Incentivos de Instagram', icon: 'dollar', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/leads', label: 'Reclutamiento', icon: 'target', roles: ['admin', 'ig_manager'] },
       { to: '/reportes-ig', label: 'Reportes de Instagram', icon: 'file', roles: ['admin', 'ig_manager', 'ig_assistant'] },

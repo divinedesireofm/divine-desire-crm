@@ -31,18 +31,19 @@ export function filasFaltantes(tasks, items, hoy = hoyISO()) {
 }
 
 // Carga tareas y cobros; crea los cobros que falten (mensuales) y los devuelve ya completos.
-export async function cargarTareas() {
+export async function cargarTareas(area = 'chatting') {
   const t = await supabase.from('pay_tasks').select('*').order('created_at')
   if (t.error) return { tasks: [], items: [], error: t.error.message }
   let i = await supabase.from('pay_task_items').select('*').order('fecha_pago').limit(5000)
-  if (i.error) return { tasks: t.data || [], items: [], error: i.error.message }
-  const tasks = t.data || []
-  let items = i.data || []
+  if (i.error) return { tasks: (t.data || []).filter((x) => (x.area || 'chatting') === area), items: [], error: i.error.message }
+  const tasks = (t.data || []).filter((x) => (x.area || 'chatting') === area)
+  const ids = new Set(tasks.map((x) => x.id))
+  let items = (i.data || []).filter((x) => ids.has(x.task_id))
   const nuevas = filasFaltantes(tasks, items)
   if (nuevas.length) {
     await supabase.from('pay_task_items').upsert(nuevas, { onConflict: 'task_id,fecha_pago', ignoreDuplicates: true })
     const r = await supabase.from('pay_task_items').select('*').order('fecha_pago').limit(5000)
-    items = r.data || items
+    items = (r.data || []).filter((x) => ids.has(x.task_id))
   }
   return { tasks, items, error: null }
 }

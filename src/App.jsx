@@ -121,6 +121,7 @@ function AppRoutes() {
         <Route path="reportes-turno" element={<ShiftReports />} />
         <Route path="horarios" element={<Schedules />} />
         <Route path="pagos" element={<Payments />} />
+        <Route path="pagos-instagram" element={<Payments area="instagram" />} />
         <Route path="sanciones" element={<Sanctions />} />
         <Route path="packs" element={<Packs />} />
         <Route path="scripts" element={<Scripts />} />

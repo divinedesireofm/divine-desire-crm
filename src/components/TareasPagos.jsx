@@ -11,7 +11,7 @@ const lbl = { color: 'var(--text-muted)' }
 const inp = { background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }
 const VACIA = { id: null, titulo: '', descripcion: '', responsable_id: '', monto: '', tipo: 'puntual', fecha_pago: hoyISO(), dia_pago: '5', desde: hoyISO() }
 
-export default function TareasPagos({ onCambio }) {
+export default function TareasPagos({ onCambio, area = 'chatting' }) {
   const [tasks, setTasks] = useState([])
   const [items, setItems] = useState([])
   const [personas, setPersonas] = useState([])
@@ -22,7 +22,7 @@ export default function TareasPagos({ onCambio }) {
   const [fResp, setFResp] = useState('todos')
 
   async function cargar() {
-    const [t, pr] = await Promise.all([cargarTareas(), supabase.from('profiles').select('id, full_name, active, extrabajador').order('full_name')])
+    const [t, pr] = await Promise.all([cargarTareas(area), supabase.from('profiles').select('id, full_name, active, extrabajador').order('full_name')])
     if (t.error) setMsg(t.error.includes('pay_task') ? 'Falta ejecutar la migración 74 en Supabase (pago por tareas).' : t.error)
     setTasks(t.tasks); setItems(t.items)
     setPersonas((pr.data || []).filter((p) => p.active !== false && !p.extrabajador))
@@ -44,7 +44,7 @@ export default function TareasPagos({ onCambio }) {
     const dia = Math.round(num(f.dia_pago))
     if (f.tipo === 'mensual' && (dia < 1 || dia > 28)) return setMsg('El día del mes debe estar entre 1 y 28.')
     const payload = {
-      titulo: f.titulo.trim(), descripcion: f.descripcion.trim() || null, responsable_id: f.responsable_id, monto: r2(num(f.monto)), tipo: f.tipo,
+      area, titulo: f.titulo.trim(), descripcion: f.descripcion.trim() || null, responsable_id: f.responsable_id, monto: r2(num(f.monto)), tipo: f.tipo,
       fecha_pago: f.tipo === 'puntual' ? f.fecha_pago : null, dia_pago: f.tipo === 'mensual' ? dia : null, desde: f.tipo === 'mensual' ? (f.desde || hoyISO()) : null,
     }
     if (f.id) {
