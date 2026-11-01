@@ -1275,7 +1275,7 @@ function notasCompletas(p, bonos, sanciones, cuotas) {
   const c = (cuotas || []).filter((x) => x.aplicado_en === p.id)
   if (c.length) {
     const totalAdel = (x) => { const k = x.origen_id || x.adelanto_id || x.id; return r2((cuotas || []).filter((y) => (y.origen_id || y.adelanto_id || y.id) === k).reduce((t, y) => t + num(y.monto), 0)) }
-    partes.push('Adelanto: ' + c.map((x) => `cuota ${x.num}/${x.total} (−${money(x.monto)}) · adelanto total ${money(totalAdel(x))}`).join(', '))
+    partes.push(c.map((x) => `Adelanto ${money(totalAdel(x))} : cuota ${x.num}/${x.total} (−${money(x.monto)})`).join(' · '))
   }
   return partes.join(' · ')
 }
