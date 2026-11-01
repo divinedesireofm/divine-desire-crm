@@ -80,10 +80,9 @@ export default function ManagerPayments() {
   const [cuentasPago, setCuentasPago] = useState([]) // payout_accounts (para sumar su pago como chatter el mismo día)
   const [pagosChatter, setPagosChatter] = useState([])
   const [editando, setEditando] = useState(null) // { key, mgId, pago, desde, hasta, ajuste, nota }
-  const [sel, setSel] = useState('')
   const [msg, setMsg] = useState('')
-  const [desde, setDesde] = useState('')
-  const [hasta, setHasta] = useState('')
+  const [rangoD, setRangoD] = useState('')
+  const [rangoH, setRangoH] = useState('')
   const [cargando, setCargando] = useState(true)
 
   async function cargar() {
@@ -104,7 +103,6 @@ export default function ManagerPayments() {
     setCfg(g)
     setEd((prev) => { const n = { ...prev }; profs.forEach((pr) => { if (!n[pr.id]) { const x = g[pr.id]; n[pr.id] = { sueldo: x ? String(x.sueldo) : '', inicio: x?.inicio || '', fin: x?.fin || '', d1: String(x?.d1 || 16), d2: String(x?.d2 || 1) } } }); return n })
     setLibresRows(l.data || []); setPagos(p.data || []); setTareas(tk.items || [])
-    setSel((s) => s || profs[0]?.id || '')
     setCargando(false)
   }
   useEffect(() => { cargar() }, []) // eslint-disable-line
@@ -122,23 +120,6 @@ export default function ManagerPayments() {
     setMsg(''); setCfg((c) => ({ ...c, [id]: { sueldo: num(e.sueldo), inicio: e.inicio || '', fin: e.fin || '', d1, d2 } }))
   }
   const sinGuardar = (id) => { const e = ed[id] || {}, g = cfgDe(id); return num(e.sueldo) !== g.sueldo || (e.inicio || '') !== g.inicio || (e.fin || '') !== g.fin || Math.round(num(e.d1)) !== g.d1 || Math.round(num(e.d2)) !== g.d2 }
-
-  async function alternarDia(id, fecha) {
-    const ya = libresRows.find((l) => l.manager_id === id && l.fecha === fecha)
-    const { error } = ya ? await supabase.from('manager_days_off').delete().eq('id', ya.id) : await supabase.from('manager_days_off').insert([{ manager_id: id, fecha }])
-    if (error) return setMsg(error.message)
-    cargar()
-  }
-  async function descontarRango(id) {
-    if (!desde || !hasta || desde > hasta) return setMsg('Pon un rango válido (desde ≤ hasta).')
-    const n = difDias(hasta, desde) + 1
-    if (n > 62) return setMsg('El rango es demasiado largo (máximo 62 días).')
-    const filas = Array.from({ length: n }, (_, i) => ({ manager_id: id, fecha: sumarDias(desde, i) }))
-    const { error } = await supabase.from('manager_days_off').upsert(filas, { onConflict: 'manager_id,fecha', ignoreDuplicates: true })
-    if (error) return setMsg(error.message)
-    setDesde(''); setHasta(''); setMsg(''); cargar()
-  }
-  async function guardarMotivo(l, motivo) { await supabase.from('manager_days_off').update({ motivo: motivo.trim() || null }).eq('id', l.id) }
 
   // Todos los pagos (fecha exacta + importe exacto) de cada manager en una ventana amplia
   const filas = useMemo(() => {
@@ -298,14 +279,6 @@ export default function ManagerPayments() {
     cargar()
   }
 
-  // Calendario del manager seleccionado
-  const libresSel = libresDe(sel)
-  const gSel = cfgDe(sel)
-  const pagosSel = new Set(sel ? periodosPago({ dia1: gSel.d1, dia2: gSel.d2 }, isoDe(y, m, 1), isoDe(y, m, diasDelMes(y, m))).map((x) => x.pago) : [])
-  const primerDiaSemana = (new Date(y, m - 1, 1).getDay() + 6) % 7
-  const celdas = [...Array(primerDiaSemana).fill(null), ...Array.from({ length: diasDelMes(y, m) }, (_, i) => i + 1)]
-  const selNombre = managers.find((x) => x.id === sel)?.full_name
-  const listaLibresSel = libresRows.filter((l) => l.manager_id === sel && l.fecha.startsWith(`${y}-${String(m).padStart(2, '0')}`)).sort((a, b) => a.fecha.localeCompare(b.fecha))
   const nombreDia = (s) => DIAS_SEMANA[aDate(s).getUTCDay()]
 
   if (cargando) return <p className="text-sm" style={lbl}>Cargando…</p>
@@ -370,6 +343,11 @@ export default function ManagerPayments() {
                 </div>
                 <div className="flex items-center gap-3 mt-2 text-xs flex-wrap" style={lbl}>
                   <span>Trabajó: <strong style={{ color: 'var(--text)' }}>{textoRangos(rangosTrabajados(editando.desde, editando.hasta, new Set(editando.libres), cfgDe(editando.mgId).inicio || null, cfgDe(editando.mgId).fin || null))}</strong></span>
+                  <span className="inline-flex items-center gap-1">Marcar como no trabajado del
+                    <input type="date" value={rangoD} min={editando.desde} max={editando.hasta} onChange={(ev) => setRangoD(ev.target.value)} className="rounded px-1.5 py-0.5" style={inp} /> al
+                    <input type="date" value={rangoH} min={editando.desde} max={editando.hasta} onChange={(ev) => setRangoH(ev.target.value)} className="rounded px-1.5 py-0.5" style={inp} />
+                    <button type="button" className="underline" onClick={() => { if (!rangoD || !rangoH || rangoD > rangoH) return; const nuevos = diasDe(rangoD, rangoH).filter((d) => d >= editando.desde && d <= editando.hasta && !fueraContrato(editando.mgId, d)); ed2({ libres: [...new Set([...editando.libres, ...nuevos])] }); setRangoD(''); setRangoH('') }}>Aplicar</button>
+                  </span>
                   <button type="button" className="underline" onClick={() => ed2({ libres: [] })}>Marcar todos trabajados</button>
                   <button type="button" className="underline" onClick={() => ed2({ libres: diasDe(editando.desde, editando.hasta).filter((d) => !fueraContrato(editando.mgId, d)) })}>Marcar ninguno</button>
                 </div>
@@ -421,7 +399,7 @@ export default function ManagerPayments() {
           )}
       </Panel>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <div>
         <Panel className="p-4">
           <p className="font-medium mb-3">Sueldo, fechas de pago y de inicio de cada manager</p>
           <div className="space-y-4">
@@ -447,48 +425,6 @@ export default function ManagerPayments() {
           <p className="text-xs mt-3" style={lbl}>Cada pago cubre desde el pago anterior hasta el día antes del pago (con 16 y 1: el 16 se paga del 1 al 15, y el 1 se paga del 16 al fin del mes anterior). Cada pago es la mitad del sueldo mensual; cada día sin función descuenta esa mitad ÷ los días del periodo. Los días antes de su inicio o después de su fin se descuentan solos. Los pagos ya marcados como pagados no cambian si modificas algo.</p>
         </Panel>
 
-        <Panel className="p-4">
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <p className="font-medium">Días sin función · {MESES[m - 1]} {y}</p>
-            <select value={sel} onChange={(e) => setSel(e.target.value)} className="ml-auto rounded-md px-3 py-1.5 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}>
-              {managers.map((mg) => <option key={mg.id} value={mg.id}>{mg.full_name}</option>)}
-            </select>
-          </div>
-          {sel ? (
-            <>
-              <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1" style={lbl}>{['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((d) => <span key={d}>{d}</span>)}</div>
-              <div className="grid grid-cols-7 gap-1">
-                {celdas.map((d, i) => {
-                  if (d === null) return <span key={'v' + i} />
-                  const f = isoDe(y, m, d)
-                  const fuera = (gSel.inicio && f < gSel.inicio) || (gSel.fin && f > gSel.fin)
-                  if (fuera) return <span key={d} title="Fuera de contrato (antes de su inicio o después de su fin): se descuenta solo" className="rounded-md py-2 text-sm tabular-nums text-center" style={{ background: 'repeating-linear-gradient(45deg, var(--panel), var(--panel) 4px, var(--border) 4px, var(--border) 5px)', color: 'var(--text-muted)', border: '1px dashed var(--border)' }}>{d}</span>
-                  const off = libresSel.has(f), pago = pagosSel.has(f)
-                  return <button key={d} type="button" onClick={() => alternarDia(sel, f)} title={(pago ? 'Día de pago · ' : '') + (off ? 'Quitar descuento' : 'Marcar como día sin función')}
-                    className="rounded-md py-2 text-sm tabular-nums" style={{ background: off ? 'var(--danger)' : 'var(--panel-alt)', color: off ? '#fff' : 'var(--text)', border: pago ? '2px solid var(--accent)' : '1px solid var(--border)', fontWeight: off || pago ? 700 : 400 }}>{d}</button>
-                })}
-              </div>
-              <p className="text-xs mt-2" style={lbl}>Pulsa un día para descontarlo (rojo); otra vez para quitarlo. Borde dorado = día de pago · rayado = fuera de contrato (se descuenta solo).</p>
-              <div className="flex items-end gap-2 mt-3 flex-wrap">
-                <div><label className="text-xs block mb-1" style={lbl}>Rango desde</label><input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-md px-2 py-1.5 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} /></div>
-                <div><label className="text-xs block mb-1" style={lbl}>hasta</label><input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-md px-2 py-1.5 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} /></div>
-                <Button onClick={() => descontarRango(sel)}>Descontar rango</Button>
-              </div>
-              {listaLibresSel.length > 0 && (
-                <div className="mt-4 space-y-1.5">
-                  <p className="text-xs" style={lbl}>Días descontados a {selNombre} este mes ({listaLibresSel.length}) — puedes anotar el motivo:</p>
-                  {listaLibresSel.map((l) => (
-                    <div key={l.id} className="flex items-center gap-2 text-sm">
-                      <span className="w-16 tabular-nums">{fmtC(l.fecha)}</span>
-                      <input defaultValue={l.motivo || ''} placeholder="Motivo (opcional)" onBlur={(e) => guardarMotivo(l, e.target.value)} className="flex-1 rounded-md px-2 py-1 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
-                      <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => alternarDia(sel, l.fecha)}>Quitar</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : <p className="text-sm" style={lbl}>No hay managers.</p>}
-        </Panel>
       </div>
     </div>
   )
