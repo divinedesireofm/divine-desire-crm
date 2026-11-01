@@ -490,6 +490,7 @@ export default function ShiftReports() {
     setCampos({})
     setFanInput({})
     setOk('Reporte enviado ✓')
+    window.dispatchEvent(new Event('shift-report-sent'))
     await load()
     setBusy(false)
   }

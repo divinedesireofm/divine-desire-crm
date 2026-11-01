@@ -12,7 +12,7 @@ const iso = (y, m, d) => `${y}-${pad(m)}-${pad(d)}`            // m = 1..12
 const fmtF = (s) => { const [y, m, d] = s.split('-'); return `${d}/${m}/${y.slice(2)}` }
 const diasDelMes = (y, m) => new Date(y, m, 0).getDate()
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
-const ROLES_MANAGER = ['manager', 'ig_manager', 'reddit_manager']
+const ROLES_MANAGER = ['manager'] // solo managers de chatting (los de Instagram y Reddit no entran aquí)
 const lbl = { color: 'var(--text-muted)' }
 
 // Mitad 1 = días 1-15 (se cobra el 16). Mitad 2 = día 16 a fin de mes (se cobra el 1 del mes siguiente).
@@ -20,12 +20,24 @@ export function rangoMitad(y, m, mitad) {
   return mitad === 1 ? { desde: 1, hasta: 15, pago: iso(y, m, 16) } : { desde: 16, hasta: diasDelMes(y, m), pago: m === 12 ? iso(y + 1, 1, 1) : iso(y, m + 1, 1) }
 }
 
-// Cuánto toca cobrar en una mitad: mensual/2 menos (mensual/2 ÷ días de esa mitad) por cada día sin desempeñar la función.
-export function calcularMitad({ mensual, y, m, mitad, diasLibres }) {
+// Días del mes (1..n) que quedan fuera de contrato: antes de la fecha de inicio o después de la fecha de fin
+export function diasFueraContrato(y, m, inicio, fin) {
+  const out = []
+  for (let d = 1; d <= diasDelMes(y, m); d++) {
+    const f = iso(y, m, d)
+    if ((inicio && f < inicio) || (fin && f > fin)) out.push(d)
+  }
+  return out
+}
+
+// Cuánto toca cobrar en una mitad: mensual/2 menos (mensual/2 ÷ días de esa mitad) por cada día sin desempeñar la función
+// (días marcados en el calendario + días anteriores a su fecha de inicio / posteriores a su fecha de fin).
+export function calcularMitad({ mensual, y, m, mitad, diasLibres, inicio = null, fin = null }) {
   const { desde, hasta } = rangoMitad(y, m, mitad)
   const dias = hasta - desde + 1
   const base = r2(num(mensual) / 2)
-  const libres = diasLibres.filter((d) => d >= desde && d <= hasta).length
+  const todos = new Set([...diasLibres, ...diasFueraContrato(y, m, inicio, fin)])
+  const libres = [...todos].filter((d) => d >= desde && d <= hasta).length
   const porDia = dias ? base / dias : 0
   const descuento = Math.min(base, r2(porDia * libres))
   return { base, libres, descuento, aPagar: r2(base - descuento), dias, porDia: r2(porDia) }
@@ -37,6 +49,8 @@ export default function ManagerPayments() {
   const [m, setM] = useState(hoy.getMonth() + 1)
   const [managers, setManagers] = useState([])
   const [config, setConfig] = useState({})   // manager_id -> sueldo mensual
+  const [fechas, setFechas] = useState({})   // manager_id -> { inicio, fin } guardadas
+  const [fechasEd, setFechasEd] = useState({}) // edición local de inicio/fin
   const [libres, setLibres] = useState([])   // filas manager_days_off del mes
   const [pagos, setPagos] = useState([])     // filas manager_pay_periods del mes
   const [sel, setSel] = useState('')
@@ -59,8 +73,9 @@ export default function ManagerPayments() {
     if (c.error || l.error || p.error) setMsg('Falta ejecutar la migración 72 en Supabase (pagos de managers).')
     else setMsg('')
     setManagers(profs)
-    const cfg = {}; (c.data || []).forEach((r) => { cfg[r.manager_id] = r.monto_mensual })
-    setConfig(cfg)
+    const cfg = {}, fch = {}; (c.data || []).forEach((r) => { cfg[r.manager_id] = r.monto_mensual; fch[r.manager_id] = { inicio: r.fecha_inicio || '', fin: r.fecha_fin || '' } })
+    setConfig(cfg); setFechas(fch)
+    setFechasEd((prev) => { const n = { ...prev }; profs.forEach((pr) => { if (n[pr.id] === undefined) n[pr.id] = fch[pr.id] || { inicio: '', fin: '' } }); return n })
     setSueldos((prev) => { const n = { ...prev }; profs.forEach((pr) => { if (n[pr.id] === undefined) n[pr.id] = cfg[pr.id] != null ? String(cfg[pr.id]) : '' }); return n })
     setLibres(l.data || [])
     setPagos(p.data || [])
@@ -73,10 +88,12 @@ export default function ManagerPayments() {
 
   async function guardarSueldo(id) {
     const v = num(sueldos[id])
-    const { error } = await supabase.from('manager_pay_config').upsert({ manager_id: id, monto_mensual: v, updated_at: new Date().toISOString() })
-    if (error) return setMsg(error.message)
-    setConfig((c) => ({ ...c, [id]: v })); setMsg('')
+    const ed = fechasEd[id] || { inicio: '', fin: '' }
+    const { error } = await supabase.from('manager_pay_config').upsert({ manager_id: id, monto_mensual: v, fecha_inicio: ed.inicio || null, fecha_fin: ed.fin || null, updated_at: new Date().toISOString() })
+    if (error) return setMsg(error.message.includes('fecha_inicio') ? 'Falta ejecutar la migración 73 en Supabase.' : error.message)
+    setConfig((c) => ({ ...c, [id]: v })); setFechas((f) => ({ ...f, [id]: { inicio: ed.inicio || '', fin: ed.fin || '' } })); setMsg('')
   }
+  const sinGuardar = (id) => num(sueldos[id]) !== num(config[id]) || (fechasEd[id]?.inicio || '') !== (fechas[id]?.inicio || '') || (fechasEd[id]?.fin || '') !== (fechas[id]?.fin || '') || (config[id] == null && (sueldos[id] || '') !== '')
 
   const diasLibresDe = (id) => libres.filter((l) => l.manager_id === id).map((l) => Number(l.fecha.slice(8, 10)))
 
@@ -111,7 +128,7 @@ export default function ManagerPayments() {
     await supabase.from('manager_days_off').update({ motivo: motivo.trim() || null }).eq('id', l.id)
   }
 
-  const calc = (id, mitad) => calcularMitad({ mensual: config[id] || 0, y, m, mitad, diasLibres: diasLibresDe(id) })
+  const calc = (id, mitad) => calcularMitad({ mensual: config[id] || 0, y, m, mitad, diasLibres: diasLibresDe(id), inicio: fechas[id]?.inicio || null, fin: fechas[id]?.fin || null })
   const pagoDe = (id, mitad) => pagos.find((p) => p.manager_id === id && p.mitad === mitad)
 
   async function marcarPagado(id, mitad) {
@@ -129,13 +146,14 @@ export default function ManagerPayments() {
     cargar()
   }
 
-  const filas = useMemo(() => managers.flatMap((mg) => [1, 2].map((mitad) => ({ mg, mitad, c: calc(mg.id, mitad), p: pagoDe(mg.id, mitad), r: rangoMitad(y, m, mitad) }))), [managers, config, libres, pagos, y, m]) // eslint-disable-line
+  const filas = useMemo(() => managers.flatMap((mg) => [1, 2].map((mitad) => ({ mg, mitad, c: calc(mg.id, mitad), p: pagoDe(mg.id, mitad), r: rangoMitad(y, m, mitad) }))), [managers, config, fechas, libres, pagos, y, m]) // eslint-disable-line
   const totalPendiente = filas.filter((f) => !f.p?.pagado).reduce((a, f) => a + f.c.aPagar, 0)
   const totalPagado = filas.filter((f) => f.p?.pagado).reduce((a, f) => a + num(f.p.importe_pagado), 0)
   const totalDescuentos = filas.reduce((a, f) => a + (f.p?.pagado ? num(f.p.descuento) : f.c.descuento), 0)
 
   // Calendario del manager seleccionado
   const libresSel = new Set(diasLibresDe(sel))
+  const fueraSel = new Set(diasFueraContrato(y, m, fechas[sel]?.inicio || null, fechas[sel]?.fin || null))
   const primerDiaSemana = (new Date(y, m - 1, 1).getDay() + 6) % 7 // lunes = 0
   const celdas = [...Array(primerDiaSemana).fill(null), ...Array.from({ length: diasDelMes(y, m) }, (_, i) => i + 1)]
   const selNombre = managers.find((x) => x.id === sel)?.full_name
@@ -196,17 +214,23 @@ export default function ManagerPayments() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Panel className="p-4">
-          <p className="font-medium mb-3">Sueldo mensual de cada manager</p>
-          <div className="space-y-2">
+          <p className="font-medium mb-3">Sueldo mensual y fechas de cada manager</p>
+          <div className="space-y-4">
             {managers.map((mg) => (
-              <div key={mg.id} className="flex items-center gap-2">
-                <span className="flex-1 text-sm">{mg.full_name}</span>
-                <div className="w-32"><Input type="number" min="0" step="0.01" placeholder="0.00" value={sueldos[mg.id] ?? ''} onChange={(e) => setSueldos((s) => ({ ...s, [mg.id]: e.target.value }))} /></div>
-                <Button onClick={() => guardarSueldo(mg.id)} disabled={num(sueldos[mg.id]) === num(config[mg.id]) && (config[mg.id] != null || sueldos[mg.id] === '')}>Guardar</Button>
+              <div key={mg.id} className="rounded-md p-3" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="flex-1 text-sm font-medium">{mg.full_name}</span>
+                  <div className="w-32"><Input type="number" min="0" step="0.01" placeholder="Sueldo/mes" value={sueldos[mg.id] ?? ''} onChange={(e) => setSueldos((s) => ({ ...s, [mg.id]: e.target.value }))} /></div>
+                  <Button onClick={() => guardarSueldo(mg.id)} disabled={!sinGuardar(mg.id)}>Guardar</Button>
+                </div>
+                <div className="flex items-end gap-3 flex-wrap mt-2">
+                  <div><label className="text-xs block mb-1" style={lbl}>Empezó a ejercer el</label><input type="date" value={fechasEd[mg.id]?.inicio || ''} onChange={(e) => setFechasEd((f) => ({ ...f, [mg.id]: { ...(f[mg.id] || {}), inicio: e.target.value } }))} className="rounded-md px-2 py-1.5 text-sm" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }} /></div>
+                  <div><label className="text-xs block mb-1" style={lbl}>Dejó de ejercer el (opcional)</label><input type="date" value={fechasEd[mg.id]?.fin || ''} onChange={(e) => setFechasEd((f) => ({ ...f, [mg.id]: { ...(f[mg.id] || {}), fin: e.target.value } }))} className="rounded-md px-2 py-1.5 text-sm" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }} /></div>
+                </div>
               </div>
             ))}
           </div>
-          <p className="text-xs mt-3" style={lbl}>Cada quincena cobra la mitad. Por cada día sin desempeñar la función se descuenta la mitad dividida entre los días de esa quincena. Si cambias el sueldo, los pagos ya marcados como pagados no se tocan.</p>
+          <p className="text-xs mt-3" style={lbl}>Cada quincena cobra la mitad. Los días anteriores a la fecha de inicio (o posteriores a la de fin) se descuentan solos, y cada quincena se calcula por separado. Los días sueltos sin función se marcan en el calendario. Por cada día se descuenta la mitad dividida entre los días de esa quincena. Si cambias algo, los pagos ya marcados como pagados no se tocan.</p>
         </Panel>
 
         <Panel className="p-4">
@@ -221,12 +245,16 @@ export default function ManagerPayments() {
               <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1" style={lbl}>{['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((d) => <span key={d}>{d}</span>)}</div>
               <div className="grid grid-cols-7 gap-1">
                 {celdas.map((d, i) => d === null ? <span key={'v' + i} /> : (
-                  <button key={d} type="button" onClick={() => alternarDia(sel, d)} title={libresSel.has(d) ? 'Quitar descuento' : 'Marcar como día sin función'}
-                    className="rounded-md py-2 text-sm tabular-nums"
-                    style={{ background: libresSel.has(d) ? 'var(--danger)' : d <= 15 ? 'var(--panel-alt)' : 'var(--accent-soft)', color: libresSel.has(d) ? '#fff' : 'var(--text)', border: '1px solid var(--border)', fontWeight: libresSel.has(d) ? 700 : 400 }}>{d}</button>
+                  fueraSel.has(d) ? (
+                    <span key={d} title="Fuera de contrato (antes de su inicio o después de su fin): se descuenta solo" className="rounded-md py-2 text-sm tabular-nums text-center" style={{ background: 'repeating-linear-gradient(45deg, var(--panel), var(--panel) 4px, var(--border) 4px, var(--border) 5px)', color: 'var(--text-muted)', border: '1px dashed var(--border)' }}>{d}</span>
+                  ) : (
+                    <button key={d} type="button" onClick={() => alternarDia(sel, d)} title={libresSel.has(d) ? 'Quitar descuento' : 'Marcar como día sin función'}
+                      className="rounded-md py-2 text-sm tabular-nums"
+                      style={{ background: libresSel.has(d) ? 'var(--danger)' : d <= 15 ? 'var(--panel-alt)' : 'var(--accent-soft)', color: libresSel.has(d) ? '#fff' : 'var(--text)', border: '1px solid var(--border)', fontWeight: libresSel.has(d) ? 700 : 400 }}>{d}</button>
+                  )
                 ))}
               </div>
-              <p className="text-xs mt-2" style={lbl}>Pulsa un día para descontarlo (rojo); púlsalo otra vez para quitarlo. Gris = 1ª quincena · dorado = 2ª quincena.</p>
+              <p className="text-xs mt-2" style={lbl}>Pulsa un día para descontarlo (rojo); púlsalo otra vez para quitarlo. Gris = 1ª quincena · dorado = 2ª quincena · rayado = fuera de contrato (se descuenta solo).</p>
               <div className="flex items-end gap-2 mt-3 flex-wrap">
                 <div><label className="text-xs block mb-1" style={lbl}>Rango desde</label><input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-md px-2 py-1.5 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} /></div>
                 <div><label className="text-xs block mb-1" style={lbl}>hasta</label><input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-md px-2 py-1.5 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} /></div>

@@ -6,6 +6,8 @@ import Icon from './Icon'
 import AnnouncementGate from './AnnouncementGate'
 import PildoraGate from './PildoraGate'
 import ShiftTimer from './ShiftTimer'
+import { useReportePendiente } from '../lib/reportePendiente'
+import { BloqueoReporte, BannerReporte } from './ReporteObligatorio'
 import NotificationBell from './NotificationBell'
 import NotificationPopup from './NotificationPopup'
 import { NotificationsProvider } from '../context/NotificationsContext'
@@ -46,6 +48,16 @@ export default function Layout() {
   const [errMenu, setErrMenu] = useState('')
   const mainRef = useRef(null)
   const location = useLocation()
+  const { pendiente: reportePend, marcarEnviado } = useReportePendiente()
+  const enReportes = location.pathname.startsWith('/reportes-turno')
+
+  // Mientras el reporte esté pendiente, el navegador pide confirmación antes de cerrar o recargar la pestaña
+  useEffect(() => {
+    if (!reportePend) return undefined
+    const aviso = (e) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', aviso)
+    return () => window.removeEventListener('beforeunload', aviso)
+  }, [reportePend])
 
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0)
@@ -234,10 +246,12 @@ export default function Layout() {
           </p>
           <button
             onClick={signOut}
+            disabled={!!reportePend}
+            title={reportePend ? 'Envía primero el reporte de tu turno' : undefined}
             className="px-2 text-xs hover:underline"
-            style={{ color: 'var(--text-muted)' }}
+            style={{ color: 'var(--text-muted)', opacity: reportePend ? 0.45 : 1, cursor: reportePend ? 'not-allowed' : undefined }}
           >
-            Cerrar sesión
+            {reportePend ? 'Cerrar sesión (envía antes tu reporte)' : 'Cerrar sesión'}
           </button>
         </div>
       </aside>
@@ -248,12 +262,14 @@ export default function Layout() {
         </div>
         <AnnouncementGate>
           <PildoraGate>
-            {sinAcceso ? (
+            {reportePend && !enReportes ? (
+              <BloqueoReporte marcarEnviado={marcarEnviado} />
+            ) : sinAcceso ? (
               <Panel className="p-6">
                 <p className="font-medium mb-1">No tienes acceso a este apartado</p>
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Si lo necesitas, pídeselo al administrador.</p>
               </Panel>
-            ) : <Outlet />}
+            ) : <>{reportePend && <BannerReporte marcarEnviado={marcarEnviado} />}<Outlet /></>}
           </PildoraGate>
         </AnnouncementGate>
       </main>
