@@ -201,6 +201,7 @@ function PagosAdmin({ area = 'chatting' }) {
     } catch { return [] } finally { creandoCuentas.current = false }
   }
 
+  const refrescarMgr = () => cargarDatosManagers(rolesManager).then(setDatosMgr).catch(() => {})
   async function cargar() {
     const [{ data: c }, { data: p0 }, { data: pr }, { data: bn0 }, { data: sn }, { data: cu0 }, tk] = await Promise.all([
       supabase.from('payout_accounts').select('*').order('created_at'),
@@ -468,7 +469,7 @@ function PagosAdmin({ area = 'chatting' }) {
 
       <div className="flex flex-wrap gap-2 mb-4">
         {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos'], ['adelantos', 'Adelantos'], ['managers', 'Pago de managers'], ['tareas', 'Pago por tareas'], ['extrabajadores', 'Pagos de extrabajadores' + (pagosEx.length ? ` (${pagosEx.length})` : '')]].map(([k, t]) => (
-          <button key={k} onClick={() => setVista(k)} className="px-4 py-1.5 rounded-md text-sm font-medium"
+          <button key={k} onClick={() => { if (k === 'pagos') refrescarMgr(); setVista(k) }} className="px-4 py-1.5 rounded-md text-sm font-medium"
             style={{ background: vista === k ? 'var(--accent)' : 'var(--panel-alt)', color: vista === k ? '#000' : 'var(--text)', border: '1px solid ' + (vista === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
         ))}
       </div>
@@ -476,7 +477,7 @@ function PagosAdmin({ area = 'chatting' }) {
       {vista === 'tareas' ? (
         <TareasPagos onCambio={cargar} area={area} />
       ) : vista === 'managers' ? (
-        <ManagerPayments roles={rolesManager} area={area} />
+        <ManagerPayments roles={rolesManager} area={area} onCambio={refrescarMgr} />
       ) : vista === 'extrabajadores' ? (
         <ExtrabajadoresTab cuentas={cuentasEx} pagos={pagosEx} sel={selEx} setSel={setSelEx} notasDe={notasDe} />
       ) : vista === 'bonos' ? (

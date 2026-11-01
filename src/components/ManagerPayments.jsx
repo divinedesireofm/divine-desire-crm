@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Panel, Button, Input } from './ui'
 import { hoyISO } from '../lib/payTasks'
@@ -15,7 +15,7 @@ const inp = { background: 'var(--panel)', border: '1px solid var(--border)', col
 
 const textoRangos = (r) => (r.length ? r.map(([a, b]) => (a === b ? fmtC(a) : `${fmtC(a)} → ${fmtC(b)}`)).join(' · ') : 'ningún día')
 
-export default function ManagerPayments({ roles = ['manager'], area = 'chatting' }) {
+export default function ManagerPayments({ roles = ['manager'], area = 'chatting', onCambio }) {
   const hoy = hoyISO()
   const [y, setY] = useState(Number(hoy.slice(0, 4)))
   const [m, setM] = useState(Number(hoy.slice(5, 7)))
@@ -52,6 +52,9 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
     setCargando(false)
   }
   useEffect(() => { cargar() }, []) // eslint-disable-line
+  // Cada vez que cambia algo (fecha de pago, periodo, pagado, sueldo…) se avisa a la tabla general de Pagos para que se actualice sola
+  const primera = useRef(true)
+  useEffect(() => { if (primera.current) { primera.current = false; return } onCambio?.() }, [pagos, ajustes, cfg, libresRows, tareas]) // eslint-disable-line
 
   function mover(delta) { let nm = m + delta, ny = y; if (nm < 1) { nm = 12; ny-- } if (nm > 12) { nm = 1; ny++ } setM(nm); setY(ny) }
   const cfgDe = (id) => cfg[id] || { sueldo: 0, inicio: '', fin: '', d1: 16, d2: 1 }
