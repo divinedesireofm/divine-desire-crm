@@ -7,7 +7,7 @@ export const hoyISO = () => { const d = new Date(); return isoDe(d.getFullYear()
 
 // Filas de cobro que faltan por crear: las puntuales una vez; las mensuales, una por mes desde «desde» hasta el mes que viene.
 export function filasFaltantes(tasks, items, hoy = hoyISO()) {
-  const ya = new Set(items.flatMap((i) => [i.task_id + '|' + i.fecha_pago, i.task_id + '|' + i.fecha_pago.slice(0, 7)])) // y «ya hay uno ese mes» para las mensuales
+  const ya = new Set(items.flatMap((i) => [i.task_id + '|' + i.fecha_pago, i.task_id + '|' + i.fecha_pago.slice(0, 7), ...(i.fecha_original ? [i.task_id + '|' + i.fecha_original, i.task_id + '|' + i.fecha_original.slice(0, 7)] : [])])) // y «ya hay uno ese mes» para las mensuales
   const out = []
   const [hy, hm] = hoy.split('-').map(Number)
   for (const t of tasks) {

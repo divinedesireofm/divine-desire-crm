@@ -201,7 +201,7 @@ function PagosAdmin({ area = 'chatting' }) {
     } catch { return [] } finally { creandoCuentas.current = false }
   }
 
-  const refrescarMgr = () => cargarDatosManagers(rolesManager).then(setDatosMgr).catch(() => {})
+  const refrescarMgr = () => { cargarDatosManagers(rolesManager).then(setDatosMgr).catch(() => {}); cargarTareas(area).then((t) => setTareas(t.items || [])).catch(() => {}) }
   async function cargar() {
     const [{ data: c }, { data: p0 }, { data: pr }, { data: bn0 }, { data: sn }, { data: cu0 }, tk] = await Promise.all([
       supabase.from('payout_accounts').select('*').order('created_at'),
@@ -440,21 +440,51 @@ function PagosAdmin({ area = 'chatting' }) {
   const filasMgr = useMemo(() => (datosMgr ? unicasTareas(calcularFilasManagers(datosMgr, hoyISO())) : []), [datosMgr])
   const idsManager = useMemo(() => new Set((datosMgr?.managers || []).map((m) => m.id)), [datosMgr])
   const mgrDe = (profileId, fecha) => (profileId ? filasMgr.find((f) => f.mg.id === profileId && f.pr.pago === fecha) : null)
-  // Pagos de manager que no coinciden con ningún pago registrado de esa persona ese día: salen como fila propia
+  // ---------- columna «Tareas» ----------
+  // Cobros de tareas por persona y día. Los de quien es manager van en su columna Manager (no se cuentan dos veces).
+  const hoyS = hoyISO()
+  const tareasInfo = useMemo(() => {
+    const usadosMgr = new Set(filasMgr.flatMap((f) => f.tk.map((t) => t.id)))
+    const items = tareas.filter((t) => !usadosMgr.has(t.id) && !(t.aplicado_tipo === 'manager' && t.aplicado_en))
+    const cuentasDe = (pid) => cuentas.filter((c) => c.profile_id === pid).map((c) => c.id)
+    const porPago = {}   // payout id -> { incl: [], pend: [] }
+    const sueltas = []   // sin pago de chatter al que colgarse
+    const cae = (id) => (porPago[id] = porPago[id] || { incl: [], pend: [] })
+    items.forEach((t) => {
+      if (t.aplicado_en && t.aplicado_tipo !== 'manager') { cae(t.aplicado_en).incl.push(t); return }
+      if (t.aplicado_en) return
+      if (t.pagado_at) { if (t.fecha_pago >= sumarDias(hoyS, -120)) sueltas.push(t); return }
+      const ids = cuentasDe(t.responsable_id)
+      const destino = pagos.filter((x) => ids.includes(x.account_id) && x.estado === 'Pendiente' && x.fecha >= t.fecha_pago).sort((a, b) => a.fecha.localeCompare(b.fecha))[0]
+      if (destino) cae(destino.id).pend.push(t)
+      else if (t.fecha_pago <= sumarDias(hoyS, 20)) sueltas.push(t)
+    })
+    return { porPago, sueltas }
+  }, [tareas, filasMgr, cuentas, pagos, hoyS])
+  const sumaT = (l) => r2(l.reduce((a, t) => a + num(t.monto), 0))
+
+  // Pagos de manager y de tareas que no coinciden con ningún pago registrado de esa persona ese día: salen como fila propia
   const filasTabla = useMemo(() => {
     const out = visibles.map((p) => ({ tipo: 'pago', fecha: p.fecha, p }))
-    const idsCuentas = new Set(cuentas.map((c) => c.id))
-    const tope = sumarDias(hoyISO(), 20) // solo el pago de manager vigente y los ya pagados; no todo el calendario futuro
+    const tope = sumarDias(hoyS, 20) // solo el pago de manager vigente y los ya pagados; no todo el calendario futuro
     filasMgr.forEach((f) => {
       if (!(f.total > 0 || f.p) || f.pr.pago > tope) return
       const cs = cuentas.filter((c) => c.profile_id === f.mg.id)
       if (!cs.length && sel !== 'todas') return
       if (sel !== 'todas' && !cs.some((c) => c.id === sel)) return
-      const hay = pagos.some((x) => idsCuentas.has(x.account_id) && cs.some((c) => c.id === x.account_id) && x.fecha === f.pr.pago)
+      const hay = pagos.some((x) => cs.some((c) => c.id === x.account_id) && x.fecha === f.pr.pago)
       if (!hay) out.push({ tipo: 'mgr', fecha: f.pr.pago, f })
     })
+    const grupos = {}
+    tareasInfo.sueltas.forEach((t) => {
+      if (sel !== 'todas' && cuentaDe(sel)?.profile_id !== t.responsable_id) return
+      const k = t.responsable_id + '|' + t.fecha_pago
+      grupos[k] = grupos[k] || { tipo: 'tar', fecha: t.fecha_pago, pid: t.responsable_id, lista: [] }
+      grupos[k].lista.push(t)
+    })
+    Object.values(grupos).forEach((g) => out.push(g))
     return out.sort((a, b) => b.fecha.localeCompare(a.fecha))
-  }, [visibles, filasMgr, cuentas, pagos, sel])
+  }, [visibles, filasMgr, cuentas, pagos, sel, tareasInfo])
   const lbl = { color: 'var(--text-muted)' }
 
   return (
@@ -714,7 +744,7 @@ function PagosAdmin({ area = 'chatting' }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Fecha', ...(sel === 'todas' ? [IG ? 'Persona' : 'Chatter'] : []), 'Bruta', 'Neta', '%', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Manager', 'Total', 'Estado', 'Notas', ''].map((h) => (
+                  {['Fecha', ...(sel === 'todas' ? [IG ? 'Persona' : 'Chatter'] : []), 'Bruta', 'Neta', '%', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Manager', 'Tareas', 'Total', 'Estado', 'Notas', ''].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={lbl}>{h}</th>
                   ))}
                 </tr>
@@ -736,6 +766,33 @@ function PagosAdmin({ area = 'chatting' }) {
                       </div>
                     )
                   }
+                  const celdaTar = (info) => {
+                    if (!info || (!info.incl.length && !info.pend.length)) return <span style={lbl}>—</span>
+                    return (
+                      <div className="leading-tight min-w-[150px]">
+                        {info.pend.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(t.monto)}</span> {t.titulo} <span style={{ color: 'var(--gold)' }}>· pendiente</span></span>)}
+                        {info.incl.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums">{money(t.monto)}</span> {t.titulo} <span style={{ color: 'var(--success)' }}>· ✓ ya en Bonos</span></span>)}
+                      </div>
+                    )
+                  }
+                  if (fila.tipo === 'tar') {
+                    const pagadas = fila.lista.every((t) => t.pagado_at)
+                    return (
+                      <tr key={'t' + fila.pid + fila.fecha} style={{ borderBottom: bordeFila, background: 'color-mix(in srgb, var(--gold) 5%, transparent)' }}>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(fila.fecha)}</td>
+                        {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{perfiles.find((x) => x.id === fila.pid)?.full_name || '—'}</td>}
+                        {Array.from({ length: 7 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
+                        <td className="px-3 py-2.5" style={lbl}>—</td>
+                        <td className="px-3 py-2.5">
+                          <div className="leading-tight min-w-[150px]">{fila.lista.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(t.monto)}</span> {t.titulo} <span style={{ color: t.pagado_at ? 'var(--success)' : 'var(--gold)' }}>· {t.pagado_at ? '✓ pagada' : 'pendiente'}</span></span>)}</div>
+                        </td>
+                        <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(sumaT(fila.lista))}</td>
+                        <td className="px-3 py-2.5 text-xs" style={lbl}>Solo tareas</td>
+                        <td className="px-3 py-2.5 text-xs" style={lbl}>Se gestiona en «Pago por tareas»</td>
+                        <td className="px-3 py-2.5"></td>
+                      </tr>
+                    )
+                  }
                   if (fila.tipo === 'mgr') {
                     const f = fila.f
                     return (
@@ -744,6 +801,7 @@ function PagosAdmin({ area = 'chatting' }) {
                         {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{f.mg.full_name}</td>}
                         {Array.from({ length: 7 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
                         <td className="px-3 py-2.5">{celdaMgr(f)}</td>
+                        <td className="px-3 py-2.5" style={lbl}>—</td>
                         <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(f.total)}</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Solo manager</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Se gestiona en «Pago de managers»</td>
@@ -755,6 +813,8 @@ function PagosAdmin({ area = 'chatting' }) {
                   const perfilId = cuentaDe(p.account_id)?.profile_id
                   const esMgr = !!perfilId && idsManager.has(perfilId)
                   const fm = esMgr ? mgrDe(perfilId, p.fecha) : null
+                  const ti = tareasInfo.porPago[p.id]
+                  const tPend = ti ? sumaT(ti.pend) : 0
                   return (
                     <tr key={p.id} style={{ borderBottom: bordeFila }}>
                       <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(p.fecha)}</td>
@@ -769,7 +829,8 @@ function PagosAdmin({ area = 'chatting' }) {
                       <td className="px-3 py-2.5" style={esMgr ? undefined : { background: 'color-mix(in srgb, var(--text-muted) 8%, transparent)' }} title={esMgr ? undefined : 'Esta persona no es manager'}>
                         {esMgr ? celdaMgr(fm) : <span style={{ ...lbl, opacity: 0.5 }}>🔒</span>}
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap" title={fm ? `Pago ${money(calcPago(p))} + manager ${money(fm.total)}` : undefined}>{money(r2(calcPago(p) + (fm ? fm.total : 0)))}</td>
+                      <td className="px-3 py-2.5">{celdaTar(ti)}</td>
+                      <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap" title={`Pago ${money(calcPago(p))}${fm ? ` + manager ${money(fm.total)}` : ''}${tPend ? ` + tareas ${money(tPend)}` : ''}`}>{money(r2(calcPago(p) + (fm ? fm.total : 0) + tPend))}</td>
                       <td className="px-3 py-2.5">
                         {p.estado === 'Pagado'
                           ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--success) 15%, transparent)', color: 'var(--success)' }}>Pagado</span>

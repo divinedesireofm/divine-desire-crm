@@ -20,6 +20,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
   const [cargando, setCargando] = useState(true)
   const [filtro, setFiltro] = useState('pendientes')
   const [fResp, setFResp] = useState('todos')
+  const [itemEd, setItemEd] = useState(null) // edición independiente de una fila de cobro
 
   async function cargar() {
     const [t, pr] = await Promise.all([cargarTareas(area), supabase.from('profiles').select('id, full_name, active, extrabajador').order('full_name')])
@@ -51,7 +52,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
       // al editar, lo pendiente se recalcula con los datos nuevos; lo ya incluido en un pago o pagado no se toca
       const r = await supabase.from('pay_tasks').update(payload).eq('id', f.id)
       if (r.error) return setMsg(r.error.message)
-      await supabase.from('pay_task_items').delete().eq('task_id', f.id).is('aplicado_en', null).is('pagado_at', null)
+      await supabase.from('pay_task_items').delete().eq('task_id', f.id).is('aplicado_en', null).is('pagado_at', null).neq('editado', true) // las filas editadas a mano se respetan
     } else {
       const r = await supabase.from('pay_tasks').insert([payload])
       if (r.error) return setMsg(r.error.message.includes('pay_tasks') ? 'Falta ejecutar la migración 74 en Supabase.' : r.error.message)
@@ -68,6 +69,16 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
   }
   async function marcarPagado(i) { await supabase.from('pay_task_items').update({ pagado_at: new Date().toISOString() }).eq('id', i.id); cambio() }
   async function deshacerPagado(i) { await supabase.from('pay_task_items').update({ pagado_at: null }).eq('id', i.id); cambio() }
+  function abrirItem(i) { setItemEd({ id: i.id, fecha_pago: i.fecha_pago, monto: String(i.monto), titulo: i.titulo || '', responsable_id: i.responsable_id || '', original: i.fecha_original || i.fecha_pago, est: estadoItem(i) }) }
+  async function guardarItem() {
+    const e = itemEd
+    if (!e.fecha_pago) return setMsg('Pon el día de pago.')
+    if (!(num(e.monto) > 0)) return setMsg('Pon el importe.')
+    if (!e.responsable_id) return setMsg('Elige al responsable.')
+    const r = await supabase.from('pay_task_items').update({ fecha_pago: e.fecha_pago, monto: r2(num(e.monto)), titulo: e.titulo.trim() || 'Tarea', responsable_id: e.responsable_id, fecha_original: e.original, editado: true }).eq('id', e.id)
+    if (r.error) return setMsg(/editado|fecha_original/.test(r.error.message) ? 'Falta ejecutar la migración 78 en Supabase.' : r.error.message)
+    setItemEd(null); setMsg(''); cambio()
+  }
   async function borrarItem(i) { if (!window.confirm('¿Quitar este cobro?')) return; await supabase.from('pay_task_items').delete().eq('id', i.id); cambio() }
 
   const visibles = useMemo(() => items.filter((i) => (fResp === 'todos' || i.responsable_id === fResp) && (filtro === 'todos' || (filtro === 'pendientes' ? estadoItem(i) === 'pendiente' : estadoItem(i) !== 'pendiente'))).sort((a, b) => a.fecha_pago.localeCompare(b.fecha_pago)), [items, filtro, fResp]) // eslint-disable-line
@@ -149,14 +160,30 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
             <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Día de pago', 'Tarea', 'Responsable', 'Importe', 'Estado', ''].map((c) => <th key={c} className="text-left px-3 py-3 font-medium whitespace-nowrap" style={lbl}>{c}</th>)}</tr></thead>
             <tbody>{visibles.map((i) => {
               const est = estadoItem(i)
+              if (itemEd?.id === i.id) {
+                const sI = (patch) => setItemEd((x) => ({ ...x, ...patch }))
+                return (
+                  <tr key={i.id} style={{ borderBottom: '1px solid var(--border)', background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>
+                    <td className="px-3 py-3"><input type="date" value={itemEd.fecha_pago} onChange={(e) => sI({ fecha_pago: e.target.value })} className="rounded px-2 py-1 text-sm" style={inp} /></td>
+                    <td className="px-3 py-3"><input value={itemEd.titulo} onChange={(e) => sI({ titulo: e.target.value })} className="rounded px-2 py-1 text-sm w-full min-w-[140px]" style={inp} /></td>
+                    <td className="px-3 py-3"><Select value={itemEd.responsable_id} onChange={(e) => sI({ responsable_id: e.target.value })}>{personas.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select></td>
+                    <td className="px-3 py-3"><input type="number" step="0.01" value={itemEd.monto} onChange={(e) => sI({ monto: e.target.value })} className="rounded px-2 py-1 text-sm w-24" style={inp} /></td>
+                    <td className="px-3 py-3 text-xs" style={lbl}>{est !== 'pendiente' ? 'Ojo: ya está incluido/pagado; el cambio no modifica el pago ya registrado.' : 'Solo cambia esta fila; la tarea y el resto de meses no se tocan.'}</td>
+                    <td className="px-3 py-3 whitespace-nowrap space-x-3">
+                      <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={guardarItem}>Guardar</button>
+                      <button className="text-xs underline" style={lbl} onClick={() => setItemEd(null)}>Cancelar</button>
+                    </td>
+                  </tr>)
+              }
               return (
                 <tr key={i.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td className="px-3 py-3 whitespace-nowrap">{fmtF(i.fecha_pago)}{est === 'pendiente' && i.fecha_pago <= hoyISO() && <span className="block text-xs" style={{ color: 'var(--danger)' }}>vencido</span>}</td>
+                  <td className="px-3 py-3 whitespace-nowrap">{fmtF(i.fecha_pago)}{i.editado && <span className="block text-[11px]" style={lbl}>editada</span>}{est === 'pendiente' && i.fecha_pago <= hoyISO() && <span className="block text-xs" style={{ color: 'var(--danger)' }}>vencido</span>}</td>
                   <td className="px-3 py-3">{i.titulo}{tareaDe(i.task_id)?.tipo === 'mensual' && <span className="text-xs" style={lbl}> · mensual</span>}</td>
                   <td className="px-3 py-3 whitespace-nowrap">{nombre(i.responsable_id)}</td>
                   <td className="px-3 py-3 tabular-nums font-semibold">{money(i.monto)}</td>
                   <td className="px-3 py-3 whitespace-nowrap">{est === 'pendiente' ? <span style={{ color: 'var(--gold)' }}>Pendiente</span> : est === 'incluido' ? <span style={{ color: 'var(--success)' }}>✓ Incluido en un pago de {i.aplicado_tipo === 'manager' ? 'manager' : 'chatter'}</span> : <span style={{ color: 'var(--success)' }}>✓ Pagado ({fmtF(i.pagado_at)})</span>}</td>
                   <td className="px-3 py-3 whitespace-nowrap space-x-3">
+                    <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => abrirItem(i)}>Editar</button>
                     {est === 'pendiente' && <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => marcarPagado(i)} title="Para cuando la pagas aparte, sin meterla en el pago de un chatter o manager">Marcar pagado</button>}
                     {est === 'pagado' && <button className="text-xs underline" style={lbl} onClick={() => deshacerPagado(i)}>Deshacer</button>}
                     {est === 'pendiente' && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrarItem(i)}>Quitar</button>}
