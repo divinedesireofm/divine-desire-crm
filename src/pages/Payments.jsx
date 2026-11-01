@@ -5,6 +5,8 @@ import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import { getProfilesByRoles } from '../lib/roles'
 import ManagerPayments from '../components/ManagerPayments'
+import TareasPagos from '../components/TareasPagos'
+import { cargarTareas } from '../lib/payTasks'
 
 // ---------- utilidades ----------
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
@@ -168,6 +170,7 @@ function PagosAdmin() {
   const [bonos, setBonos] = useState([])
   const [sanciones, setSanciones] = useState([])
   const [cuotas, setCuotas] = useState([])
+  const [tareas, setTareas] = useState([]) // cobros de tareas (pago por tareas)
   const [cuentasEx, setCuentasEx] = useState([]) // cuentas de extrabajadores (dados de baja en Equipo)
   const [pagosEx, setPagosEx] = useState([])
   const [selEx, setSelEx] = useState('todas')
@@ -192,14 +195,16 @@ function PagosAdmin() {
   }
 
   async function cargar() {
-    const [{ data: c }, { data: p }, { data: pr }, { data: bn }, { data: sn }, { data: cu }] = await Promise.all([
+    const [{ data: c }, { data: p }, { data: pr }, { data: bn }, { data: sn }, { data: cu }, tk] = await Promise.all([
       supabase.from('payout_accounts').select('*').order('created_at'),
       supabase.from('chatter_payouts').select('*').order('fecha', { ascending: false }).limit(5000),
       supabase.from('profiles').select('id, full_name, extrabajador').order('full_name'),
       supabase.from('payout_bonuses').select('*').order('fecha_cobro', { ascending: false }).limit(2000),
       supabase.from('sanctions').select('id, chatter_id, motivo, monto, fecha, payout_id').order('fecha', { ascending: false }).limit(2000),
       supabase.from('payout_advance_installments').select('*').order('fecha_prevista').limit(2000),
+      cargarTareas().catch(() => ({ items: [] })),
     ])
+    setTareas(tk.items || [])
     let perf = pr
     if (!perf) { // sin la migración 55 no existe la columna «extrabajador»
       const r = await supabase.from('profiles').select('id, full_name').order('full_name'); perf = r.data || []
@@ -242,7 +247,9 @@ function PagosAdmin() {
     const b = bonos.filter((x) => x.account_id === accountId && (x.aplicado_en === pagoId && pagoId ? true : !x.aplicado_en && x.fecha_cobro <= fecha))
     const s = cuenta?.profile_id ? sanciones.filter((x) => x.chatter_id === cuenta.profile_id && ((pagoId && x.payout_id === pagoId) || (!x.payout_id && x.fecha <= fecha))) : []
     const cu = cuotas.filter((x) => x.account_id === accountId && ((pagoId && x.aplicado_en === pagoId) || (!x.aplicado_en && x.fecha_prevista <= fecha)))
-    return { bonos: b, sanciones: s, cuotas: cu, ultimo }
+    // Tareas del responsable (cuenta enlazada a su perfil) con día de pago ≤ fecha del pago, aún sin pagar (o ya enlazadas a este pago)
+    const ta = cuenta?.profile_id ? tareas.filter((x) => x.responsable_id === cuenta.profile_id && ((pagoId && x.aplicado_en === pagoId) || (!x.aplicado_en && !x.pagado_at && x.fecha_pago <= fecha))) : []
+    return { bonos: b, sanciones: s, cuotas: cu, tareas: ta, ultimo }
   }
   function seleccionPorDefecto(accountId, fecha) {
     const pd = pendientesDe(accountId, fecha, null)
@@ -252,7 +259,9 @@ function PagosAdmin() {
     const sumS = r2(pd.sanciones.filter((x) => selS.includes(x.id)).reduce((t, x) => t + num(x.monto), 0))
     const selC = pd.cuotas.map((x) => x.id)
     const sumC = r2(pd.cuotas.reduce((t, x) => t + num(x.monto), 0))
-    return { selB, selS, selC, bonos: sumB || '', penalizacion: sumS || '', deuda: sumC || '' }
+    const selT = pd.tareas.map((x) => x.id)
+    const sumT = r2(pd.tareas.reduce((t, x) => t + num(x.monto), 0))
+    return { selB, selS, selC, selT, bonos: r2(sumB + sumT) || '', penalizacion: sumS || '', deuda: sumC || '' }
   }
 
   // ---------- pago ----------
@@ -260,7 +269,7 @@ function PagosAdmin() {
     const c = cuentaId ? cuentaDe(cuentaId) : sel !== 'todas' ? cuentaDe(sel) : cuentas.find((x) => x.activa !== false) || cuentas[0]
     const fecha = fechaIni || hoyISO()
     setEditId(null)
-    setForm({ ...VACIO, fecha, account_id: c?.id || '', pct: c?.pct_defecto ?? 0.15, ...(c ? seleccionPorDefecto(c.id, fecha) : { selB: [], selS: [], selC: [] }) })
+    setForm({ ...VACIO, fecha, account_id: c?.id || '', pct: c?.pct_defecto ?? 0.15, ...(c ? seleccionPorDefecto(c.id, fecha) : { selB: [], selS: [], selC: [], selT: [] }) })
     setVista('pagos')
   }
   function editarPago(p) {
@@ -272,6 +281,7 @@ function PagosAdmin() {
       selB: bonos.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
       selS: sanciones.filter((x) => x.payout_id === p.id).map((x) => x.id),
       selC: cuotas.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
+      selT: tareas.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
       cuotasN: cuotas.filter((x) => x.origen_id === p.id).length || 2, cuotasFilas: [],
       adelantoOriginal: num(p.adelanto),
     })
@@ -282,7 +292,7 @@ function PagosAdmin() {
   function alCambiarNeta(v) { setF({ neta: v, bruta: v === '' ? '' : r2(num(v) / OF_NETO) }) }
   function alCambiarCuenta(id) {
     const c = cuentaDe(id)
-    setF({ account_id: id, pct: c?.pct_defecto ?? form.pct, ...(editId ? { selB: [], selS: [], selC: [] } : seleccionPorDefecto(id, form.fecha)) })
+    setF({ account_id: id, pct: c?.pct_defecto ?? form.pct, ...(editId ? { selB: [], selS: [], selC: [], selT: [] } : seleccionPorDefecto(id, form.fecha)) })
   }
   function alCambiarFecha(fecha) {
     setF({ fecha, ...(editId ? {} : seleccionPorDefecto(form.account_id, fecha)) })
@@ -295,6 +305,11 @@ function PagosAdmin() {
   function alternarSancion(x) {
     const on = form.selS.includes(x.id)
     setF({ selS: on ? form.selS.filter((i) => i !== x.id) : [...form.selS, x.id], penalizacion: r2(Math.max(0, num(form.penalizacion) + (on ? -1 : 1) * num(x.monto))) || '' })
+  }
+
+  function alternarTarea(x) {
+    const on = form.selT.includes(x.id)
+    setF({ selT: on ? form.selT.filter((i) => i !== x.id) : [...form.selT, x.id], bonos: r2(num(form.bonos) + (on ? -1 : 1) * num(x.monto)) || '' })
   }
 
   function alternarCuota(x) {
@@ -329,7 +344,11 @@ function PagosAdmin() {
     const prevC = cuotas.filter((x) => x.aplicado_en === pid).map((x) => x.id)
     const quitarB = prevB.filter((i) => !form.selB.includes(i)); const quitarS = prevS.filter((i) => !form.selS.includes(i))
     const quitarC = prevC.filter((i) => !form.selC.includes(i))
+    const prevT = tareas.filter((x) => x.aplicado_en === pid).map((x) => x.id)
+    const quitarT = prevT.filter((i) => !(form.selT || []).includes(i))
     const ops = []
+    if (quitarT.length) ops.push(supabase.from('pay_task_items').update({ aplicado_en: null, aplicado_tipo: null }).in('id', quitarT))
+    if ((form.selT || []).length) ops.push(supabase.from('pay_task_items').update({ aplicado_en: pid, aplicado_tipo: 'chatter' }).in('id', form.selT))
     if (quitarC.length) ops.push(supabase.from('payout_advance_installments').update({ aplicado_en: null }).in('id', quitarC))
     if (form.selC.length) ops.push(supabase.from('payout_advance_installments').update({ aplicado_en: pid }).in('id', form.selC))
     if (quitarB.length) ops.push(supabase.from('payout_bonuses').update({ aplicado_en: null }).in('id', quitarB))
@@ -417,13 +436,15 @@ function PagosAdmin() {
       {msg && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{msg}</p>}
 
       <div className="flex flex-wrap gap-2 mb-4">
-        {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos'], ['adelantos', 'Adelantos'], ['managers', 'Pago de managers'], ['extrabajadores', 'Pagos de extrabajadores' + (pagosEx.length ? ` (${pagosEx.length})` : '')]].map(([k, t]) => (
+        {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos'], ['adelantos', 'Adelantos'], ['managers', 'Pago de managers'], ['tareas', 'Pago por tareas'], ['extrabajadores', 'Pagos de extrabajadores' + (pagosEx.length ? ` (${pagosEx.length})` : '')]].map(([k, t]) => (
           <button key={k} onClick={() => setVista(k)} className="px-4 py-1.5 rounded-md text-sm font-medium"
             style={{ background: vista === k ? 'var(--accent)' : 'var(--panel-alt)', color: vista === k ? '#000' : 'var(--text)', border: '1px solid ' + (vista === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
         ))}
       </div>
 
-      {vista === 'managers' ? (
+      {vista === 'tareas' ? (
+        <TareasPagos onCambio={cargar} />
+      ) : vista === 'managers' ? (
         <ManagerPayments />
       ) : vista === 'extrabajadores' ? (
         <ExtrabajadoresTab cuentas={cuentasEx} pagos={pagosEx} sel={selEx} setSel={setSelEx} notasDe={notasDe} />
@@ -582,7 +603,7 @@ function PagosAdmin() {
             )}
             {(() => {
               const pd = pendientesDe(form.account_id, form.fecha, editId)
-              if (!pd.bonos.length && !pd.sanciones.length && !pd.cuotas.length) return null
+              if (!pd.bonos.length && !pd.sanciones.length && !pd.cuotas.length && !pd.tareas.length) return null
               return (
                 <div className="mt-4 grid gap-4 lg:grid-cols-3 sm:grid-cols-2">
                   {pd.bonos.length > 0 && (
@@ -593,6 +614,18 @@ function PagosAdmin() {
                           <input type="checkbox" checked={form.selB.includes(b.id)} onChange={() => alternarBono(b)} />
                           <span className="flex-1">{b.nombre} <span className="text-xs" style={lbl}>· cobro {fmtF(b.fecha_cobro)}</span>{b.created_at && <span className="block text-[11px]" style={lbl}>Añadido el {fmtAlta(b.created_at)}</span>}</span>
                           <strong className="tabular-nums">+{money(b.monto)}</strong>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {pd.tareas.length > 0 && (
+                    <div className="rounded-md p-3" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                      <p className="text-xs font-medium mb-2" style={{ color: 'var(--accent)' }}>Pago por tareas (se suma a los bonos)</p>
+                      {pd.tareas.map((x) => (
+                        <label key={x.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
+                          <input type="checkbox" checked={(form.selT || []).includes(x.id)} onChange={() => alternarTarea(x)} />
+                          <span className="flex-1">{x.titulo} <span className="text-xs" style={lbl}>· día de pago {fmtF(x.fecha_pago)}</span></span>
+                          <strong className="tabular-nums">+{money(x.monto)}</strong>
                         </label>
                       ))}
                     </div>
