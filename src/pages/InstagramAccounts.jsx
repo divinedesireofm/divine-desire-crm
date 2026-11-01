@@ -406,7 +406,7 @@ export default function InstagramAccounts() {
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {COLS.map((c, i) => (
                     <th key={c.k} className="text-left px-3 py-3 font-medium whitespace-nowrap"
-                      style={{ color: ordenK === c.k ? 'var(--accent)' : 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}) }}>
+                      style={{ color: ordenK === c.k ? 'var(--accent)' : 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}), ...(c.k === 'acc' ? { position: 'sticky', right: 0, zIndex: 6, background: 'var(--panel)', borderLeft: '1px solid var(--border)' } : {}) }}>
                       {c.k === 'acc' ? '' : (
                         <button type="button" onClick={() => ordenarPor(c.k)} className="hover:underline" title="Ordenar por esta columna">
                           {c.n}{ordenK === c.k ? (ordenDir === 'asc' ? ' ▲' : ' ▼') : ''}
@@ -441,7 +441,7 @@ export default function InstagramAccounts() {
                     <td className="px-3 align-middle"><CeldaCopia titulo="Días" texto={a.assigned_at ? String(diasTranscurridos(a.assigned_at)) : ''} /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Observaciones" texto={a.observations} muted /></td>
                     <td className="px-3 align-middle"><CeldaCopia titulo="Restricciones" texto={a.restrictions} muted /></td>
-                    <td className="px-3 align-middle">
+                    <td className="px-3 align-middle" style={{ position: 'sticky', right: 0, zIndex: 5, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
                       <div className="flex gap-3 whitespace-nowrap">
                         {canEdit && (
                           <button onClick={() => startEdit(a)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>

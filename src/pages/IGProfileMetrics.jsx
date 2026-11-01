@@ -4,13 +4,21 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { actualizarMetricasIG } from '../lib/igScrape'
 import { Panel, Button, Select } from '../components/ui'
-import ModelName from '../components/ModelAvatar'
+import ScrollSuperior from '../components/ScrollSuperior'
 
 const n0 = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 }))
 const n1 = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }))
 const fFecha = (d) => (d ? new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—')
 const fFechaHora = (d) => (d ? new Date(d).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—')
 const hace = (d) => { if (!d) return '—'; const dias = Math.floor((Date.now() - new Date(d).getTime()) / 86400000); return dias <= 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} d` }
+
+// Foto de perfil del propio Instagram; si no hay lectura o no carga, la inicial
+function FotoIG({ url, nombre, size = 40 }) {
+  const [fallo, setFallo] = useState(false)
+  const base = { width: size, height: size, minWidth: size, borderRadius: '50%', flexShrink: 0 }
+  if (url && !fallo) return <img src={url} alt={nombre} loading="lazy" referrerPolicy="no-referrer" onError={() => setFallo(true)} style={{ ...base, objectFit: 'cover', border: '1px solid var(--border)' }} />
+  return <span aria-hidden="true" style={{ ...base, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, fontSize: 15 }}>{(nombre || '?').charAt(0).toUpperCase()}</span>
+}
 
 const GRAFICAS = [
   ['followers', 'Seguidores'], ['engagement_rate', 'Engagement (%)'], ['avg_likes', 'Likes medios'],
@@ -41,7 +49,7 @@ export default function IGProfileMetrics() {
     setLoading(true)
     const [{ data: acc }, { data: st, error: e }] = await Promise.all([
       supabase.from('instagram_accounts').select('id, username, status, profile_link, models(stage_name)').order('username'),
-      supabase.from('ig_profile_stats').select('id, account_id, captured_at, followers, following, posts_count, avg_likes, avg_comments, engagement_rate, avg_reel_views, reels_sampled, posts_sampled, last_post_at, is_verified, is_private, biography, external_url, full_name').order('captured_at', { ascending: false }).limit(3000),
+      supabase.from('ig_profile_stats').select('id, account_id, captured_at, followers, following, posts_count, avg_likes, avg_comments, engagement_rate, avg_reel_views, reels_sampled, posts_sampled, last_post_at, is_verified, is_private, biography, external_url, full_name, profile_pic_url').order('captured_at', { ascending: false }).limit(3000),
     ])
     if (e) setErr(e.message.includes('ig_profile_stats') ? 'Falta ejecutar la migración 61 en Supabase.' : e.message)
     else setErr('')
@@ -63,7 +71,8 @@ export default function IGProfileMetrics() {
     // comparación: la última foto con al menos 6 días de antigüedad; si no hay, la anterior
     const hace7 = ult ? h.find((s) => new Date(ult.captured_at) - new Date(s.captured_at) >= 6 * 86400000) : null
     const ref = hace7 || h[1] || null
-    return { ...c, historial: h, ult, ref }
+    const foto = (h.find((s) => s.profile_pic_url) || {}).profile_pic_url || null // la última foto de perfil leída
+    return { ...c, historial: h, ult, ref, foto }
   }), [cuentas, porCuenta])
 
   const totalSeg = filas.reduce((a, f) => a + (f.ult?.followers || 0), 0)
@@ -122,12 +131,13 @@ export default function IGProfileMetrics() {
 
       <Panel>
         {loading ? <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p> : (
-          <div className="overflow-x-auto">
+          <ScrollSuperior>
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Cuenta', 'Seguidores', 'Siguiendo', 'Posts', 'Likes medios', 'Comentarios medios', 'Engagement', 'Vistas reels', 'Último post', 'Actualizado', ''].map((c) => (
-                    <th key={c} className="text-left px-3 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>
+                  {['Cuenta', 'Seguidores', 'Siguiendo', 'Posts', 'Likes medios', 'Comentarios medios', 'Engagement', 'Vistas reels', 'Último post', 'Actualizado', ''].map((c, i, arr) => (
+                    <th key={c || 'acc'} className="text-left px-3 py-3 font-medium whitespace-nowrap"
+                      style={{ color: 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}), ...(i === arr.length - 1 ? { position: 'sticky', right: 0, zIndex: 6, background: 'var(--panel)', borderLeft: '1px solid var(--border)' } : {}) }}>{c}</th>
                   ))}
                 </tr>
               </thead>
@@ -136,9 +146,14 @@ export default function IGProfileMetrics() {
                   <tr><td colSpan={11} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay cuentas de Instagram.</td></tr>
                 ) : filas.map((f) => (
                   <tr key={f.id} onClick={() => setAbierta(abierta === f.id ? null : f.id)} className="cursor-pointer" style={{ borderBottom: '1px solid var(--border)', background: abierta === f.id ? 'var(--accent-soft)' : undefined }}>
-                    <td className="px-3 py-3 whitespace-nowrap">
-                      <div className="font-medium">@{f.username}{f.ult?.is_verified ? ' ✔' : ''}{f.ult?.is_private ? ' 🔒' : ''}</div>
-                      <div className="text-xs" style={{ color: 'var(--text-muted)' }}><ModelName name={f.models?.stage_name} /></div>
+                    <td className="px-3 py-3 whitespace-nowrap" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)' }}>
+                      <div className="flex items-center gap-3">
+                        <FotoIG url={f.foto} nombre={f.username} />
+                        <div>
+                          <div className="font-medium">@{f.username}{f.ult?.is_verified ? ' ✔' : ''}{f.ult?.is_private ? ' 🔒' : ''}</div>
+                          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{f.models?.stage_name || 'Sin modelo'}</div>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap tabular-nums"><div className="font-medium">{n0(f.ult?.followers)}</div>{f.ult && f.ref && <Delta actual={f.ult.followers} anterior={f.ref.followers} />}</td>
                     <td className="px-3 py-3 tabular-nums">{n0(f.ult?.following)}</td>
@@ -149,14 +164,14 @@ export default function IGProfileMetrics() {
                     <td className="px-3 py-3 tabular-nums">{n0(f.ult?.avg_reel_views)}</td>
                     <td className="px-3 py-3 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{f.ult?.last_post_at ? hace(f.ult.last_post_at) : '—'}</td>
                     <td className="px-3 py-3 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{f.ult ? fFechaHora(f.ult.captured_at) : 'sin datos'}</td>
-                    <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()} style={{ position: 'sticky', right: 0, zIndex: 5, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
                       {puedeActualizar && <button className="text-xs underline" style={{ color: 'var(--accent)' }} disabled={busy !== null} onClick={() => actualizar([f.id], f.id)}>{busy === f.id ? 'Leyendo…' : 'Actualizar'}</button>}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollSuperior>
         )}
       </Panel>
 

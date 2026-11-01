@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import { getProfilesByRoles } from '../lib/roles'
+import ManagerPayments from '../components/ManagerPayments'
 
 // ---------- utilidades ----------
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
@@ -415,14 +416,16 @@ function PagosAdmin() {
 
       {msg && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{msg}</p>}
 
-      <div className="flex gap-2 mb-4">
-        {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos'], ['adelantos', 'Adelantos'], ['extrabajadores', 'Pagos de extrabajadores' + (pagosEx.length ? ` (${pagosEx.length})` : '')]].map(([k, t]) => (
+      <div className="flex flex-wrap gap-2 mb-4">
+        {[['pagos', 'Pagos'], ['calendario', 'Calendario'], ['bonos', 'Bonos'], ['adelantos', 'Adelantos'], ['managers', 'Pago de managers'], ['extrabajadores', 'Pagos de extrabajadores' + (pagosEx.length ? ` (${pagosEx.length})` : '')]].map(([k, t]) => (
           <button key={k} onClick={() => setVista(k)} className="px-4 py-1.5 rounded-md text-sm font-medium"
             style={{ background: vista === k ? 'var(--accent)' : 'var(--panel-alt)', color: vista === k ? '#000' : 'var(--text)', border: '1px solid ' + (vista === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
         ))}
       </div>
 
-      {vista === 'extrabajadores' ? (
+      {vista === 'managers' ? (
+        <ManagerPayments />
+      ) : vista === 'extrabajadores' ? (
         <ExtrabajadoresTab cuentas={cuentasEx} pagos={pagosEx} sel={selEx} setSel={setSelEx} notasDe={notasDe} />
       ) : vista === 'bonos' ? (
         <BonosTab cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={cargar} />
