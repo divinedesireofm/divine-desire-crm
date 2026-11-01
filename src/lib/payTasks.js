@@ -12,6 +12,7 @@ export function filasFaltantes(tasks, items, hoy = hoyISO()) {
   const [hy, hm] = hoy.split('-').map(Number)
   for (const t of tasks) {
     if (!t.activa) continue
+    const omit = new Set(t.omitidos || []) // meses de una tarea mensual quitados a mano
     const base = { task_id: t.id, titulo: t.titulo, responsable_id: t.responsable_id, monto: t.monto }
     if (t.tipo === 'puntual') {
       if (t.fecha_pago && !ya.has(t.id + '|' + t.fecha_pago)) out.push({ ...base, fecha_pago: t.fecha_pago })
@@ -22,7 +23,7 @@ export function filasFaltantes(tasks, items, hoy = hoyISO()) {
         const limite = hy * 12 + hm + 1 // hasta el mes siguiente
         if (y * 12 + m > limite) break
         const f = isoDe(y, m, Math.min(Number(t.dia_pago), diasDelMes(y, m)))
-        if (f >= desde && !ya.has(t.id + '|' + f) && !ya.has(t.id + '|' + f.slice(0, 7))) out.push({ ...base, fecha_pago: f })
+        if (f >= desde && !omit.has(f.slice(0, 7)) && !ya.has(t.id + '|' + f) && !ya.has(t.id + '|' + f.slice(0, 7))) out.push({ ...base, fecha_pago: f })
         m++; if (m > 12) { m = 1; y++ }
       }
     }

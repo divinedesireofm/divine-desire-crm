@@ -60,9 +60,24 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
     setForm(null); setMsg(''); cambio()
   }
   async function alternarActiva(t) { await supabase.from('pay_tasks').update({ activa: !t.activa }).eq('id', t.id); cambio() }
+  // Si el cobro ya estaba sumado a un pago (de chatter o de manager), se resta de ese pago antes de borrarlo
+  async function revertirItem(i) {
+    if (!i.aplicado_en) return
+    const m = num(i.monto)
+    if (i.aplicado_tipo === 'manager') {
+      const data = ((await supabase.from('manager_pay_periods').select('id, importe_tareas, importe_pagado').eq('id', i.aplicado_en)).data || []).find((x) => x.id === i.aplicado_en)
+      if (data) await supabase.from('manager_pay_periods').update({ importe_tareas: Math.max(0, r2(num(data.importe_tareas) - m)), importe_pagado: r2(num(data.importe_pagado) - m) }).eq('id', data.id)
+    } else {
+      const data = ((await supabase.from('chatter_payouts').select('id, bonos').eq('id', i.aplicado_en)).data || []).find((x) => x.id === i.aplicado_en)
+      if (data) await supabase.from('chatter_payouts').update({ bonos: Math.max(0, r2(num(data.bonos) - m)) }).eq('id', data.id)
+    }
+  }
   async function borrar(t) {
-    if (!window.confirm(`¿Eliminar la tarea «${t.titulo}»?\n\nSe borran sus cobros pendientes; los ya pagados o incluidos en un pago se conservan en el historial.`)) return
-    await supabase.from('pay_task_items').delete().eq('task_id', t.id).is('aplicado_en', null).is('pagado_at', null)
+    const suyos = items.filter((i) => i.task_id === t.id)
+    const ya = suyos.filter((i) => i.aplicado_en || i.pagado_at)
+    if (!window.confirm(`¿Eliminar por completo la tarea «${t.titulo}»?\n\nSe borra la tarea y todos sus cobros (${suyos.length}) como si nunca se hubiese creado.${ya.length ? `\n\n${ya.length} cobro(s) ya estaban pagados o incluidos en un pago: los incluidos se restan de ese pago (Bonos o pago de manager).` : ''}`)) return
+    for (const i of suyos) await revertirItem(i)
+    await supabase.from('pay_task_items').delete().eq('task_id', t.id)
     const r = await supabase.from('pay_tasks').delete().eq('id', t.id)
     if (r.error) return setMsg(r.error.message)
     cambio()
@@ -79,7 +94,15 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
     if (r.error) return setMsg(/editado|fecha_original/.test(r.error.message) ? 'Falta ejecutar la migración 78 en Supabase.' : r.error.message)
     setItemEd(null); setMsg(''); cambio()
   }
-  async function borrarItem(i) { if (!window.confirm('¿Quitar este cobro?')) return; await supabase.from('pay_task_items').delete().eq('id', i.id); cambio() }
+  async function borrarItem(i) {
+    const t = tareaDe(i.task_id)
+    if (t && t.tipo === 'puntual') return borrar(t) // una tarea puntual solo tiene este cobro: se elimina entera
+    if (!window.confirm(`¿Eliminar por completo este cobro (${fmtF(i.fecha_pago)} · ${money(i.monto)})?${i.aplicado_en ? '\n\nYa estaba incluido en un pago: se resta de ese pago.' : ''}\n\nLa tarea mensual sigue activa en los demás meses.`)) return
+    await revertirItem(i)
+    await supabase.from('pay_task_items').delete().eq('id', i.id)
+    if (t) await supabase.from('pay_tasks').update({ omitidos: [...new Set([...(t.omitidos || []), (i.fecha_original || i.fecha_pago).slice(0, 7)])] }).eq('id', t.id) // para que no se vuelva a generar
+    cambio()
+  }
 
   const visibles = useMemo(() => items.filter((i) => (fResp === 'todos' || i.responsable_id === fResp) && (filtro === 'todos' || (filtro === 'pendientes' ? estadoItem(i) === 'pendiente' : estadoItem(i) !== 'pendiente'))).sort((a, b) => a.fecha_pago.localeCompare(b.fecha_pago)), [items, filtro, fResp]) // eslint-disable-line
   const pendientes = items.filter((i) => estadoItem(i) === 'pendiente')
@@ -186,7 +209,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
                     <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => abrirItem(i)}>Editar</button>
                     {est === 'pendiente' && <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => marcarPagado(i)} title="Para cuando la pagas aparte, sin meterla en el pago de un chatter o manager">Marcar pagado</button>}
                     {est === 'pagado' && <button className="text-xs underline" style={lbl} onClick={() => deshacerPagado(i)}>Deshacer</button>}
-                    {est === 'pendiente' && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrarItem(i)}>Quitar</button>}
+                    <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrarItem(i)}>Eliminar</button>
                   </td>
                 </tr>)
             })}</tbody>
