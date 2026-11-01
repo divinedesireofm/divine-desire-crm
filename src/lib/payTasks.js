@@ -74,8 +74,9 @@ export function filasFaltantes(tasks, items, hoy = hoyISO()) {
       for (const pr of periodosTarea(t, desde, limite)) {
         const f = pr.pago
         if (omit.has(f) || omit.has(f.slice(0, 7)) || yaFecha.has(t.id + '|' + f) || (t.tipo === 'mensual' && yaMes.has(t.id + '|' + f.slice(0, 7)))) continue
-        const c = calcularItem({ base: t.monto, desde: pr.desde, hasta: pr.hasta, inicio: desde })
-        out.push({ ...base, fecha_pago: f, periodo_desde: pr.desde, periodo_hasta: pr.hasta, monto_base: t.monto, dias_libres: [], monto: c.aPagar })
+        const libres = (t.faltas || []).filter((d) => d >= pr.desde && d <= pr.hasta) // faltas registradas en la tarea
+        const c = calcularItem({ base: t.monto, desde: pr.desde, hasta: pr.hasta, libres, inicio: desde })
+        out.push({ ...base, fecha_pago: f, periodo_desde: pr.desde, periodo_hasta: pr.hasta, monto_base: t.monto, dias_libres: libres, monto: c.aPagar })
       }
     }
   }

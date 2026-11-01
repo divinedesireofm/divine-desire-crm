@@ -29,11 +29,16 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
   const [filtro, setFiltro] = useState('pendientes')
   const [fResp, setFResp] = useState('todos')
   const [itemEd, setItemEd] = useState(null) // edición independiente de una fila de cobro
+  const [papelera, setPapelera] = useState([])
+  const [verPapelera, setVerPapelera] = useState(false)
+  const [faltas, setFaltas] = useState(null) // { id, d1, d2 } panel de faltas de una tarea
 
   async function cargar() {
     const [t, pr] = await Promise.all([cargarTareas(area), supabase.from('profiles').select('id, full_name, active, extrabajador').order('full_name')])
     if (t.error) setMsg(t.error.includes('pay_task') ? 'Falta ejecutar la migración 74 en Supabase (pago por tareas).' : t.error)
     setTasks(t.tasks); setItems(t.items)
+    const pp = await supabase.from('pay_task_papelera').select('*').eq('area', area).order('eliminado_at', { ascending: false }).limit(200)
+    setPapelera(pp.error ? [] : (pp.data || []))
     setPersonas((pr.data || []).filter((p) => p.active !== false && !p.extrabajador))
     setCargando(false)
   }
@@ -89,15 +94,84 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
       if (data) await supabase.from('chatter_payouts').update({ bonos: Math.max(0, r2(num(data.bonos) - m)) }).eq('id', data.id)
     }
   }
+  // Guarda una copia en la papelera para poder restaurarlo
+  async function aPapelera(tipo, titulo, payload) {
+    const r = await supabase.from('pay_task_papelera').insert([{ area, tipo, titulo, payload }])
+    if (r.error) { setMsg(/pay_task_papelera/.test(r.error.message) ? 'Falta ejecutar la migración 81 en Supabase (papelera de tareas). No se ha eliminado nada.' : r.error.message); return false }
+    return true
+  }
   async function borrar(t) {
     const suyos = items.filter((i) => i.task_id === t.id)
     const ya = suyos.filter((i) => i.aplicado_en || i.pagado_at)
-    if (!window.confirm(`¿Eliminar por completo la tarea «${t.titulo}»?\n\nSe borra la tarea y todos sus cobros (${suyos.length}) como si nunca se hubiese creado.${ya.length ? `\n\n${ya.length} cobro(s) ya estaban pagados o incluidos en un pago: los incluidos se restan de ese pago (Bonos o pago de manager).` : ''}`)) return
+    if (!window.confirm(`¿Eliminar la tarea «${t.titulo}»?\n\nSe borra la tarea y todos sus cobros (${suyos.length}) y desaparece de los pagos.${ya.length ? `\n\n${ya.length} cobro(s) ya estaban pagados o incluidos en un pago: los incluidos se restan de ese pago (Bonos o pago de manager).` : ''}\n\nSi te equivocas, puedes restaurarla desde la Papelera.`)) return
+    if (!(await aPapelera('tarea', t.titulo, { task: t, items: suyos }))) return
     for (const i of suyos) await revertirItem(i)
     await supabase.from('pay_task_items').delete().eq('task_id', t.id)
     const r = await supabase.from('pay_tasks').delete().eq('id', t.id)
     if (r.error) return setMsg(r.error.message)
     cambio()
+  }
+  // Vuelve a sumar el cobro al pago en el que estaba (si ese pago sigue existiendo)
+  async function reaplicarItem(i) {
+    if (!i.aplicado_en) return i
+    const m = num(i.monto)
+    if (i.aplicado_tipo === 'manager') {
+      const data = ((await supabase.from('manager_pay_periods').select('id, importe_tareas, importe_pagado').eq('id', i.aplicado_en)).data || []).find((x) => x.id === i.aplicado_en)
+      if (!data) return { ...i, aplicado_en: null, aplicado_tipo: null }
+      await supabase.from('manager_pay_periods').update({ importe_tareas: r2(num(data.importe_tareas) + m), importe_pagado: r2(num(data.importe_pagado) + m) }).eq('id', data.id)
+    } else {
+      const data = ((await supabase.from('chatter_payouts').select('id, bonos').eq('id', i.aplicado_en)).data || []).find((x) => x.id === i.aplicado_en)
+      if (!data) return { ...i, aplicado_en: null, aplicado_tipo: null }
+      await supabase.from('chatter_payouts').update({ bonos: r2(num(data.bonos) + m) }).eq('id', data.id)
+    }
+    return i
+  }
+  async function restaurar(r) {
+    setMsg('')
+    if (r.tipo === 'tarea') {
+      const { task, items: its } = r.payload
+      const ins = await supabase.from('pay_tasks').insert([task])
+      if (ins.error) return setMsg('No se pudo restaurar la tarea: ' + ins.error.message)
+      const filas = []
+      for (const i of its) filas.push(await reaplicarItem(i))
+      if (filas.length) {
+        const r2_ = await supabase.from('pay_task_items').upsert(filas, { onConflict: 'id' })
+        if (r2_.error) return setMsg('Se restauró la tarea pero fallaron algunos cobros: ' + r2_.error.message)
+      }
+    } else {
+      const { item, omit } = r.payload
+      const t = item.task_id ? tareaDe(item.task_id) : null
+      if (item.task_id && !t) return setMsg('Esa tarea también está eliminada: restaura primero la tarea (o restáurala entera desde aquí).')
+      const fila = await reaplicarItem(item)
+      const ins = await supabase.from('pay_task_items').upsert([fila], { onConflict: 'id' })
+      if (ins.error) return setMsg('No se pudo restaurar el cobro: ' + ins.error.message)
+      if (t && omit) await supabase.from('pay_tasks').update({ omitidos: (t.omitidos || []).filter((x) => x !== omit) }).eq('id', t.id)
+    }
+    await supabase.from('pay_task_papelera').delete().eq('id', r.id)
+    cambio()
+  }
+  async function borrarDefinitivo(r) {
+    if (!window.confirm(`¿Borrar «${r.titulo}» de la papelera para siempre? Ya no se podrá restaurar.`)) return
+    await supabase.from('pay_task_papelera').delete().eq('id', r.id); cargar()
+  }
+
+  // ---- faltas: días que el responsable no trabajó, se descuentan solos del pago que los cubre ----
+  async function aplicarFaltas(t, fechas, quitar) {
+    if (!fechas.length) return setMsg('Elige al menos un día.')
+    const nuevas = quitar ? (t.faltas || []).filter((d) => !fechas.includes(d)) : [...new Set([...(t.faltas || []), ...fechas])].sort()
+    const u = await supabase.from('pay_tasks').update({ faltas: nuevas }).eq('id', t.id)
+    if (u.error) return setMsg(/faltas/.test(u.error.message) ? 'Falta ejecutar la migración 81 en Supabase.' : u.error.message)
+    let sinCambio = 0
+    for (const i of items.filter((x) => x.task_id === t.id && x.periodo_desde)) {
+      const toca = fechas.filter((d) => d >= i.periodo_desde && d <= i.periodo_hasta)
+      if (!toca.length) continue
+      if (i.aplicado_en || i.pagado_at) { sinCambio += toca.length; continue } // ya pagado/incluido: no se toca
+      const libres = quitar ? (i.dias_libres || []).filter((d) => !toca.includes(d)) : [...new Set([...(i.dias_libres || []), ...toca])].sort()
+      const c = calcularItem({ base: i.monto_base ?? i.monto, desde: i.periodo_desde, hasta: i.periodo_hasta, libres, inicio: t.desde || null })
+      await supabase.from('pay_task_items').update({ dias_libres: libres, monto: c.aPagar }).eq('id', i.id)
+    }
+    setMsg(sinCambio ? `${sinCambio} día(s) caen en un pago que ya estaba pagado o incluido: ese pago no se modifica (puedes ajustarlo editándolo).` : '')
+    setFaltas((f) => ({ ...f, d1: '', d2: '' })); cambio()
   }
   async function marcarPagado(i) { await supabase.from('pay_task_items').update({ pagado_at: new Date().toISOString() }).eq('id', i.id); cambio() }
   async function deshacerPagado(i) { await supabase.from('pay_task_items').update({ pagado_at: null }).eq('id', i.id); cambio() }
@@ -124,7 +198,9 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
   async function borrarItem(i) {
     const t = tareaDe(i.task_id)
     if (t && t.tipo === 'puntual') return borrar(t) // una tarea puntual solo tiene este cobro: se elimina entera
-    if (!window.confirm(`¿Eliminar por completo este cobro (${fmtF(i.fecha_pago)} · ${money(i.monto)})?${i.aplicado_en ? '\n\nYa estaba incluido en un pago: se resta de ese pago.' : ''}\n\nLa tarea sigue activa en el resto de fechas.`)) return
+    if (!window.confirm(`¿Eliminar este cobro (${fmtF(i.fecha_pago)} · ${money(i.monto)})?${i.aplicado_en ? '\n\nYa estaba incluido en un pago: se resta de ese pago.' : ''}\n\nLa tarea sigue activa en el resto de fechas. Puedes restaurarlo desde la Papelera.`)) return
+    const f0x = i.fecha_original || i.fecha_pago
+    if (!(await aPapelera('cobro', `${i.titulo} · ${fmtF(i.fecha_pago)}`, { item: i, omit: t ? (t.tipo === 'mensual' ? f0x.slice(0, 7) : f0x) : null }))) return
     await revertirItem(i)
     await supabase.from('pay_task_items').delete().eq('id', i.id)
     if (t) { const f0 = i.fecha_original || i.fecha_pago; await supabase.from('pay_tasks').update({ omitidos: [...new Set([...(t.omitidos || []), t.tipo === 'mensual' ? f0.slice(0, 7) : f0])] }).eq('id', t.id) } // para que no se vuelva a generar
@@ -178,6 +254,32 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
         </Panel>
       ) : <div><Button onClick={() => setForm({ ...VACIA })}>+ Nueva tarea</Button></div>}
 
+      {faltas && tareaDe(faltas.id) && (() => {
+        const t = tareaDe(faltas.id)
+        const d2 = faltas.d2 || faltas.d1
+        const lista = faltas.d1 && d2 && faltas.d1 <= d2 && difDias(d2, faltas.d1) <= 62 ? diasDe(faltas.d1, d2) : []
+        return (
+          <Panel className="p-5">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+              <p className="font-medium">Faltas de {nombre(t.responsable_id)} en «{t.titulo}»</p>
+              <button className="text-xs underline" style={lbl} onClick={() => setFaltas(null)}>Cerrar</button>
+            </div>
+            <p className="text-xs mb-3" style={lbl}>Marca los días que no trabajó: se descuentan solos del pago que cubre ese día (importe base ÷ días del periodo por cada día), y de los pagos que se generen más adelante. Si el día cae en un pago ya pagado o incluido, ese pago no se toca.</p>
+            <div className="flex items-end gap-2 flex-wrap">
+              <div><label className="text-xs block mb-1" style={lbl}>Falta desde</label><input type="date" value={faltas.d1} onChange={(e) => setFaltas((f) => ({ ...f, d1: e.target.value }))} className="rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>hasta (opcional)</label><input type="date" value={faltas.d2} min={faltas.d1} onChange={(e) => setFaltas((f) => ({ ...f, d2: e.target.value }))} className="rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <Button onClick={() => aplicarFaltas(t, lista, false)} disabled={!lista.length}>Añadir {lista.length > 1 ? `${lista.length} días` : 'falta'}</Button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-3">
+              {(t.faltas || []).length === 0 ? <span className="text-xs" style={lbl}>Todavía no hay faltas registradas en esta tarea.</span> : (t.faltas || []).map((d) => (
+                <span key={d} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs tabular-nums" style={{ background: 'var(--danger)', color: '#fff' }}>{fmtF(d)}
+                  <button type="button" title="Quitar la falta (vuelve a contar como trabajado)" onClick={() => aplicarFaltas(t, [d], true)} style={{ color: '#fff' }}>✕</button></span>
+              ))}
+            </div>
+          </Panel>
+        )
+      })()}
+
       <Panel>
         <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}><p className="font-medium">Tareas</p></div>
         {tasks.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>Todavía no hay tareas. Crea la primera con «+ Nueva tarea».</p> : (
@@ -192,6 +294,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
                 <td className="px-3 py-3 whitespace-nowrap">{t.activa ? <span style={{ color: 'var(--success)' }}>Activa</span> : <span style={lbl}>Pausada</span>}</td>
                 <td className="px-3 py-3 whitespace-nowrap space-x-3">
                   <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => setForm({ id: t.id, titulo: t.titulo, descripcion: t.descripcion || '', responsable_id: t.responsable_id, monto: String(t.monto), tipo: t.tipo, fecha_pago: t.fecha_pago || hoyISO(), dia_pago: String(t.dia_pago || 5), desde: t.desde || hoyISO(), q1: String(t.tipo === 'quincenal' ? diasPagoDe(t)[0] : 1), q2: String(t.tipo === 'quincenal' ? diasPagoDe(t)[1] : 16), lista: t.tipo === 'dias' ? diasPagoDe(t).join(', ') : '5, 12, 20' })}>Editar</button>
+                  {esRecurrente(t) && <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => setFaltas({ id: t.id, d1: '', d2: '' })}>Faltas{(t.faltas || []).length ? ` (${t.faltas.length})` : ''}</button>}
                   <button className="text-xs underline" style={lbl} onClick={() => alternarActiva(t)}>{t.activa ? 'Pausar' : 'Reactivar'}</button>
                   <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(t)}>Eliminar</button>
                 </td>
@@ -290,6 +393,28 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
             })}</tbody>
           </table></div>
         )}
+      </Panel>
+
+      <Panel>
+        <button className="w-full px-4 py-3 flex items-center justify-between text-left" onClick={() => setVerPapelera((v) => !v)}>
+          <span className="font-medium">🗑 Papelera{papelera.length ? ` (${papelera.length})` : ''}</span>
+          <span className="text-xs" style={lbl}>{verPapelera ? 'Ocultar' : 'Ver tareas y cobros eliminados para restaurarlos'}</span>
+        </button>
+        {verPapelera && (papelera.length === 0 ? <p className="px-4 pb-4 text-sm" style={lbl}>La papelera está vacía.</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>{['Eliminado', 'Qué era', 'Detalle', ''].map((c) => <th key={c} className="text-left px-3 py-2.5 font-medium whitespace-nowrap" style={lbl}>{c}</th>)}</tr></thead>
+            <tbody>{papelera.map((r) => (
+              <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(r.eliminado_at)}</td>
+                <td className="px-3 py-2.5"><strong>{r.titulo}</strong><span className="block text-xs" style={lbl}>{r.tipo === 'tarea' ? 'Tarea entera' : 'Un cobro'} · {nombre(r.tipo === 'tarea' ? r.payload.task.responsable_id : r.payload.item.responsable_id)}</span></td>
+                <td className="px-3 py-2.5 text-xs" style={lbl}>{r.tipo === 'tarea' ? `${cuando(r.payload.task)} · ${r.payload.items.length} cobro(s) · ${money(r.payload.task.monto)}` : `Pago del ${fmtF(r.payload.item.fecha_pago)} · ${money(r.payload.item.monto)}${r.payload.item.aplicado_en ? ' · estaba incluido en un pago' : ''}`}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap space-x-3">
+                  <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => restaurar(r)}>Restaurar</button>
+                  <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrarDefinitivo(r)}>Borrar para siempre</button>
+                </td>
+              </tr>))}</tbody>
+          </table></div>
+        ))}
       </Panel>
     </div>
   )
