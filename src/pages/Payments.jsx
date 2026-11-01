@@ -890,9 +890,9 @@ function PagosAdmin({ area = 'chatting' }) {
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{p.pct != null ? Math.round(num(p.pct) * 100) + '%' : '—'}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.bonos)}</td>
-                      <td className="px-3 py-2.5 tabular-nums"><CeldaAdelanto p={p} cuotas={cuotas} celda={celda} /></td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(p.adelanto)}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.penalizacion) ? 'var(--danger)' : undefined }}>{celda(p.penalizacion)}</td>
-                      <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.deuda) ? 'var(--danger)' : undefined }}><CeldaDeuda p={p} cuotas={cuotas} celda={celda} /></td>
+                      <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.deuda) ? 'var(--danger)' : undefined }}>{celda(p.deuda)}</td>
                       <td className="px-3 py-2.5" style={esMgr ? undefined : { background: 'color-mix(in srgb, var(--text-muted) 8%, transparent)' }} title={esMgr ? undefined : 'Esta persona no es manager'}>
                         {esMgr ? celdaMgr(fm) : <span style={{ ...lbl, opacity: 0.5 }}>🔒</span>}
                       </td>
@@ -978,9 +978,9 @@ function ExtrabajadoresTab({ cuentas, pagos, sel, setSel, notasDe }) {
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{p.pct != null ? Math.round(num(p.pct) * 100) + '%' : '—'}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.bonos)}</td>
-                      <td className="px-3 py-2.5 tabular-nums"><CeldaAdelanto p={p} cuotas={cuotas} celda={celda} /></td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(p.adelanto)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.penalizacion)}</td>
-                      <td className="px-3 py-2.5 tabular-nums"><CeldaDeuda p={p} cuotas={cuotas} celda={celda} /></td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(p.deuda)}</td>
                       <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(calcPago(p))}</td>
                       <td className="px-3 py-2.5 text-xs">{p.estado}</td>
                       <td className="px-3 py-2.5 text-xs max-w-[320px]" style={lbl}>{notasDe(p)}</td>
@@ -992,38 +992,6 @@ function ExtrabajadoresTab({ cuentas, pagos, sel, setSel, notasDe }) {
           </div>
         )}
       </Panel>
-    </div>
-  )
-}
-
-// Datos de adelanto de un pago: lo entregado (con el total de todas sus cuotas) y las cuotas que se descuentan en él
-function infoAdelantos(p, cuotas) {
-  const grp = (x) => x.origen_id || x.adelanto_id || x.id
-  const delGrupo = (k) => cuotas.filter((x) => grp(x) === k)
-  const sum = (arr) => r2(arr.reduce((t, x) => t + num(x.monto), 0))
-  const propias = delGrupo(p.id).filter((x) => x.origen_id === p.id)
-  const entregado = propias.length ? { total: sum(propias), n: propias.length } : null
-  const descuentos = cuotas.filter((x) => x.aplicado_en === p.id).sort((a, b) => a.num - b.num).map((x) => {
-    const g = delGrupo(grp(x))
-    return { id: x.id, num: x.num, n: g.length, monto: x.monto, total: sum(g) }
-  })
-  return { entregado, descuentos }
-}
-function CeldaAdelanto({ p, cuotas, celda }) {
-  const { entregado } = infoAdelantos(p, cuotas)
-  return (
-    <div className="leading-tight">
-      {celda(p.adelanto)}
-      {entregado && <span className="block text-[11px] whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>total {money(entregado.total)} en {entregado.n} {entregado.n === 1 ? 'cuota' : 'cuotas'}</span>}
-    </div>
-  )
-}
-function CeldaDeuda({ p, cuotas, celda }) {
-  const { descuentos } = infoAdelantos(p, cuotas)
-  return (
-    <div className="leading-tight">
-      {celda(p.deuda)}
-      {descuentos.map((d) => <span key={d.id} className="block text-[11px] whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>cuota {d.num}/{d.n} · adelanto total {money(d.total)}</span>)}
     </div>
   )
 }
@@ -1305,7 +1273,10 @@ function notasCompletas(p, bonos, sanciones, cuotas) {
   const s = (sanciones || []).filter((x) => x.payout_id === p.id)
   if (s.length) partes.push('Sanciones: ' + s.map((x) => `${x.motivo}${num(x.monto) ? ` (−${money(x.monto).replace('−', '')})` : ''}`).join('; '))
   const c = (cuotas || []).filter((x) => x.aplicado_en === p.id)
-  if (c.length) partes.push('Adelanto: ' + c.map((x) => `cuota ${x.num}/${x.total} (−${money(x.monto)})`).join(', '))
+  if (c.length) {
+    const totalAdel = (x) => { const k = x.origen_id || x.adelanto_id || x.id; return r2((cuotas || []).filter((y) => (y.origen_id || y.adelanto_id || y.id) === k).reduce((t, y) => t + num(y.monto), 0)) }
+    partes.push('Adelanto: ' + c.map((x) => `cuota ${x.num}/${x.total} (−${money(x.monto)}) · adelanto total ${money(totalAdel(x))}`).join(', '))
+  }
   return partes.join(' · ')
 }
 
