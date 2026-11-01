@@ -40,14 +40,16 @@ export function periodosPago({ dia1 = 16, dia2 = 1 }, desde, hasta) {
 
 // Importe de un periodo: la mitad del sueldo mensual menos (mitad ÷ días del periodo) por cada día no trabajado
 // (días marcados en el calendario + días fuera de contrato: antes de su inicio o después de su fin).
-export function calcularPeriodo({ mensual, desde, hasta, libres = new Set(), inicio = null, fin = null }) {
+export function calcularPeriodo({ mensual, desde, hasta, libres = new Set(), inicio = null, fin = null, baseOv = null, trabajadosOv = null, descuentoOv = null }) {
   const dias = difDias(hasta, desde) + 1
-  const base = r2(num(mensual) / 2)
+  const base = baseOv !== null && baseOv !== undefined ? r2(num(baseOv)) : r2(num(mensual) / 2)
   let sinFuncion = 0
   for (let f = desde; f <= hasta; f = sumarDias(f, 1)) {
     if (libres.has(f) || (inicio && f < inicio) || (fin && f > fin)) sinFuncion++
   }
-  const descuento = Math.min(base, r2((dias ? base / dias : 0) * sinFuncion))
+  if (trabajadosOv !== null && trabajadosOv !== undefined) sinFuncion = Math.max(0, dias - Math.round(num(trabajadosOv)))
+  const auto = Math.min(base, r2((dias ? base / dias : 0) * sinFuncion))
+  const descuento = descuentoOv !== null && descuentoOv !== undefined ? r2(num(descuentoOv)) : auto
   return { base, dias, trabajados: dias - sinFuncion, libres: sinFuncion, descuento, aPagar: r2(base - descuento) }
 }
 
@@ -144,29 +146,41 @@ export default function ManagerPayments() {
     const out = []
     managers.forEach((mg) => {
       const g = cfgDe(mg.id), libres = libresDe(mg.id)
+      const ids = cuentasPago.filter((x) => x.profile_id === mg.id).map((x) => x.id)
       periodosPago({ dia1: g.d1, dia2: g.d2 }, ini, fin).forEach((pr) => {
         const fuera = (g.inicio && pr.hasta < g.inicio) || (g.fin && pr.desde > g.fin)
         const p = pagos.find((x) => x.manager_id === mg.id && x.fecha_pago === pr.pago)
         const aj = ajustes.find((x) => x.manager_id === mg.id && x.fecha_pago === pr.pago)
         if (fuera && !p && !aj) return
-        // periodo efectivo: el guardado si ya está pagado, el editado a mano si lo hay, o el que toca por fechas
-        const per = p?.periodo_desde ? { pago: pr.pago, desde: p.periodo_desde, hasta: p.periodo_hasta } : aj?.periodo_desde ? { pago: pr.pago, desde: aj.periodo_desde, hasta: aj.periodo_hasta || pr.hasta } : pr
-        const c = calcularPeriodo({ mensual: g.sueldo, desde: per.desde, hasta: per.hasta, libres, inicio: g.inicio || null, fin: g.fin || null })
-        const ajuste = r2(num(p ? p.ajuste : aj?.ajuste))
-        const trabajado = rangosTrabajados(per.desde, per.hasta, libres, g.inicio || null, g.fin || null)
+        const ctx = { libres, inicio: g.inicio || null, fin: g.fin || null }
+        let per, c, sumaT, ajuste, tk, total, ahora = null
+        if (p) { // ya pagado: manda lo guardado
+          per = { pago: p.fecha_pago_real || p.fecha_pago, desde: p.periodo_desde || pr.desde, hasta: p.periodo_hasta || pr.hasta }
+          const dias = difDias(per.hasta, per.desde) + 1
+          c = { base: num(p.importe_base), dias, trabajados: dias - num(p.dias_descontados), libres: num(p.dias_descontados), descuento: num(p.descuento), aPagar: r2(num(p.importe_base) - num(p.descuento)) }
+          sumaT = num(p.importe_tareas); ajuste = r2(num(p.ajuste)); total = num(p.importe_pagado)
+          tk = tareas.filter((t) => t.aplicado_en === p.id)
+          const cNow = calcularPeriodo({ mensual: g.sueldo, desde: per.desde, hasta: per.hasta, ...ctx })
+          ahora = r2(cNow.aPagar + sumaT + ajuste)
+        } else {
+          per = { pago: aj?.fecha_pago_nueva || pr.pago, desde: aj?.periodo_desde || pr.desde, hasta: aj?.periodo_hasta || pr.hasta }
+          c = calcularPeriodo({ mensual: g.sueldo, desde: per.desde, hasta: per.hasta, ...ctx, baseOv: aj?.base_manual, trabajadosOv: aj?.dias_trabajados_manual, descuentoOv: aj?.descuento_manual })
+          ajuste = r2(num(aj?.ajuste))
+          // tareas pendientes (sin aplicar) con día de cobro ≤ fecha de este pago
+          tk = tareas.filter((t) => t.responsable_id === mg.id && !t.aplicado_en && !t.pagado_at && t.fecha_pago <= per.pago)
+          sumaT = r2(tk.reduce((a, t) => a + num(t.monto), 0)); total = r2(c.aPagar + sumaT + ajuste)
+        }
+        const manualDias = !p && aj?.dias_trabajados_manual !== null && aj?.dias_trabajados_manual !== undefined
+        const trabajado = manualDias ? null : rangosTrabajados(per.desde, per.hasta, libres, ctx.inicio, ctx.fin)
         // pago como chatter ese mismo día (si el manager también tiene cuenta de chatter)
-        const ids = cuentasPago.filter((x) => x.profile_id === mg.id).map((x) => x.id)
-        const otros = r2(pagosChatter.filter((x) => ids.includes(x.account_id) && x.fecha === pr.pago).reduce((a, x) => a + pagoChatter(x), 0))
-        // tareas: las pendientes (sin aplicar) con fecha de cobro ≤ fecha de este pago, o las ya incluidas en este pago
-        const tk = tareas.filter((t) => t.responsable_id === mg.id && ((p && t.aplicado_en === p.id) || (!p && !t.aplicado_en && !t.pagado_at && t.fecha_pago <= pr.pago)))
-        const sumaT = r2(tk.reduce((a, t) => a + num(t.monto), 0))
-        out.push({ mg, pr: per, c, p, tk, sumaT, ajuste, aj, trabajado, otros, total: r2(c.aPagar + sumaT + ajuste) })
+        const otros = r2(pagosChatter.filter((x) => ids.includes(x.account_id) && x.fecha === per.pago).reduce((a, x) => a + pagoChatter(x), 0))
+        out.push({ mg, orig: pr.pago, pr: per, c, p, aj, tk, sumaT, ajuste, trabajado, manualDias, otros, total, ahora })
       })
     })
     return out.sort((a, b) => a.pr.pago.localeCompare(b.pr.pago) || a.mg.full_name.localeCompare(b.mg.full_name))
   }, [managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter]) // eslint-disable-line
 
-  // Tareas ya incluidas en un pago anterior no deben repetirse en filas futuras (las pendientes solo cuelgan del primer pago sin pagar)
+  // Una tarea pendiente solo cuelga del primer pago sin pagar
   const filasUnicas = useMemo(() => {
     const usadas = new Set()
     return filas.map((f) => {
@@ -186,7 +200,7 @@ export default function ManagerPayments() {
 
   async function marcarPagado(f) {
     const { data, error } = await supabase.from('manager_pay_periods').upsert({
-      manager_id: f.mg.id, fecha_pago: f.pr.pago, periodo_desde: f.pr.desde, periodo_hasta: f.pr.hasta,
+      manager_id: f.mg.id, fecha_pago: f.orig, fecha_pago_real: f.pr.pago !== f.orig ? f.pr.pago : null, periodo_desde: f.pr.desde, periodo_hasta: f.pr.hasta, nota: f.aj?.nota || null,
       importe_base: f.c.base, descuento: f.c.descuento, dias_descontados: f.c.libres, importe_tareas: f.sumaT, ajuste: f.ajuste, importe_pagado: f.total,
       pagado: true, pagado_at: new Date().toISOString(),
     }, { onConflict: 'manager_id,fecha_pago' }).select().single()
@@ -197,16 +211,61 @@ export default function ManagerPayments() {
     }
     cargar()
   }
-  function abrirEdicion(f) { setEditando({ key: f.mg.id + f.pr.pago, mgId: f.mg.id, pago: f.pr.pago, desde: f.pr.desde, hasta: f.pr.hasta, ajuste: f.ajuste ? String(f.ajuste) : '', nota: f.aj?.nota || '', hay: !!f.aj }) }
+  // Cálculo automático de un periodo para este manager (con sus fechas de contrato y días sin función)
+  function autoCalc(mgId, desde, hasta) { const g = cfgDe(mgId); return calcularPeriodo({ mensual: g.sueldo, desde, hasta, libres: libresDe(mgId), inicio: g.inicio || null, fin: g.fin || null }) }
+  const descAutoDe = (base, desde, hasta, trab) => { const dias = difDias(hasta, desde) + 1; return Math.min(num(base), r2(dias > 0 ? (num(base) / dias) * Math.max(0, dias - Math.round(num(trab))) : 0)) }
+  function abrirEdicion(f) {
+    const cNow = f.c
+    setEditando({ key: f.mg.id + f.orig, mgId: f.mg.id, orig: f.orig, pagado: !!f.p, pId: f.p?.id || null, fecha: f.pr.pago, desde: f.pr.desde, hasta: f.pr.hasta,
+      base: String(cNow.base), trabajados: String(cNow.trabajados), descuento: String(cNow.descuento), descAuto: f.p ? Math.abs(cNow.descuento - descAutoDe(cNow.base, f.pr.desde, f.pr.hasta, cNow.trabajados)) < 0.01 : f.aj?.descuento_manual == null,
+      baseManual: !!f.p || f.aj?.base_manual != null, trabManual: !!f.p || f.aj?.dias_trabajados_manual != null,
+      tareas: String(f.sumaT || ''), sumaTpend: f.sumaT, ajuste: f.ajuste ? String(f.ajuste) : '', nota: f.p?.nota || f.aj?.nota || '', hay: !!f.aj })
+  }
+  function cambiar(patch) {
+    setEditando((e0) => {
+      const e = { ...e0, ...patch }
+      if (('desde' in patch || 'hasta' in patch) && e.desde && e.hasta && e.desde <= e.hasta) {
+        const c = autoCalc(e.mgId, e.desde, e.hasta)
+        if (!e.trabManual) e.trabajados = String(c.trabajados)
+        if (!e.baseManual) e.base = String(c.base)
+      }
+      if ('trabajados' in patch) e.trabManual = true
+      if ('base' in patch) e.baseManual = true
+      if ('descuento' in patch) e.descAuto = false
+      if (e.descAuto && e.desde && e.hasta && e.desde <= e.hasta) e.descuento = String(descAutoDe(e.base, e.desde, e.hasta, e.trabajados))
+      return e
+    })
+  }
+  const totalEdicion = (e) => r2(num(e.base) - num(e.descuento) + (e.pagado ? num(e.tareas) : num(e.sumaTpend)) + num(e.ajuste))
   async function guardarEdicion() {
     const e = editando
+    if (!e.fecha) return setMsg('Pon la fecha de pago.')
     if (!e.desde || !e.hasta || e.desde > e.hasta) return setMsg('El periodo no es válido: «desde» debe ser anterior o igual a «hasta».')
-    const { error } = await supabase.from('manager_pay_ajustes').upsert({ manager_id: e.mgId, fecha_pago: e.pago, periodo_desde: e.desde, periodo_hasta: e.hasta, ajuste: r2(num(e.ajuste)), nota: e.nota.trim() || null, updated_at: new Date().toISOString() }, { onConflict: 'manager_id,fecha_pago' })
-    if (error) return setMsg(error.message.includes('manager_pay_ajustes') ? 'Falta ejecutar la migración 75 en Supabase.' : error.message)
+    const dias = difDias(e.hasta, e.desde) + 1
+    const trab = Math.min(dias, Math.max(0, Math.round(num(e.trabajados))))
+    if (e.pagado) {
+      const { error } = await supabase.from('manager_pay_periods').update({
+        fecha_pago_real: e.fecha !== e.orig ? e.fecha : null, periodo_desde: e.desde, periodo_hasta: e.hasta, importe_base: r2(num(e.base)), descuento: r2(num(e.descuento)),
+        dias_descontados: dias - trab, importe_tareas: r2(num(e.tareas)), ajuste: r2(num(e.ajuste)), importe_pagado: totalEdicion(e), nota: e.nota.trim() || null, editado: true,
+      }).eq('id', e.pId)
+      if (error) return setMsg(error.message.includes('fecha_pago_real') || error.message.includes('editado') ? 'Falta ejecutar la migración 76 en Supabase.' : error.message)
+    } else {
+      // solo se guarda como «manual» lo que se aparta de lo que saldría automáticamente
+      const auto = autoCalc(e.mgId, e.desde, e.hasta)
+      const baseM = r2(num(e.base)) !== auto.base ? r2(num(e.base)) : null
+      const trabM = trab !== auto.trabajados ? trab : null
+      const descAuto = descAutoDe(e.base, e.desde, e.hasta, e.trabajados)
+      const descM = r2(num(e.descuento)) !== r2(descAuto) ? r2(num(e.descuento)) : null
+      const { error } = await supabase.from('manager_pay_ajustes').upsert({
+        manager_id: e.mgId, fecha_pago: e.orig, fecha_pago_nueva: e.fecha !== e.orig ? e.fecha : null, periodo_desde: e.desde, periodo_hasta: e.hasta,
+        base_manual: baseM, dias_trabajados_manual: trabM, descuento_manual: descM, ajuste: r2(num(e.ajuste)), nota: e.nota.trim() || null, updated_at: new Date().toISOString(),
+      }, { onConflict: 'manager_id,fecha_pago' })
+      if (error) return setMsg(/manager_pay_ajustes/.test(error.message) ? 'Falta ejecutar las migraciones 75 y 76 en Supabase.' : /fecha_pago_nueva|base_manual|manual/.test(error.message) ? 'Falta ejecutar la migración 76 en Supabase.' : error.message)
+    }
     setEditando(null); setMsg(''); cargar()
   }
   async function restablecerEdicion() {
-    await supabase.from('manager_pay_ajustes').delete().eq('manager_id', editando.mgId).eq('fecha_pago', editando.pago)
+    await supabase.from('manager_pay_ajustes').delete().eq('manager_id', editando.mgId).eq('fecha_pago', editando.orig)
     setEditando(null); cargar()
   }
   async function deshacerPago(p) {
@@ -230,43 +289,53 @@ export default function ManagerPayments() {
 
   const Fila = ({ f, resaltar }) => {
     const pagado = !!f.p?.pagado
-    const cambio = pagado && Math.abs(num(f.p.importe_pagado) - f.total) > 0.009
-    const key = f.mg.id + f.pr.pago
+    const cambio = pagado && !f.p.editado && f.ahora !== null && Math.abs(f.ahora - f.total) > 0.009
+    const key = f.mg.id + f.orig
     const abierto = editando?.key === key
-    const ed2 = (patch) => setEditando((e) => ({ ...e, ...patch }))
+    const ed2 = cambiar
     return (
       <>
       <tr style={{ borderBottom: abierto ? 'none' : '1px solid var(--border)', background: resaltar ? 'var(--accent-soft)' : undefined }}>
         <td className="px-3 py-3 whitespace-nowrap"><strong>{fmtF(f.pr.pago)}</strong><span className="block text-xs" style={lbl}>{f.pr.pago === hoy ? 'HOY' : nombreDia(f.pr.pago)}</span></td>
         <td className="px-3 py-3 font-medium whitespace-nowrap">{f.mg.full_name}</td>
-        <td className="px-3 py-3 whitespace-nowrap">{fmtC(f.pr.desde)} → {fmtC(f.pr.hasta)}<span className="block text-xs" style={lbl}>{f.c.dias} días{f.aj?.periodo_desde && !pagado ? ' · editado' : ''}</span></td>
-        <td className="px-3 py-3 tabular-nums"><span className="whitespace-nowrap">{f.c.trabajados} de {f.c.dias}</span><span className="block text-xs" style={lbl}>Trabajó: {textoRangos(f.trabajado)}</span></td>
-        <td className="px-3 py-3 tabular-nums" style={{ color: (pagado ? f.p.descuento : f.c.descuento) > 0 ? 'var(--danger)' : undefined }}>{(pagado ? f.p.descuento : f.c.descuento) > 0 ? '−' + money(pagado ? f.p.descuento : f.c.descuento) : '—'}</td>
-        <td className="px-3 py-3 tabular-nums" title={f.tk.map((t) => `${t.titulo}: ${money(t.monto)}`).join('\n')}>{(pagado ? num(f.p.importe_tareas) : f.sumaT) > 0 ? '+' + money(pagado ? f.p.importe_tareas : f.sumaT) : '—'}{f.tk.length > 0 && <span className="block text-xs" style={lbl}>{f.tk.length} {f.tk.length === 1 ? 'tarea' : 'tareas'}</span>}</td>
+        <td className="px-3 py-3 whitespace-nowrap">{fmtC(f.pr.desde)} → {fmtC(f.pr.hasta)}<span className="block text-xs" style={lbl}>{f.c.dias} días{(f.aj && !pagado) || f.p?.editado ? ' · editado' : ''}</span></td>
+        <td className="px-3 py-3 tabular-nums"><span className="whitespace-nowrap">{f.c.trabajados} de {f.c.dias}</span><span className="block text-xs" style={lbl}>{f.manualDias ? 'Días fijados a mano' : <>Trabajó: {textoRangos(f.trabajado)}</>}</span></td>
+        <td className="px-3 py-3 tabular-nums" style={{ color: f.c.descuento > 0 ? 'var(--danger)' : undefined }}>{f.c.descuento > 0 ? '−' + money(f.c.descuento) : '—'}</td>
+        <td className="px-3 py-3 tabular-nums" title={f.tk.map((t) => `${t.titulo}: ${money(t.monto)}`).join('\n')}>{f.sumaT > 0 ? '+' + money(f.sumaT) : '—'}{f.tk.length > 0 && <span className="block text-xs" style={lbl}>{f.tk.length} {f.tk.length === 1 ? 'tarea' : 'tareas'}</span>}</td>
         <td className="px-3 py-3 tabular-nums font-semibold whitespace-nowrap">
-          {money(pagado ? f.p.importe_pagado : f.total)}
+          {money(f.total)}
           {f.ajuste !== 0 && <span className="block text-xs font-normal" style={lbl}>incluye ajuste {f.ajuste > 0 ? '+' : '−'}{money(f.ajuste)}</span>}
           {cambio && <span className="block text-xs font-normal" style={{ color: 'var(--gold)' }}>ahora saldría {money(f.total)}</span>}
-          {f.otros > 0 && <span className="block text-xs font-normal" style={{ color: 'var(--accent)' }}>+ {money(f.otros)} como chatter · total del día {money((pagado ? num(f.p.importe_pagado) : f.total) + f.otros)}</span>}
+          {f.otros > 0 && <span className="block text-xs font-normal" style={{ color: 'var(--accent)' }}>+ {money(f.otros)} como chatter · total del día {money(f.total + f.otros)}</span>}
         </td>
         <td className="px-3 py-3 whitespace-nowrap"><span style={{ color: pagado ? 'var(--success)' : f.pr.pago <= hoy ? 'var(--danger)' : 'var(--gold)' }}>{pagado ? '✓ Pagado' : f.pr.pago < hoy ? 'Atrasado' : f.pr.pago === hoy ? 'Toca hoy' : 'Pendiente'}</span></td>
         <td className="px-3 py-3 whitespace-nowrap space-x-3">
-          {!pagado && <button className="text-xs underline" style={lbl} onClick={() => (abierto ? setEditando(null) : abrirEdicion(f))}>{abierto ? 'Cerrar' : 'Editar'}</button>}
-          {pagado ? <button className="text-xs underline" style={lbl} onClick={() => { if (window.confirm('¿Deshacer este pago y volver a dejarlo pendiente?\n\nDespués podrás editar su periodo.')) deshacerPago(f.p) }}>Deshacer</button>
+          <button className="text-xs underline" style={lbl} onClick={() => (abierto ? setEditando(null) : abrirEdicion(f))}>{abierto ? 'Cerrar' : 'Editar'}</button>
+          {pagado ? <button className="text-xs underline" style={lbl} onClick={() => { if (window.confirm('¿Deshacer este pago y volver a dejarlo pendiente?')) deshacerPago(f.p) }}>Deshacer</button>
             : <button className="text-xs underline" style={{ color: 'var(--accent)' }} disabled={!cfgDe(f.mg.id).sueldo && !f.sumaT && !f.ajuste} title={!cfgDe(f.mg.id).sueldo && !f.sumaT && !f.ajuste ? 'Primero pon su sueldo mensual' : ''} onClick={() => marcarPagado(f)}>Marcar pagado</button>}
         </td>
       </tr>
       {abierto && (
         <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel-alt)' }}>
-          <td colSpan={9} className="px-4 py-3">
-            <p className="text-xs mb-2" style={lbl}>Editar este periodo ({f.mg.full_name} · pago del {fmtF(f.pr.pago)}). Cambia las fechas que cubre el pago o suma/resta un ajuste manual.</p>
-            <div className="flex items-end gap-3 flex-wrap">
-              <div><label className="text-xs block mb-1" style={lbl}>Periodo desde</label><input type="date" value={editando.desde} onChange={(ev) => ed2({ desde: ev.target.value })} className="rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>hasta</label><input type="date" value={editando.hasta} onChange={(ev) => ed2({ hasta: ev.target.value })} className="rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Ajuste manual ($, + suma / − resta)</label><input type="number" step="0.01" value={editando.ajuste} onChange={(ev) => ed2({ ajuste: ev.target.value })} placeholder="0.00" className="w-36 rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
-              <div className="flex-1 min-w-[180px]"><label className="text-xs block mb-1" style={lbl}>Nota (opcional)</label><input value={editando.nota} onChange={(ev) => ed2({ nota: ev.target.value })} placeholder="Motivo del ajuste" className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
-              <Button onClick={guardarEdicion}>Guardar periodo</Button>
-              {editando.hay && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={restablecerEdicion}>Restablecer al original</button>}
+          <td colSpan={9} className="px-4 py-4">
+            <p className="text-xs mb-3" style={lbl}>Editar este pago de {f.mg.full_name} (pago original del {fmtF(f.orig)}){pagado ? ' · ya está marcado como pagado: lo que cambies sustituye lo guardado' : ''}. Puedes cambiar cualquier dato.</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div><label className="text-xs block mb-1" style={lbl}>Fecha de pago</label><input type="date" value={editando.fecha} onChange={(ev) => ed2({ fecha: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Periodo desde</label><input type="date" value={editando.desde} onChange={(ev) => ed2({ desde: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Periodo hasta</label><input type="date" value={editando.hasta} onChange={(ev) => ed2({ hasta: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Días trabajados (de {editando.desde && editando.hasta && editando.desde <= editando.hasta ? difDias(editando.hasta, editando.desde) + 1 : '—'})</label><input type="number" min="0" value={editando.trabajados} onChange={(ev) => ed2({ trabajados: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Importe base ($)</label><input type="number" step="0.01" value={editando.base} onChange={(ev) => ed2({ base: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Descuento ($){editando.descAuto ? ' · automático' : ' · manual'}</label><input type="number" step="0.01" value={editando.descuento} onChange={(ev) => ed2({ descuento: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              {pagado ? <div><label className="text-xs block mb-1" style={lbl}>Tareas ($)</label><input type="number" step="0.01" value={editando.tareas} onChange={(ev) => ed2({ tareas: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+                : <div><label className="text-xs block mb-1" style={lbl}>Tareas ($, automático)</label><div className="rounded-md px-2 py-1.5 text-sm" style={{ ...inp, opacity: 0.7 }}>{money(editando.sumaTpend)}</div></div>}
+              <div><label className="text-xs block mb-1" style={lbl}>Ajuste manual ($, + suma / − resta)</label><input type="number" step="0.01" value={editando.ajuste} onChange={(ev) => ed2({ ajuste: ev.target.value })} placeholder="0.00" className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div className="col-span-2 md:col-span-4"><label className="text-xs block mb-1" style={lbl}>Nota (opcional)</label><input value={editando.nota} onChange={(ev) => ed2({ nota: ev.target.value })} placeholder="Motivo de los cambios" className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap mt-3">
+              <p className="text-sm">Total a pagar: <strong className="gold-text tabular-nums">{money(totalEdicion(editando))}</strong></p>
+              <Button onClick={guardarEdicion}>Guardar cambios</Button>
+              <button className="text-xs underline" style={lbl} onClick={() => { const c = autoCalc(editando.mgId, editando.desde, editando.hasta); setEditando((e) => ({ ...e, trabManual: false, baseManual: false, descAuto: true, base: String(c.base), trabajados: String(c.trabajados), descuento: String(c.descuento) })) }}>Recalcular base, días y descuento automáticamente</button>
+              {editando.hay && !pagado && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={restablecerEdicion}>Restablecer todo al original</button>}
             </div>
           </td>
         </tr>
@@ -283,7 +352,7 @@ export default function ManagerPayments() {
       {/* Lo que toca ahora */}
       <Panel className="p-4">
         <p className="font-medium mb-2">{hoyToca.length ? `💸 Hoy (${fmtF(hoy)}) toca pagar` : 'Hoy no toca pagar a ningún manager'}</p>
-        {hoyToca.map((f) => <p key={f.mg.id + f.pr.pago} className="text-sm py-0.5"><strong>{f.mg.full_name}</strong>: <strong className="gold-text tabular-nums">{money(f.total)}</strong> <span style={lbl}>· {f.c.trabajados} de {f.c.dias} días trabajados (periodo {fmtC(f.pr.desde)} → {fmtC(f.pr.hasta)}; trabajó {textoRangos(f.trabajado)}){f.sumaT > 0 ? ` + ${money(f.sumaT)} de tareas` : ''}{f.ajuste ? ` · ajuste ${f.ajuste > 0 ? '+' : '−'}${money(f.ajuste)}` : ''}</span>{f.otros > 0 && <span className="block text-xs" style={{ color: 'var(--accent)' }}>Ese mismo día también cobra {money(f.otros)} como chatter → total del día: <strong>{money(f.total + f.otros)}</strong></span>}</p>)}
+        {hoyToca.map((f) => <p key={f.mg.id + f.pr.pago} className="text-sm py-0.5"><strong>{f.mg.full_name}</strong>: <strong className="gold-text tabular-nums">{money(f.total)}</strong> <span style={lbl}>· {f.c.trabajados} de {f.c.dias} días trabajados (periodo {fmtC(f.pr.desde)} → {fmtC(f.pr.hasta)}; trabajó {f.manualDias ? 'días fijados a mano' : textoRangos(f.trabajado)}){f.sumaT > 0 ? ` + ${money(f.sumaT)} de tareas` : ''}{f.ajuste ? ` · ajuste ${f.ajuste > 0 ? '+' : '−'}${money(f.ajuste)}` : ''}</span>{f.otros > 0 && <span className="block text-xs" style={{ color: 'var(--accent)' }}>Ese mismo día también cobra {money(f.otros)} como chatter → total del día: <strong>{money(f.total + f.otros)}</strong></span>}</p>)}
         {atrasados.length > 0 && (
           <div className="mt-2"><p className="text-sm font-medium" style={{ color: 'var(--danger)' }}>Atrasados sin pagar</p>
             {atrasados.map((f) => <p key={f.mg.id + f.pr.pago} className="text-sm py-0.5">{fmtF(f.pr.pago)} · <strong>{f.mg.full_name}</strong>: <strong className="tabular-nums">{money(f.total)}</strong></p>)}</div>
