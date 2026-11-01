@@ -26,6 +26,8 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
   const [pagos, setPagos] = useState([])
   const [tareas, setTareas] = useState([])   // cobros de tareas
   const [ajustes, setAjustes] = useState([]) // ediciones manuales de periodos
+  const [eliminados, setEliminados] = useState([]) // pagos eliminados (restaurables)
+  const [vistaM, setVistaM] = useState('mes')
   const [cuentasPago, setCuentasPago] = useState([]) // payout_accounts (para sumar su pago como chatter el mismo día)
   const [pagosChatter, setPagosChatter] = useState([])
   const [editando, setEditando] = useState(null) // { key, mgId, pago, desde, hasta, ajuste, nota }
@@ -44,7 +46,7 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
     ])
     const profs = d.managers, g = d.cfg
     setMsg(c.error || l.error || p.error ? 'Falta ejecutar las migraciones 72, 73 y 74 en Supabase (pagos de managers).' : aj.error ? 'Falta ejecutar la migración 75 en Supabase (editar periodos).' : '')
-    setAjustes(d.ajustes); setCuentasPago(d.cuentasPago); setPagosChatter(d.pagosChatter)
+    setAjustes(d.ajustes); setCuentasPago(d.cuentasPago); setPagosChatter(d.pagosChatter); setEliminados(d.eliminados)
     setManagers(profs)
     setCfg(g)
     setEd((prev) => { const n = { ...prev }; profs.forEach((pr) => { if (!n[pr.id]) { const x = g[pr.id]; n[pr.id] = { sueldo: x ? String(x.sueldo) : '', inicio: x?.inicio || '', fin: x?.fin || '', d1: String(x?.d1 || 16), d2: String(x?.d2 || 1) } } }); return n })
@@ -54,7 +56,7 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
   useEffect(() => { cargar() }, []) // eslint-disable-line
   // Cada vez que cambia algo (fecha de pago, periodo, pagado, sueldo…) se avisa a la tabla general de Pagos para que se actualice sola
   const primera = useRef(true)
-  useEffect(() => { if (primera.current) { primera.current = false; return } onCambio?.() }, [pagos, ajustes, cfg, libresRows, tareas]) // eslint-disable-line
+  useEffect(() => { if (primera.current) { primera.current = false; return } onCambio?.() }, [pagos, ajustes, cfg, libresRows, tareas, eliminados]) // eslint-disable-line
 
   function mover(delta) { let nm = m + delta, ny = y; if (nm < 1) { nm = 12; ny-- } if (nm > 12) { nm = 1; ny++ } setM(nm); setY(ny) }
   const cfgDe = (id) => cfg[id] || { sueldo: 0, inicio: '', fin: '', d1: 16, d2: 1 }
@@ -70,7 +72,7 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
   }
   const sinGuardar = (id) => { const e = ed[id] || {}, g = cfgDe(id); return num(e.sueldo) !== g.sueldo || (e.inicio || '') !== g.inicio || (e.fin || '') !== g.fin || Math.round(num(e.d1)) !== g.d1 || Math.round(num(e.d2)) !== g.d2 }
 
-  const filas = useMemo(() => calcularFilasManagers({ managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter }, hoy), [managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter]) // eslint-disable-line
+  const filas = useMemo(() => calcularFilasManagers({ managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter, eliminados }, hoy), [managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter, eliminados]) // eslint-disable-line
   const filasUnicas = useMemo(() => unicasTareas(filas), [filas])
 
   const delMes = filasUnicas.filter((f) => f.pr.pago.startsWith(`${y}-${String(m).padStart(2, '0')}`))
@@ -178,6 +180,32 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
     cargar()
   }
 
+  // Eliminar un pago (queda en «Eliminados» y se puede restaurar). Si ya estaba pagado, se guarda su registro completo.
+  async function eliminarPago(f) {
+    const pagado = !!f.p
+    if (!window.confirm(`¿Eliminar el pago de ${f.mg.full_name} del ${fmtF(f.pr.pago)} (${money(f.total)})?${pagado ? '\n\nYa estaba marcado como pagado: se quita también ese registro y sus tareas vuelven a quedar pendientes.' : ''}\n\nDesaparece de los pagos y de la tabla general. Puedes restaurarlo desde la pestaña «Eliminados».`)) return
+    const snap = { periodo: f.p || null, tareas: f.tk.map((t) => t.id), nombre: f.mg.full_name, pago: f.pr.pago, desde: f.pr.desde, hasta: f.pr.hasta, total: f.total }
+    const r = await supabase.from('manager_pay_eliminados').upsert({ manager_id: f.mg.id, fecha_pago: f.orig, snapshot: snap, eliminado_at: new Date().toISOString() }, { onConflict: 'manager_id,fecha_pago' })
+    if (r.error) return setMsg(/manager_pay_eliminados/.test(r.error.message) ? 'Falta ejecutar la migración 82 en Supabase (pagos eliminados). No se ha eliminado nada.' : r.error.message)
+    if (f.p) {
+      await supabase.from('pay_task_items').update({ aplicado_en: null, aplicado_tipo: null, pagado_at: null }).eq('aplicado_en', f.p.id)
+      const d = await supabase.from('manager_pay_periods').delete().eq('id', f.p.id)
+      if (d.error) return setMsg(d.error.message)
+    }
+    setEditando(null); setMsg(''); cargar()
+  }
+  async function restaurarPago(e) {
+    const snap = e.snapshot || {}
+    if (snap.periodo) {
+      const r = await supabase.from('manager_pay_periods').upsert(snap.periodo, { onConflict: 'id' })
+      if (r.error) return setMsg('No se pudo restaurar el pago: ' + r.error.message)
+      if ((snap.tareas || []).length) await supabase.from('pay_task_items').update({ aplicado_en: snap.periodo.id, aplicado_tipo: 'manager', pagado_at: snap.periodo.pagado_at || new Date().toISOString() }).in('id', snap.tareas)
+    }
+    const d = await supabase.from('manager_pay_eliminados').delete().eq('id', e.id)
+    if (d.error) return setMsg(d.error.message)
+    setMsg(''); cargar()
+  }
+
   const nombreDia = (s) => DIAS_SEMANA[aDate(s).getUTCDay()]
 
   if (cargando) return <p className="text-sm" style={lbl}>Cargando…</p>
@@ -206,6 +234,7 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
         <td className="px-3 py-3 whitespace-nowrap"><span style={{ color: pagado ? 'var(--success)' : f.pr.pago <= hoy ? 'var(--danger)' : 'var(--gold)' }}>{pagado ? '✓ Pagado' : f.pr.pago < hoy ? 'Atrasado' : f.pr.pago === hoy ? 'Toca hoy' : 'Pendiente'}</span></td>
         <td className="px-3 py-3 whitespace-nowrap space-x-3">
           <button className="text-xs underline" style={lbl} onClick={() => (abierto ? setEditando(null) : abrirEdicion(f))}>{abierto ? 'Cerrar' : 'Editar'}</button>
+          <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => eliminarPago(f)}>Eliminar</button>
           {pagado ? <button className="text-xs underline" style={lbl} onClick={() => { if (window.confirm('¿Deshacer este pago y volver a dejarlo pendiente?')) deshacerPago(f.p) }}>Deshacer</button>
             : <button className="text-xs underline" style={{ color: 'var(--accent)' }} disabled={!cfgDe(f.mg.id).sueldo && !f.sumaT && !f.ajuste} title={!cfgDe(f.mg.id).sueldo && !f.sumaT && !f.ajuste ? 'Primero pon su sueldo mensual' : ''} onClick={() => marcarPagado(f)}>Marcar pagado</button>}
         </td>
@@ -286,13 +315,29 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
 
       <Panel>
         <div className="px-4 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: '1px solid var(--border)' }}>
-          <p className="font-medium mr-2">Pagos de</p>
+          {[['mes', 'Pagos de'], ['eliminados', `Eliminados${eliminados.length ? ` (${eliminados.length})` : ''}`]].map(([k, t]) => (
+            <button key={k} onClick={() => setVistaM(k)} className="px-3 py-1 rounded-md text-xs" style={{ background: vistaM === k ? 'var(--accent)' : 'var(--panel-alt)', color: vistaM === k ? '#000' : 'var(--text)', border: '1px solid ' + (vistaM === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>))}
+          {vistaM === 'mes' && <>
           <button className="px-3 py-1.5 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }} onClick={() => mover(-1)}>◀</button>
           <p className="font-display font-semibold w-40 text-center capitalize">{MESES[m - 1]} {y}</p>
           <button className="px-3 py-1.5 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }} onClick={() => mover(1)}>▶</button>
-          <button className="text-xs underline" style={lbl} onClick={() => { setY(Number(hoy.slice(0, 4))); setM(Number(hoy.slice(5, 7))) }}>Ir a este mes</button>
+          <button className="text-xs underline" style={lbl} onClick={() => { setY(Number(hoy.slice(0, 4))); setM(Number(hoy.slice(5, 7))) }}>Ir a este mes</button></>}
         </div>
-        {managers.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay managers de {area === 'instagram' ? 'Instagram' : 'chatting'} activos.</p>
+        {vistaM === 'eliminados' ? (eliminados.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay pagos eliminados. Lo que elimines con «Eliminar» aparece aquí para poder restaurarlo.</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Eliminado', 'Manager', 'Fecha de pago', 'Periodo', 'Importe', 'Estado que tenía', ''].map((c) => <th key={c} className="text-left px-3 py-3 font-medium whitespace-nowrap" style={lbl}>{c}</th>)}</tr></thead>
+            <tbody>{eliminados.map((e) => { const sn = e.snapshot || {}; return (
+              <tr key={e.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td className="px-3 py-3 whitespace-nowrap">{fmtF(e.eliminado_at.slice(0, 10))}</td>
+                <td className="px-3 py-3 font-medium whitespace-nowrap">{sn.nombre || managers.find((x) => x.id === e.manager_id)?.full_name || '—'}</td>
+                <td className="px-3 py-3 whitespace-nowrap">{fmtF(sn.pago || e.fecha_pago)}</td>
+                <td className="px-3 py-3 whitespace-nowrap">{sn.desde ? `${fmtC(sn.desde)} → ${fmtC(sn.hasta)}` : '—'}</td>
+                <td className="px-3 py-3 tabular-nums font-semibold">{money(sn.total)}</td>
+                <td className="px-3 py-3 whitespace-nowrap">{sn.periodo ? <span style={{ color: 'var(--success)' }}>✓ Pagado</span> : <span style={lbl}>Pendiente</span>}</td>
+                <td className="px-3 py-3 whitespace-nowrap"><button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => restaurarPago(e)}>Restaurar</button></td>
+              </tr>) })}</tbody>
+          </table></div>
+        )) : managers.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay managers de {area === 'instagram' ? 'Instagram' : 'chatting'} activos.</p>
           : delMes.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay pagos programados este mes (o aún no habían empezado a ejercer). El calendario de pagos está limitado a unos meses alrededor de hoy.</p> : (
             <div className="overflow-x-auto"><table className="w-full text-sm"><Cab /><tbody>{delMes.map((f) => <Fragment key={f.mg.id + f.pr.pago}>{Fila({ f, resaltar: f.pr.pago === hoy })}</Fragment>)}</tbody></table></div>
           )}

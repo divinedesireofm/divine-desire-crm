@@ -30,7 +30,6 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
   const [fResp, setFResp] = useState('todos')
   const [itemEd, setItemEd] = useState(null) // edición independiente de una fila de cobro
   const [papelera, setPapelera] = useState([])
-  const [verPapelera, setVerPapelera] = useState(false)
   const [faltas, setFaltas] = useState(null) // { id, d1, d2 } panel de faltas de una tarea
 
   async function cargar() {
@@ -306,11 +305,27 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
       <Panel>
         <div className="px-4 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: '1px solid var(--border)' }}>
           <p className="font-medium mr-2">Cobros de tareas</p>
-          {[['pendientes', 'Pendientes'], ['pagados', 'Pagados / incluidos'], ['todos', 'Todos']].map(([k, t]) => (
+          {[['pendientes', 'Pendientes'], ['pagados', 'Pagados / incluidos'], ['todos', 'Todos'], ['eliminados', `Eliminados${papelera.length ? ` (${papelera.length})` : ''}`]].map(([k, t]) => (
             <button key={k} onClick={() => setFiltro(k)} className="px-3 py-1 rounded-md text-xs" style={{ background: filtro === k ? 'var(--accent)' : 'var(--panel-alt)', color: filtro === k ? '#000' : 'var(--text)', border: '1px solid ' + (filtro === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>))}
           <div className="ml-auto w-48"><Select value={fResp} onChange={(e) => setFResp(e.target.value)}><option value="todos">Todos los responsables</option>{personas.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select></div>
         </div>
-        {visibles.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay cobros en esta vista.</p> : (
+        {filtro === 'eliminados' ? (
+        papelera.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay nada eliminado.</p> : (
+          <div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>{['Eliminado', 'Qué era', 'Detalle', ''].map((c) => <th key={c} className="text-left px-3 py-2.5 font-medium whitespace-nowrap" style={lbl}>{c}</th>)}</tr></thead>
+            <tbody>{papelera.map((r) => (
+              <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(r.eliminado_at)}</td>
+                <td className="px-3 py-2.5"><strong>{r.titulo}</strong><span className="block text-xs" style={lbl}>{r.tipo === 'tarea' ? 'Tarea entera' : 'Un cobro'} · {nombre(r.tipo === 'tarea' ? r.payload.task.responsable_id : r.payload.item.responsable_id)}</span></td>
+                <td className="px-3 py-2.5 text-xs" style={lbl}>{r.tipo === 'tarea' ? `${cuando(r.payload.task)} · ${r.payload.items.length} cobro(s) · ${money(r.payload.task.monto)}` : `Pago del ${fmtF(r.payload.item.fecha_pago)} · ${money(r.payload.item.monto)}${r.payload.item.aplicado_en ? ' · estaba incluido en un pago' : ''}`}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap space-x-3">
+                  <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => restaurar(r)}>Restaurar</button>
+                  <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrarDefinitivo(r)}>Borrar para siempre</button>
+                </td>
+              </tr>))}</tbody>
+          </table></div>
+        )
+        ) : visibles.length === 0 ? <p className="p-6 text-sm text-center" style={lbl}>No hay cobros en esta vista.</p> : (
           <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{['Día de pago', 'Tarea', 'Responsable', 'Días trabajados', 'Importe', 'Estado', ''].map((c) => <th key={c} className="text-left px-3 py-3 font-medium whitespace-nowrap" style={lbl}>{c}</th>)}</tr></thead>
             <tbody>{visibles.map((i) => {
@@ -393,28 +408,6 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
             })}</tbody>
           </table></div>
         )}
-      </Panel>
-
-      <Panel>
-        <button className="w-full px-4 py-3 flex items-center justify-between text-left" onClick={() => setVerPapelera((v) => !v)}>
-          <span className="font-medium">🗑 Papelera{papelera.length ? ` (${papelera.length})` : ''}</span>
-          <span className="text-xs" style={lbl}>{verPapelera ? 'Ocultar' : 'Ver tareas y cobros eliminados para restaurarlos'}</span>
-        </button>
-        {verPapelera && (papelera.length === 0 ? <p className="px-4 pb-4 text-sm" style={lbl}>La papelera está vacía.</p> : (
-          <div className="overflow-x-auto"><table className="w-full text-sm">
-            <thead><tr style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>{['Eliminado', 'Qué era', 'Detalle', ''].map((c) => <th key={c} className="text-left px-3 py-2.5 font-medium whitespace-nowrap" style={lbl}>{c}</th>)}</tr></thead>
-            <tbody>{papelera.map((r) => (
-              <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(r.eliminado_at)}</td>
-                <td className="px-3 py-2.5"><strong>{r.titulo}</strong><span className="block text-xs" style={lbl}>{r.tipo === 'tarea' ? 'Tarea entera' : 'Un cobro'} · {nombre(r.tipo === 'tarea' ? r.payload.task.responsable_id : r.payload.item.responsable_id)}</span></td>
-                <td className="px-3 py-2.5 text-xs" style={lbl}>{r.tipo === 'tarea' ? `${cuando(r.payload.task)} · ${r.payload.items.length} cobro(s) · ${money(r.payload.task.monto)}` : `Pago del ${fmtF(r.payload.item.fecha_pago)} · ${money(r.payload.item.monto)}${r.payload.item.aplicado_en ? ' · estaba incluido en un pago' : ''}`}</td>
-                <td className="px-3 py-2.5 whitespace-nowrap space-x-3">
-                  <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => restaurar(r)}>Restaurar</button>
-                  <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrarDefinitivo(r)}>Borrar para siempre</button>
-                </td>
-              </tr>))}</tbody>
-          </table></div>
-        ))}
       </Panel>
     </div>
   )

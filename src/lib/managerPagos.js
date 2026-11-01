@@ -64,7 +64,7 @@ export function armarCfg(rows) {
 
 // Carga todo lo necesario para calcular los pagos de los managers de unos roles
 export async function cargarDatosManagers(roles) {
-  const [managers, c, l, p, tk, aj, ca, pc] = await Promise.all([
+  const [managers, c, l, p, tk, aj, ca, pc, el] = await Promise.all([
     getProfilesByRoles(roles, { onlyActive: true }),
     supabase.from('manager_pay_config').select('*'),
     supabase.from('manager_days_off').select('*').limit(5000),
@@ -73,12 +73,13 @@ export async function cargarDatosManagers(roles) {
     supabase.from('manager_pay_ajustes').select('*').limit(5000),
     supabase.from('payout_accounts').select('id, profile_id'),
     supabase.from('chatter_payouts').select('account_id, fecha, fact_neta, pct, bonos, adelanto, penalizacion, deuda, estado').order('fecha', { ascending: false }).limit(3000),
+    supabase.from('manager_pay_eliminados').select('*').order('eliminado_at', { ascending: false }).limit(1000),
   ])
-  return { managers, cfg: armarCfg(c.data), libresRows: l.data || [], pagos: p.data || [], tareas: tk.items || [], ajustes: aj.data || [], cuentasPago: ca.data || [], pagosChatter: pc.data || [] }
+  return { managers, cfg: armarCfg(c.data), libresRows: l.data || [], pagos: p.data || [], tareas: tk.items || [], ajustes: aj.data || [], cuentasPago: ca.data || [], pagosChatter: pc.data || [], eliminados: el.error ? [] : (el.data || []), eliminadosError: !!el.error }
 }
 
 // Todos los pagos (fecha exacta + importe exacto) de cada manager en una ventana alrededor de hoy
-export function calcularFilasManagers({ managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter }, hoy) {
+export function calcularFilasManagers({ managers, cfg, libresRows, pagos, tareas, ajustes, cuentasPago, pagosChatter, eliminados = [] }, hoy) {
   const cfgDe = (id) => cfg[id] || { sueldo: 0, inicio: '', fin: '', d1: 16, d2: 1 }
   const libresDe = (id) => new Set(libresRows.filter((l) => l.manager_id === id).map((l) => l.fecha))
   const ini = sumarDias(hoy, -120), fin = sumarDias(hoy, 70)
@@ -91,6 +92,7 @@ export function calcularFilasManagers({ managers, cfg, libresRows, pagos, tareas
       const p = pagos.find((x) => x.manager_id === mg.id && x.fecha_pago === pr.pago)
       const aj = ajustes.find((x) => x.manager_id === mg.id && x.fecha_pago === pr.pago)
       if (fuera && !p && !aj) return
+      if (eliminados.some((e) => e.manager_id === mg.id && e.fecha_pago === pr.pago)) return // eliminado (se puede restaurar)
       const ctx = { libres, inicio: g.inicio || null, fin: g.fin || null }
       let per, c, sumaT, ajuste, tk, total, ahora = null
       if (p) { // ya pagado: manda lo guardado
