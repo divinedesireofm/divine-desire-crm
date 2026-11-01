@@ -11,6 +11,7 @@ import TablaScroll from '../components/TablaScroll'
 import MetricReports from './MetricReports'
 import { exportarFichasChatters } from '../lib/excelExport'
 import { reducirImagen } from '../lib/leerCapturas'
+import InstruccionesIA from '../components/InstruccionesIA'
 import { leerEstadisticasInflow } from '../lib/leerInflow'
 import { leerLibro, parsearChatters, norm, fmtF, lunesDe, tiempoASegundos, segundosATexto } from '../lib/excelImport'
 
@@ -383,6 +384,7 @@ export default function ChatterMetrics() {
           </div>
         )}
       />
+      <InstruccionesIA claves={['metricas', 'informes']} />
 
       {panel === 'inflow' && (
         <Panel className="p-5 mb-6">

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Panel, Button, Input, Select } from './ui'
+import MoneyInput from './MoneyInput'
 import { cargarTareas, hoyISO, calcularItem, rangosTarea, esRecurrente, diasPagoDe } from '../lib/payTasks'
 
-const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
+import { num } from '../lib/numeros'
 const r2 = (n) => Math.round(n * 100) / 100
 const money = (n) => '$' + Math.abs(num(n)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtF = (s) => { if (!s) return ''; const [y, m, d] = s.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}` }
@@ -231,7 +232,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
               <div><label className="text-xs block mb-1" style={lbl}>Tarea</label><Input value={form.titulo} onChange={(e) => set({ titulo: e.target.value })} placeholder="Ej.: Edición de reels de la semana" /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Responsable</label>
                 <Select value={form.responsable_id} onChange={(e) => set({ responsable_id: e.target.value })}><option value="">— elige —</option>{personas.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select></div>
-              <div><label className="text-xs block mb-1" style={lbl}>{form.tipo === 'puntual' ? 'Importe a pagar ($)' : 'Importe de cada pago ($, con todos los días trabajados)'}</label><Input type="number" min="0" step="0.01" value={form.monto} onChange={(e) => set({ monto: e.target.value })} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>{form.tipo === 'puntual' ? 'Importe a pagar ($)' : 'Importe de cada pago ($, con todos los días trabajados)'}</label><MoneyInput value={form.monto} onChange={(e) => set({ monto: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Tipo</label>
                 <div className="flex gap-2 flex-wrap">{[['puntual', 'Puntual (una vez)'], ['mensual', 'Mensual'], ['quincenal', 'Quincenal'], ['dias', 'Días concretos del mes']].map(([k, t]) => (
                   <button key={k} type="button" onClick={() => set({ tipo: k })} className="px-3 py-1.5 rounded-md text-sm" style={{ background: form.tipo === k ? 'var(--accent)' : 'var(--panel-alt)', color: form.tipo === k ? '#000' : 'var(--text)', border: '1px solid ' + (form.tipo === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>))}</div></div>
@@ -341,7 +342,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
                     <td className="px-3 py-3"><input value={itemEd.titulo} onChange={(e) => sI({ titulo: e.target.value })} className="rounded px-2 py-1 text-sm w-full min-w-[140px]" style={inp} /></td>
                     <td className="px-3 py-3"><Select value={itemEd.responsable_id} onChange={(e) => sI({ responsable_id: e.target.value })}>{personas.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select></td>
                     <td className="px-3 py-3 text-xs" style={lbl}>—</td>
-                    <td className="px-3 py-3"><input type="number" step="0.01" value={itemEd.monto} onChange={(e) => sI({ monto: e.target.value })} className="rounded px-2 py-1 text-sm w-24" style={inp} /></td>
+                    <td className="px-3 py-3"><MoneyInput raw value={itemEd.monto} onChange={(e) => sI({ monto: e.target.value })} className="rounded px-2 py-1 text-sm w-24" style={inp} /></td>
                     <td className="px-3 py-3 text-xs" style={lbl}>{aviso}</td>
                     <td className="px-3 py-3 whitespace-nowrap space-x-3">
                       <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={guardarItem}>Guardar</button>
@@ -357,7 +358,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
                         <div><label className="text-xs block mb-1" style={lbl}>Periodo desde</label><input type="date" value={itemEd.desde} onChange={(e) => sI({ desde: e.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
                         <div><label className="text-xs block mb-1" style={lbl}>Periodo hasta</label><input type="date" value={itemEd.hasta} onChange={(e) => sI({ hasta: e.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
                         <div><label className="text-xs block mb-1" style={lbl}>Días trabajados (de {c ? c.dias : '—'}) · automático</label><div className="w-full rounded-md px-2 py-1.5 text-sm font-semibold" style={{ ...inp, opacity: 0.85 }}>{c ? c.trabajados : '—'}</div></div>
-                        <div><label className="text-xs block mb-1" style={lbl}>Importe base ($)</label><input type="number" step="0.01" value={itemEd.base} onChange={(e) => sI({ base: e.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+                        <div><label className="text-xs block mb-1" style={lbl}>Importe base ($)</label><MoneyInput raw value={itemEd.base} onChange={(e) => sI({ base: e.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
                         <div><label className="text-xs block mb-1" style={lbl}>Descuento ($) · automático</label><div className="w-full rounded-md px-2 py-1.5 text-sm" style={{ ...inp, opacity: 0.85 }}>{c ? money(c.descuento) : '—'}</div></div>
                         <div><label className="text-xs block mb-1" style={lbl}>Tarea</label><input value={itemEd.titulo} onChange={(e) => sI({ titulo: e.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
                         <div><label className="text-xs block mb-1" style={lbl}>Responsable</label><Select value={itemEd.responsable_id} onChange={(e) => sI({ responsable_id: e.target.value })}>{personas.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select></div>

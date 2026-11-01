@@ -1,4 +1,4 @@
-import { iaCallJSON } from './ai'
+import { iaCallJSON, getInstruccionesIA, conInstrucciones, normalizarRespuesta } from './ai'
 
 const SYSTEM = `Eres un asistente que lee capturas de pantalla de las estadísticas de empleados/chatters de Infloww (la herramienta de gestión de chats de OnlyFans) de una agencia.
 Te pasan una o varias capturas de una tabla con una fila por chatter (empleado) y columnas de métricas.
@@ -26,7 +26,8 @@ Reglas:
 7. Si en las capturas se ve el rango de fechas del informe, devuélvelo en "fecha_inicio" y "fecha_fin" con formato AAAA-MM-DD (si el año no se ve, asume el año en curso). Si no se ve, deja ambos vacíos.
 8. Las cabeceras de Infloww llevan iconos (ⓘ) y flechas de ordenación: ignóralos. La tabla es ancha: lee TODAS las columnas visibles en cada captura, también las del extremo derecho, y no dejes ninguna sin mirar.
 9. En "columnas_detectadas" lista el nombre exacto, tal como está escrito en inglés en la cabecera, de TODAS las columnas de la tabla que ves (en el orden en que aparecen). Además, para CADA chatter devuelve en su campo "columnas" TODAS las columnas visibles como {columna, valor}: el nombre exacto de la cabecera y el valor tal cual se ve en pantalla (con $, %, K, comas o tiempos como "2m 37s"), sin convertir nada. Eso es lo más importante: no te saltes ninguna columna, aunque no encaje en las métricas de arriba.
-10. En "notas" escribe en una frase cualquier cosa que haya que revisar (columnas que no se leen, nombres cortados...). Si no hay nada, deja "".`
+10. En "notas" escribe en una frase cualquier cosa que haya que revisar (columnas que no se leen, nombres cortados...). Si no hay nada, deja "".
+11. SIEMPRE debes entregar el resultado llamando a la herramienta, aunque alguna columna no se lea bien (déjala en null). Lee la tabla entera, fila por fila, antes de responder.`
 
 const num = { type: ['number', 'null'] }
 const SCHEMA = {
@@ -100,18 +101,29 @@ export function completarDesdeColumnas(c) {
   return out
 }
 
+// Versión ligera del esquema (sin las columnas crudas de cada chatter): sale mucho más corta y no se queda sin espacio
+const SCHEMA_LIGERO = JSON.parse(JSON.stringify(SCHEMA))
+delete SCHEMA_LIGERO.properties.chatters.items.properties.columnas
+const LIGERO = '\n\nMODO RÁPIDO: no devuelvas el campo "columnas" de cada chatter; rellena solo las métricas conocidas y la lista "columnas_detectadas".'
+
 // imagenes: [{mediaType, base64}] -> { fecha_inicio, fecha_fin, chatters:[...], notas }
 export async function leerEstadisticasInflow(imagenes) {
   const contenido = imagenes.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.base64 } }))
   contenido.push({ type: 'text', text: `Extrae las estadísticas de cada chatter que se ven en ${imagenes.length > 1 ? 'estas capturas' : 'esta captura'}.` })
+  const base = conInstrucciones(SYSTEM, await getInstruccionesIA('metricas'))
+  // intento 1-2: completo (todas las columnas de cada chatter); 3-4: ligero y con menos tokens por si el servidor limita la respuesta
+  const intentos = [{ tokens: 8000, ligero: false }, { tokens: 8000, ligero: false }, { tokens: 8000, ligero: true }, { tokens: 4000, ligero: true }]
   let ultimo = null
-  for (let n = 0; n < 3; n++) {
+  for (let n = 0; n < intentos.length; n++) {
+    const { tokens, ligero } = intentos[n]
     try {
-      const r = await iaCallJSON(SYSTEM, [{ role: 'user', content: contenido }], { tool_name: 'entregar_estadisticas', tool_description: 'Entrega las estadísticas de cada chatter leídas en las capturas de Infloww.', schema: SCHEMA }, 4000)
-      if (r && Array.isArray(r.chatters)) return { fecha_inicio: r.fecha_inicio || '', fecha_fin: r.fecha_fin || '', chatters: r.chatters.map(completarDesdeColumnas), notas: r.notas || '', columnas: Array.isArray(r.columnas_detectadas) ? r.columnas_detectadas : [] }
-      ultimo = new Error('La IA no devolvió un resultado válido.')
+      const r = await iaCallJSON(ligero ? base + LIGERO : base, [{ role: 'user', content: contenido }], { tool_name: 'entregar_estadisticas', tool_description: 'Entrega las estadísticas de cada chatter leídas en las capturas de Infloww.', schema: ligero ? SCHEMA_LIGERO : SCHEMA }, tokens)
+      const ok = normalizarRespuesta(r, ['chatters'])
+      if (ok) return { fecha_inicio: ok.fecha_inicio || '', fecha_fin: ok.fecha_fin || '', chatters: ok.chatters.filter((c) => c && c.nombre).map(completarDesdeColumnas), notas: ok.notas || '', columnas: Array.isArray(ok.columnas_detectadas) ? ok.columnas_detectadas : [] }
+      const rec = r === undefined || r === null ? 'respuesta vacía' : typeof r === 'object' ? 'campos: ' + (Object.keys(r).join(', ') || 'ninguno') : 'tipo ' + typeof r
+      ultimo = new Error(`La IA no devolvió un resultado válido (${rec}). Prueba otra vez o con capturas más nítidas, una por una.`)
     } catch (e) { ultimo = e }
-    await new Promise((res) => setTimeout(res, 1200))
+    await new Promise((res) => setTimeout(res, 1000 * (n + 1)))
   }
   throw ultimo || new Error('No se pudieron leer las capturas.')
 }

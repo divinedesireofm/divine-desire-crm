@@ -7,10 +7,12 @@ import { getProfilesByRoles } from '../lib/roles'
 import ManagerPayments from '../components/ManagerPayments'
 import TareasPagos from '../components/TareasPagos'
 import { cargarTareas } from '../lib/payTasks'
+import { num, fmtNum } from '../lib/numeros'
+import MoneyInput from '../components/MoneyInput'
+import { leerQr, analizarQr, NOMBRE_SLOT } from '../lib/walletQr'
 import { cargarDatosManagers, calcularFilasManagers, unicasTareas, registrarPagoManager } from '../lib/managerPagos'
 
 // ---------- utilidades ----------
-const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
 const r2 = (n) => Math.round(n * 100) / 100
 const money = (n) => (n < 0 ? '−' : '') + '$' + Math.abs(num(n)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtF = (iso) => { if (!iso) return ''; const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}` }
@@ -76,7 +78,7 @@ const WALLETS = [
   ['usdt_bsc', 'USDT · BSC', 'wallet_usdt_bsc', 'qr_usdt_bsc'],
   ['binance', 'Binance', 'wallet_binance', 'qr_binance'],
 ]
-// Reduce la imagen del QR (sigue siendo legible) y la devuelve como texto para guardarla en la cuenta
+// Guarda la imagen del QR con buena resolución (hasta 1100 px, sin ampliar ni deformar). PNG si pesa poco; si no, JPEG de alta calidad.
 function imagenAQr(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file)
@@ -86,11 +88,14 @@ function imagenAQr(file) {
         const k = Math.min(1, max / Math.max(img.width, img.height))
         const c = document.createElement('canvas')
         c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
-        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height)
+        const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height)
+        g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'
+        g.drawImage(img, 0, 0, c.width, c.height)
         return c.toDataURL(tipo, q)
       }
-      let d = hacer(520, 'image/png')
-      if (d.length > 220000) d = hacer(420, 'image/jpeg', 0.9)
+      let d = hacer(1100, 'image/png')
+      if (d.length > 450000) d = hacer(1100, 'image/jpeg', 0.92)
+      if (d.length > 450000) d = hacer(900, 'image/jpeg', 0.9)
       URL.revokeObjectURL(url)
       resolve(d)
     }
@@ -140,7 +145,7 @@ function Fraccionador({ total, fechaBase, ancla, n, setN, filas, setFilas }) {
             <span className="w-16 text-xs" style={lbl}>Cuota {i + 1}/{n}</span>
             <input type="date" value={f.fecha} onChange={(e) => cambiar(i, { fecha: e.target.value, ft: true })} className="rounded px-2 py-1 text-sm" style={sel} />
             <span style={lbl}>−$</span>
-            <input type="number" step="0.01" min="0" value={f.monto} onChange={(e) => cambiar(i, { monto: e.target.value })} className="rounded px-2 py-1 text-sm w-28" style={sel} />
+            <MoneyInput raw value={f.monto} onChange={(e) => cambiar(i, { monto: e.target.value })} className="rounded px-2 py-1 text-sm w-28" style={sel} />
           </div>
         ))}
       </div>
@@ -183,6 +188,8 @@ function PagosAdmin({ area = 'chatting' }) {
   const [selEx, setSelEx] = useState('todas')
   const creandoCuentas = useRef(false)
   const [qrGrande, setQrGrande] = useState(null) // { src, titulo }
+  const [qrInfo, setQrInfo] = useState(null)   // { ok, texto } resultado de leer un QR
+  const [qrPend, setQrPend] = useState(null)   // { dato, direccion } dirección EVM sin red: hay que elegir
 
   // Cada chatter activo del equipo tiene su cuenta de pago: si falta, se crea sola y queda marcada «pendiente de editar»
   async function asegurarCuentas(actuales, todasLasCuentas = actuales) {
@@ -286,8 +293,8 @@ function PagosAdmin({ area = 'chatting' }) {
   function editarPago(p) {
     setEditId(p.id)
     setForm({
-      account_id: p.account_id, fecha: p.fecha, bruta: p.fact_bruta ?? '', neta: p.fact_neta ?? '', pct: p.pct ?? '',
-      bonos: p.bonos || '', adelanto: p.adelanto || '', penalizacion: Math.abs(num(p.penalizacion)) || '', deuda: Math.abs(num(p.deuda)) || '',
+      account_id: p.account_id, fecha: p.fecha, bruta: p.fact_bruta != null ? fmtNum(p.fact_bruta) : '', neta: p.fact_neta != null ? fmtNum(p.fact_neta) : '', pct: p.pct ?? '',
+      bonos: p.bonos ? fmtNum(p.bonos) : '', adelanto: p.adelanto ? fmtNum(p.adelanto) : '', penalizacion: Math.abs(num(p.penalizacion)) ? fmtNum(Math.abs(num(p.penalizacion))) : '', deuda: Math.abs(num(p.deuda)) ? fmtNum(Math.abs(num(p.deuda))) : '',
       notas: p.notas || '', estado: p.estado,
       selB: bonos.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
       selS: sanciones.filter((x) => x.payout_id === p.id).map((x) => x.id),
@@ -299,8 +306,8 @@ function PagosAdmin({ area = 'chatting' }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   function setF(patch) { setForm((f) => ({ ...f, ...patch })) }
-  function alCambiarBruta(v) { setF({ bruta: v, neta: v === '' ? '' : r2(num(v) * OF_NETO) }) }
-  function alCambiarNeta(v) { setF({ neta: v, bruta: v === '' ? '' : r2(num(v) / OF_NETO) }) }
+  function alCambiarBruta(v) { setF({ bruta: v, neta: v === '' ? '' : fmtNum(r2(num(v) * OF_NETO)) }) }
+  function alCambiarNeta(v) { setF({ neta: v, bruta: v === '' ? '' : fmtNum(r2(num(v) / OF_NETO)) }) }
   function alCambiarCuenta(id) {
     const c = cuentaDe(id)
     setF({ account_id: id, pct: c?.pct_defecto ?? form.pct, ...(editId ? { selB: [], selS: [], selC: [], selT: [] } : seleccionPorDefecto(id, form.fecha)) })
@@ -415,6 +422,37 @@ function PagosAdmin({ area = 'chatting' }) {
     setCform(c ? { ...c, pct_defecto: c.pct_defecto ?? 0.15, profile_id: c.profile_id || '' }
       : { nombre: '', profile_id: '', fecha_inicio: hoyISO(), pct_defecto: 0.15, wallet_usdc_eth: '', wallet_usdc_bsc: '', wallet_usdt_bsc: '', wallet_binance: '', activa: true })
   }
+  // Sube la imagen de un QR: la lee, detecta moneda + red + dirección y lo coloca en su método de cobro
+  function aplicarQr(slot, dato, direccion, avisoExtra = '') {
+    const w = WALLETS.find(([k]) => k === slot); if (!w) return
+    const [, etiqueta, dir, qr] = w
+    setCform((c) => ({ ...c, [dir]: direccion, [qr]: dato }))
+    setQrPend(null)
+    setQrInfo({ ok: true, texto: `Detectado: ${etiqueta} · ${direccion.length > 30 ? direccion.slice(0, 14) + '…' + direccion.slice(-8) : direccion}. Ya está puesto en «Dirección ${etiqueta}».${avisoExtra}` })
+  }
+  async function procesarQr(file, slotElegido) {
+    setMsg(''); setQrInfo(null); setQrPend(null)
+    let dato
+    try { dato = await imagenAQr(file) } catch (err) { return setMsg(err.message) }
+    const texto = await leerQr(file)
+    const a = texto ? analizarQr(texto) : null
+    if (!a) {
+      if (slotElegido) setCform((c) => ({ ...c, [WALLETS.find(([k]) => k === slotElegido)[3]]: dato }))
+      return setQrInfo({ ok: false, texto: 'No he podido leer el código QR de la imagen' + (slotElegido ? ' (la imagen sí se ha guardado: escribe la dirección a mano).' : '. Prueba con una imagen más nítida o recortada al QR.') })
+    }
+    if (a.slot) return aplicarQr(a.slot, dato, a.direccion, slotElegido && slotElegido !== a.slot ? ` (era de otra red distinta a la que habías elegido: lo he movido a ${NOMBRE_SLOT[a.slot]})` : '')
+    if (a.ambiguo) {
+      // ¿ya hay esa misma dirección guardada en algún método? entonces es ese
+      const ya = WALLETS.find(([, , dir]) => (cform[dir] || '').toLowerCase() === a.direccion.toLowerCase())
+      if (ya) return aplicarQr(ya[0], dato, a.direccion)
+      if (slotElegido) return aplicarQr(slotElegido, dato, a.direccion, ' (el QR solo trae la dirección, sin red ni moneda: he usado el método que elegiste)')
+      setQrPend({ dato, direccion: a.direccion })
+      return setQrInfo({ ok: true, texto: `Dirección detectada: ${a.direccion.slice(0, 14)}…${a.direccion.slice(-8)}. El QR no indica la red ni la moneda (son direcciones iguales en ETH y BSC): elige cuál es.` })
+    }
+    if (slotElegido) setCform((c) => ({ ...c, [WALLETS.find(([k]) => k === slotElegido)[3]]: dato }))
+    setQrInfo({ ok: false, texto: a.aviso || 'No he podido clasificar este QR.' })
+  }
+
   async function guardarCuenta(e) {
     e.preventDefault()
     const payload = {
@@ -624,18 +662,34 @@ function PagosAdmin({ area = 'chatting' }) {
               </Select></div>
             <div><label className="text-xs block mb-1" style={lbl}>Fecha de inicio</label><Input type="date" value={cform.fecha_inicio || ''} onChange={(e) => setCform({ ...cform, fecha_inicio: e.target.value })} /></div>
             <div><label className="text-xs block mb-1" style={lbl}>% habitual (0.15 = 15 %)</label><Input type="number" step="0.01" value={cform.pct_defecto} onChange={(e) => setCform({ ...cform, pct_defecto: e.target.value })} /></div>
+            <div className="sm:col-span-2 rounded-md p-3" style={{ background: 'var(--panel-alt)', border: '1px dashed var(--border)' }}>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="text-sm px-3 py-1.5 rounded-md cursor-pointer font-medium" style={{ background: 'var(--accent)', color: '#000' }}>
+                  📷 Subir QR y detectar todo
+                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) await procesarQr(f, null) }} />
+                </label>
+                <span className="text-xs" style={lbl}>Lee el QR y rellena solo la moneda, la red y la dirección (USDC ETH, USDC BSC, USDT BSC o Binance).</span>
+              </div>
+              {qrInfo && <p className="text-xs mt-2" style={{ color: qrInfo.ok ? 'var(--success)' : 'var(--gold)' }}>{qrInfo.ok ? '✓ ' : '⚠ '}{qrInfo.texto}</p>}
+              {qrPend && (
+                <div className="flex gap-2 flex-wrap mt-2">
+                  {[['usdc_eth', 'USDC · ETH'], ['usdc_bsc', 'USDC · BSC'], ['usdt_bsc', 'USDT · BSC']].map(([k, t]) => (
+                    <button key={k} type="button" onClick={() => aplicarQr(k, qrPend.dato, qrPend.direccion)} className="px-3 py-1.5 rounded-md text-sm" style={{ background: 'var(--panel)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>{t}</button>))}
+                </div>
+              )}
+            </div>
             {WALLETS.map(([k, etiqueta, dir, qr]) => (
               <div key={k}>
                 <label className="text-xs block mb-1" style={lbl}>Dirección {etiqueta}</label>
                 <Input value={cform[dir] || ''} onChange={(e) => setCform({ ...cform, [dir]: e.target.value })} />
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  {cform[qr] && <img src={cform[qr]} alt={`QR ${etiqueta}`} style={{ width: 56, height: 56, objectFit: 'contain', background: '#fff', borderRadius: 4, padding: 2 }} />}
+                  {cform[qr] && <img src={cform[qr]} alt={`QR ${etiqueta}`} style={{ width: 72, height: 72, objectFit: 'contain', background: '#fff', borderRadius: 4, padding: 2 }} />}
                   <label className="text-xs px-2.5 py-1 rounded-md cursor-pointer" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--accent)' }}>
                     {cform[qr] ? 'Cambiar QR' : '📷 Subir imagen del QR'}
                     <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
                       const f = e.target.files?.[0]; e.target.value = ''
                       if (!f) return
-                      try { const d = await imagenAQr(f); setCform((c) => ({ ...c, [qr]: d })) } catch (err) { setMsg(err.message) }
+                      await procesarQr(f, k)
                     }} />
                   </label>
                   {cform[qr] && <button type="button" className="text-xs hover:underline" style={{ color: 'var(--danger)' }} onClick={() => setCform({ ...cform, [qr]: null })}>Quitar QR</button>}
@@ -659,14 +713,14 @@ function PagosAdmin({ area = 'chatting' }) {
                   {cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </Select></div>
               <div><label className="text-xs block mb-1" style={lbl}>Fecha del pago</label><Input type="date" value={form.fecha} onChange={(e) => alCambiarFecha(e.target.value)} required /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Facturación bruta ($)</label><Input type="number" step="0.01" value={form.bruta} onChange={(e) => alCambiarBruta(e.target.value)} /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Facturación neta ($) · bruta −20 %</label><Input type="number" step="0.01" value={form.neta} onChange={(e) => alCambiarNeta(e.target.value)} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Facturación bruta ($)</label><MoneyInput value={form.bruta} onChange={(e) => alCambiarBruta(e.target.value)} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Facturación neta ($) · bruta −20 %</label><MoneyInput value={form.neta} onChange={(e) => alCambiarNeta(e.target.value)} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>% para el chatter (0.15)</label><Input type="number" step="0.01" value={form.pct} onChange={(e) => setF({ pct: e.target.value })} /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Bonos (+)</label><Input type="number" step="0.01" value={form.bonos} onChange={(e) => setF({ bonos: e.target.value })} /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Adelanto pagado (+)</label><Input type="number" step="0.01" value={form.adelanto} onChange={(e) => setF({ adelanto: e.target.value })} />
+              <div><label className="text-xs block mb-1" style={lbl}>Bonos (+)</label><MoneyInput value={form.bonos} onChange={(e) => setF({ bonos: e.target.value })} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Adelanto pagado (+)</label><MoneyInput value={form.adelanto} onChange={(e) => setF({ adelanto: e.target.value })} />
                 </div>
-              <div><label className="text-xs block mb-1" style={lbl}>Sanciones (se descuenta)</label><Input type="number" step="0.01" min="0" value={form.penalizacion} onChange={(e) => setF({ penalizacion: e.target.value })} /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Deuda a descontar (se resta)</label><Input type="number" step="0.01" min="0" value={form.deuda} onChange={(e) => setF({ deuda: e.target.value })} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Sanciones (se descuenta)</label><MoneyInput value={form.penalizacion} onChange={(e) => setF({ penalizacion: e.target.value })} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Deuda a descontar (se resta)</label><MoneyInput value={form.deuda} onChange={(e) => setF({ deuda: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Estado</label>
                 <Select value={form.estado} onChange={(e) => setF({ estado: e.target.value })}><option>Pendiente</option><option>Pagado</option></Select>
                 <p className="text-[11px] mt-1" style={lbl}>Se guarda Pendiente hasta que confirmes el pago.</p></div>
@@ -867,7 +921,7 @@ function PagosAdmin({ area = 'chatting' }) {
         <div onClick={() => setQrGrande(null)} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
           <div className="rounded-lg p-4 text-center" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
             <p className="text-sm mb-3">{qrGrande.titulo}</p>
-            <img src={qrGrande.src} alt="QR" style={{ width: 'min(80vw, 360px)', background: '#fff', padding: 8, borderRadius: 6 }} />
+            <img src={qrGrande.src} alt="QR" style={{ width: 'min(88vw, 520px)', background: '#fff', padding: 8, borderRadius: 6 }} />
             <div className="mt-3"><Button variant="ghost" onClick={() => setQrGrande(null)}>Cerrar</Button></div>
           </div>
         </div>
@@ -1025,7 +1079,7 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
                   {activas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </Select></div>
               <div><label className="text-xs block mb-1" style={lbl}>Fecha del adelanto</label><Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Importe total ($)</label><Input type="number" step="0.01" min="0" value={monto} onChange={(e) => setMonto(e.target.value)} required /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Importe total ($)</label><MoneyInput value={monto} onChange={(e) => setMonto(e.target.value)} required /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Motivo / nota (opcional)</label><Input value={nota} onChange={(e) => setNota(e.target.value)} /></div>
             </div>
             {num(monto) > 0
@@ -1294,14 +1348,14 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
             <div><label className="text-xs block mb-1" style={lbl}>Nota (opcional)</label><Input value={nota} onChange={(e) => setNota(e.target.value)} /></div>
           </div>
           <div className="flex items-end gap-2 mb-3 flex-wrap">
-            <div><label className="text-xs block mb-1" style={lbl}>Mismo importe para todos</label><Input type="number" step="0.01" value={comun} onChange={(e) => setComun(e.target.value)} placeholder="15" /></div>
+            <div><label className="text-xs block mb-1" style={lbl}>Mismo importe para todos</label><MoneyInput value={comun} onChange={(e) => setComun(e.target.value)} placeholder="15" /></div>
             <Button type="button" variant="ghost" onClick={aplicarComun}>Rellenar</Button>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
             {activas.map((c) => (
               <div key={c.id} className="flex items-center gap-2 rounded-md px-3 py-2" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
                 <span className="text-sm flex-1 truncate">{c.nombre}</span>
-                <div className="w-24"><Input type="number" step="0.01" min="0" value={montos[c.id] ?? ''} onChange={(e) => setMontos({ ...montos, [c.id]: e.target.value })} placeholder="$" /></div>
+                <div className="w-24"><MoneyInput value={montos[c.id] ?? ''} onChange={(e) => setMontos({ ...montos, [c.id]: e.target.value })} placeholder="$" /></div>
               </div>
             ))}
           </div>
@@ -1316,7 +1370,7 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
           <p className="text-sm font-medium mb-3">Editar bono · {cuentaDe(edit.account_id)?.nombre}</p>
           <form onSubmit={guardarEdicion} className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div><label className="text-xs block mb-1" style={lbl}>Bono</label><Input value={edit.nombre} onChange={(e) => setEdit({ ...edit, nombre: e.target.value })} required /></div>
-            <div><label className="text-xs block mb-1" style={lbl}>Importe ($)</label><Input type="number" step="0.01" value={edit.monto} onChange={(e) => setEdit({ ...edit, monto: e.target.value })} required /></div>
+            <div><label className="text-xs block mb-1" style={lbl}>Importe ($)</label><MoneyInput value={edit.monto} onChange={(e) => setEdit({ ...edit, monto: e.target.value })} required /></div>
             <div><label className="text-xs block mb-1" style={lbl}>Fecha de cobro</label><Input type="date" value={edit.fecha_cobro} onChange={(e) => setEdit({ ...edit, fecha_cobro: e.target.value })} required /></div>
             <div><label className="text-xs block mb-1" style={lbl}>Nota</label><Input value={edit.nota || ''} onChange={(e) => setEdit({ ...edit, nota: e.target.value })} /></div>
             <div className="col-span-2 lg:col-span-4 flex flex-wrap gap-2"><Button type="submit">Guardar</Button><Button type="button" variant="ghost" onClick={() => setEdit(null)}>Cancelar</Button></div>

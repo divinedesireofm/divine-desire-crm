@@ -51,3 +51,28 @@ export function iaJson(text) {
   const last = clean.lastIndexOf(clean[i] === '[' ? ']' : '}')
   return JSON.parse(clean.slice(i, last + 1))
 }
+
+// Instrucciones que el equipo escribe para la IA de los reportes (clave: 'turno' | 'metricas' | 'informes'). Si no hay nada guardado, devuelve ''.
+export async function getInstruccionesIA(clave) {
+  try {
+    const { data } = await supabase.from('ai_report_instructions').select('texto').eq('clave', clave).maybeSingle()
+    return (data?.texto || '').trim()
+  } catch { return '' }
+}
+export function conInstrucciones(system, texto) {
+  if (!texto) return system
+  return `${system}\n\nINSTRUCCIONES ADICIONALES DE LA AGENCIA (las ha escrito el equipo: síguelas con prioridad sobre las reglas anteriores de formato, estilo o forma de trabajar, pero nunca inventes datos que no se vean):\n${texto}`
+}
+
+// Saca el objeto útil de la respuesta de la IA aunque venga como texto, anidado o con otro nombre de campo
+export function normalizarRespuesta(r, claves) {
+  let x = r
+  if (typeof x === 'string') { try { x = JSON.parse(x) } catch { return null } }
+  if (!x || typeof x !== 'object') return null
+  for (const k of claves) if (Array.isArray(x[k])) return x
+  for (const v of Object.values(x)) { // anidado: { data: {...} } / { resultado: {...} }
+    if (v && typeof v === 'object' && !Array.isArray(v) && claves.some((k) => Array.isArray(v[k]))) return v
+  }
+  if (Array.isArray(x)) return { [claves[0]]: x }
+  return null
+}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { iaCall, getVoiceGuide, withVoiceGuide } from '../lib/ai'
+import { iaCall, getVoiceGuide, withVoiceGuide, getInstruccionesIA, conInstrucciones } from '../lib/ai'
 import { Button } from './ui'
 import InformeView from './InformeView'
 
@@ -143,7 +143,7 @@ export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos
     setBusy(true); setErr(''); setAviso(''); setIntento(1)
     try {
       const guia = await getVoiceGuide().catch(() => '')
-      const system = withVoiceGuide(BASE, guia)
+      const system = conInstrucciones(withVoiceGuide(BASE, guia), await getInstruccionesIA('informes'))
       // Contexto para que la IA no mire solo el periodo: historial previo, media del equipo e informes anteriores
       const antes = (s) => iso(s.semana) < rango.desde
       const NPREV = esEquipo ? 8 : 12

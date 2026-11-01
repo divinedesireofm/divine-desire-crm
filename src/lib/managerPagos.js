@@ -4,7 +4,8 @@ import { cargarTareas, diasDelMes, isoDe } from './payTasks'
 
 // ---- utilidades compartidas por «Pago de managers» y la tabla general de Pagos ----
 export const r2 = (n) => Math.round(n * 100) / 100
-export const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
+import { num } from './numeros'
+export { num }
 export const aDate = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)) }
 export const aISO = (d) => d.toISOString().slice(0, 10)
 export const sumarDias = (s, n) => { const d = aDate(s); d.setUTCDate(d.getUTCDate() + n); return aISO(d) }

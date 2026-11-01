@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Panel, Button, Input } from './ui'
+import MoneyInput from './MoneyInput'
 import { hoyISO } from '../lib/payTasks'
 import { r2, num, aDate, aISO, sumarDias, difDias, periodosPago, calcularPeriodo, rangosTrabajados, cargarDatosManagers, calcularFilasManagers, unicasTareas, registrarPagoManager } from '../lib/managerPagos'
 
@@ -242,11 +243,11 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
               <div><label className="text-xs block mb-1" style={lbl}>Periodo desde</label><input type="date" value={editando.desde} onChange={(ev) => ed2({ desde: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Periodo hasta</label><input type="date" value={editando.hasta} onChange={(ev) => ed2({ hasta: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Días trabajados (de {editando.desde && editando.hasta && editando.desde <= editando.hasta ? difDias(editando.hasta, editando.desde) + 1 : '—'}) · automático</label><div className="w-full rounded-md px-2 py-1.5 text-sm font-semibold" style={{ ...inp, opacity: 0.85 }}>{editando.trabajados}</div></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Importe base ($)</label><input type="number" step="0.01" value={editando.base} onChange={(ev) => ed2({ base: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Descuento ($){editando.descAuto ? ' · automático' : ' · manual'}</label><input type="number" step="0.01" value={editando.descuento} onChange={(ev) => ed2({ descuento: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
-              {pagado ? <div><label className="text-xs block mb-1" style={lbl}>Tareas ($)</label><input type="number" step="0.01" value={editando.tareas} onChange={(ev) => ed2({ tareas: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Importe base ($)</label><MoneyInput raw value={editando.base} onChange={(ev) => ed2({ base: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Descuento ($){editando.descAuto ? ' · automático' : ' · manual'}</label><MoneyInput raw value={editando.descuento} onChange={(ev) => ed2({ descuento: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              {pagado ? <div><label className="text-xs block mb-1" style={lbl}>Tareas ($)</label><MoneyInput raw value={editando.tareas} onChange={(ev) => ed2({ tareas: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
                 : <div><label className="text-xs block mb-1" style={lbl}>Tareas ($, automático)</label><div className="rounded-md px-2 py-1.5 text-sm" style={{ ...inp, opacity: 0.7 }}>{money(editando.sumaTpend)}</div></div>}
-              <div><label className="text-xs block mb-1" style={lbl}>Ajuste manual ($, + suma / − resta)</label><input type="number" step="0.01" value={editando.ajuste} onChange={(ev) => ed2({ ajuste: ev.target.value })} placeholder="0.00" className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Ajuste manual ($, + suma / − resta)</label><MoneyInput raw value={editando.ajuste} onChange={(ev) => ed2({ ajuste: ev.target.value })} placeholder="0.00" className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
               <div className="col-span-2 md:col-span-4"><label className="text-xs block mb-1" style={lbl}>Nota (opcional)</label><input value={editando.nota} onChange={(ev) => ed2({ nota: ev.target.value })} placeholder="Motivo de los cambios" className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
             </div>
             {editando.desde && editando.hasta && editando.desde <= editando.hasta && difDias(editando.hasta, editando.desde) <= 120 && (
@@ -347,7 +348,7 @@ export default function ManagerPayments({ roles = ['manager'], area = 'chatting'
                 <div key={mg.id} className="rounded-md p-3" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="flex-1 text-sm font-medium">{mg.full_name}</span>
-                    <div className="w-32"><Input type="number" min="0" step="0.01" placeholder="Sueldo/mes" value={e.sueldo ?? ''} onChange={(ev) => set({ sueldo: ev.target.value })} /></div>
+                    <div className="w-32"><MoneyInput placeholder="Sueldo/mes" value={e.sueldo ?? ''} onChange={(ev) => set({ sueldo: ev.target.value })} /></div>
                     <Button onClick={() => guardarConfig(mg.id)} disabled={!sinGuardar(mg.id)}>Guardar</Button>
                   </div>
                   <div className="flex items-end gap-3 flex-wrap mt-2">
