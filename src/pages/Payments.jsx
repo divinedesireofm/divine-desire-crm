@@ -1297,6 +1297,26 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
 
   function aplicarComun() { const m = {}; activas.forEach((c) => { m[c.id] = comun }); setMontos(m) }
 
+  // Busca el pago de esa cuenta en esa fecha (datos frescos de la BD) y le suma el bono
+  async function sumarBonoAPago(b) {
+    const { data, error: e1 } = await supabase.from('chatter_payouts').select('id, account_id, fecha, bonos, estado').eq('account_id', b.account_id).eq('fecha', b.fecha_cobro)
+    if (e1) return { ok: false, error: true }
+    const cand = (data || []).filter((x) => x.account_id === b.account_id && x.fecha === b.fecha_cobro)
+    const pago = cand.find((x) => x.estado !== 'Pagado') || cand[0]
+    if (!pago) return { ok: false }
+    const r1 = await supabase.from('payout_bonuses').update({ aplicado_en: pago.id }).eq('id', b.id)
+    const r2_ = await supabase.from('chatter_payouts').update({ bonos: r2(num(pago.bonos) + num(b.monto)) }).eq('id', pago.id)
+    if (r1.error || r2_.error) return { ok: false, error: true }
+    return { ok: true, pagado: pago.estado === 'Pagado' }
+  }
+  // Quita un bono ya aplicado del pago donde estaba sumado
+  async function restarBonoDePago(b) {
+    const { data } = await supabase.from('chatter_payouts').select('id, bonos').eq('id', b.aplicado_en)
+    const pago = (data || []).find((x) => x.id === b.aplicado_en)
+    if (!pago) return
+    await supabase.from('chatter_payouts').update({ bonos: Math.max(0, r2(num(pago.bonos) - num(b.monto))) }).eq('id', pago.id)
+  }
+
   async function crear(e) {
     e.preventDefault(); setError('')
     const filas = activas.filter((c) => num(montos[c.id]) > 0).map((c) => ({ account_id: c.id, nombre: nombre.trim(), monto: num(montos[c.id]), fecha_cobro: fecha, nota: nota.trim() || null }))
@@ -1304,17 +1324,13 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
     if (!filas.length) { setError('Indica el importe de al menos un chatter.'); return }
     const { data: creados, error: err } = await supabase.from('payout_bonuses').insert(filas).select()
     if (err) { setError('No se pudo guardar: ' + err.message); return }
-    // Si ya hay un pago programado para esa fecha, el bono se suma solo a ese pago
+    // Si ya hay un pago registrado ese día, el bono se suma solo a ese pago (y por tanto al cuadro y al total)
     const avisos = []
     let sumados = 0
     for (const b of creados || []) {
-      const pago = pagos.find((x) => x.account_id === b.account_id && x.fecha === b.fecha_cobro)
-      if (!pago) continue
-      if (pago.estado === 'Pagado') { avisos.push(`${cuentaDe(b.account_id)?.nombre}: el pago del ${fmtF(pago.fecha)} ya estaba pagado, el bono queda pendiente`); continue }
-      const r1 = await supabase.from('payout_bonuses').update({ aplicado_en: pago.id }).eq('id', b.id)
-      const r2_ = await supabase.from('chatter_payouts').update({ bonos: r2(num(pago.bonos) + num(b.monto)) }).eq('id', pago.id)
-      if (r1.error || r2_.error) avisos.push(`${cuentaDe(b.account_id)?.nombre}: no se pudo sumar al pago del ${fmtF(pago.fecha)}`)
-      else { sumados++; pago.bonos = r2(num(pago.bonos) + num(b.monto)) }
+      const r = await sumarBonoAPago(b)
+      if (r.ok) { sumados++; if (r.pagado) avisos.push(`${cuentaDe(b.account_id)?.nombre}: el pago del ${fmtF(b.fecha_cobro)} ya estaba marcado como Pagado y se le ha añadido el bono (revisa que ese extra se abone)`) }
+      else if (r.error) avisos.push(`${cuentaDe(b.account_id)?.nombre}: no se pudo sumar al pago del ${fmtF(b.fecha_cobro)}`)
     }
     setNombre(''); setNota(''); setMontos({}); setComun('')
     setAviso([sumados ? `✓ ${sumados} ${sumados === 1 ? 'bono sumado' : 'bonos sumados'} automáticamente al pago ya programado de esa fecha.` : '', ...avisos].filter(Boolean).join(' · '))
@@ -1322,12 +1338,22 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
   }
   async function guardarEdicion(e) {
     e.preventDefault()
-    const { error: err } = await supabase.from('payout_bonuses').update({ nombre: edit.nombre.trim(), monto: num(edit.monto), fecha_cobro: edit.fecha_cobro, nota: edit.nota?.trim() || null }).eq('id', edit.id)
+    const orig = bonos.find((x) => x.id === edit.id)
+    const nuevo = { ...(orig || {}), id: edit.id, nombre: edit.nombre.trim(), monto: num(edit.monto), fecha_cobro: edit.fecha_cobro, nota: edit.nota?.trim() || null }
+    const cambia = orig && (num(orig.monto) !== nuevo.monto || orig.fecha_cobro !== nuevo.fecha_cobro)
+    // si ya estaba sumado a un pago y cambia el importe o la fecha, se retira de ese pago y se vuelve a aplicar
+    if (cambia && orig.aplicado_en) await restarBonoDePago(orig)
+    const { error: err } = await supabase.from('payout_bonuses').update({ nombre: nuevo.nombre, monto: nuevo.monto, fecha_cobro: nuevo.fecha_cobro, nota: nuevo.nota, ...(cambia && orig.aplicado_en ? { aplicado_en: null } : {}) }).eq('id', edit.id)
     if (err) { setError('No se pudo guardar: ' + err.message); return }
+    if (orig && (cambia || !orig.aplicado_en)) {
+      const r = await sumarBonoAPago({ ...nuevo, account_id: orig.account_id })
+      if (r.ok) setAviso(`✓ Bono sumado automáticamente al pago del ${fmtF(nuevo.fecha_cobro)}.`)
+    }
     setEdit(null); onCambio()
   }
   async function borrar(b) {
-    if (!confirm(`¿Eliminar el bono «${b.nombre}» de ${cuentaDe(b.account_id)?.nombre}?${b.aplicado_en ? ' Ya está aplicado a un pago: el importe seguirá en ese pago, pero dejará de aparecer en sus notas.' : ''}`)) return
+    if (!confirm(`¿Eliminar el bono «${b.nombre}» de ${cuentaDe(b.account_id)?.nombre}?${b.aplicado_en ? ' Ya está sumado a un pago: se le restará su importe.' : ''}`)) return
+    if (b.aplicado_en) await restarBonoDePago(b)
     await supabase.from('payout_bonuses').delete().eq('id', b.id); onCambio()
   }
 
