@@ -204,8 +204,8 @@ export default function ManagerPayments() {
     const libresIni = [...libresDe(f.mg.id)].filter((d) => d >= f.pr.desde && d <= f.pr.hasta)
     const derivado = diasDe(f.pr.desde, f.pr.hasta).filter((d) => !fueraContrato(f.mg.id, d) && !libresIni.includes(d)).length
     setEditando({ key: f.mg.id + f.orig, mgId: f.mg.id, orig: f.orig, pagado: !!f.p, pId: f.p?.id || null, fecha: f.pr.pago, desde: f.pr.desde, hasta: f.pr.hasta,
-      libres: libresIni, base: String(cNow.base), trabajados: String(cNow.trabajados), descuento: String(cNow.descuento), descAuto: f.p ? Math.abs(cNow.descuento - descAutoDe(cNow.base, f.pr.desde, f.pr.hasta, cNow.trabajados)) < 0.01 : f.aj?.descuento_manual == null,
-      baseManual: !!f.p || f.aj?.base_manual != null, trabManual: cNow.trabajados !== derivado,
+      libres: libresIni, base: String(cNow.base), trabajados: String(derivado), descuento: String(f.p || f.aj?.descuento_manual != null ? cNow.descuento : descAutoDe(cNow.base, f.pr.desde, f.pr.hasta, derivado)), descAuto: f.p ? Math.abs(cNow.descuento - descAutoDe(cNow.base, f.pr.desde, f.pr.hasta, derivado)) < 0.01 : f.aj?.descuento_manual == null,
+      baseManual: !!f.p || f.aj?.base_manual != null,
       tareas: String(f.sumaT || ''), sumaTpend: f.sumaT, ajuste: f.ajuste ? String(f.ajuste) : '', nota: f.p?.nota || f.aj?.nota || '', hay: !!f.aj })
   }
   function cambiar(patch) {
@@ -219,10 +219,9 @@ export default function ManagerPayments() {
         e.libres = [...new Set([...e.libres.filter((d) => d >= e.desde && d <= e.hasta), ...nuevos])]
         const c = autoCalc(e.mgId, e.desde, e.hasta)
         if (!e.baseManual) e.base = String(c.base)
-        if (!e.trabManual) e.trabajados = String(trabDesdeSet(e))
+        e.trabajados = String(trabDesdeSet(e))
       }
-      if ('libres' in patch) { e.trabManual = false; e.trabajados = String(trabDesdeSet(e)) } // al tocar el calendario manda el calendario
-      if ('trabajados' in patch) e.trabManual = true
+      if ('libres' in patch) e.trabajados = String(trabDesdeSet(e)) // los días trabajados salen siempre del calendario
       if ('base' in patch) e.baseManual = true
       if ('descuento' in patch) e.descAuto = false
       if (e.descAuto && rangoOk) e.descuento = String(descAutoDe(e.base, e.desde, e.hasta, e.trabajados))
@@ -239,7 +238,7 @@ export default function ManagerPayments() {
     if (!e.fecha) return setMsg('Pon la fecha de pago.')
     if (!e.desde || !e.hasta || e.desde > e.hasta) return setMsg('El periodo no es válido: «desde» debe ser anterior o igual a «hasta».')
     const dias = difDias(e.hasta, e.desde) + 1
-    const trab = Math.min(dias, Math.max(0, Math.round(num(e.trabajados))))
+    const trab = trabDesdeSet(e) // siempre sale del calendario de días trabajados
     // Los días de trabajo editados en el calendario se guardan también como días sin función del manager (el calendario general los refleja)
     const previos = libresRows.filter((l) => l.manager_id === e.mgId && l.fecha >= e.desde && l.fecha <= e.hasta)
     const aBorrar = previos.filter((l) => !e.libres.includes(l.fecha)).map((l) => l.id)
@@ -257,7 +256,7 @@ export default function ManagerPayments() {
       // solo se guarda como «manual» lo que se aparta de lo que saldría automáticamente
       const auto = autoCalc(e.mgId, e.desde, e.hasta) // (la base no depende de los días)
       const baseM = r2(num(e.base)) !== auto.base ? r2(num(e.base)) : null
-      const trabM = trab !== trabDesdeSet(e) ? trab : null
+      const trabM = null // ya no se fija a mano: manda el calendario
       const descAuto = descAutoDe(e.base, e.desde, e.hasta, e.trabajados)
       const descM = r2(num(e.descuento)) !== r2(descAuto) ? r2(num(e.descuento)) : null
       const { error } = await supabase.from('manager_pay_ajustes').upsert({
@@ -319,7 +318,7 @@ export default function ManagerPayments() {
               <div><label className="text-xs block mb-1" style={lbl}>Fecha de pago</label><input type="date" value={editando.fecha} onChange={(ev) => ed2({ fecha: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Periodo desde</label><input type="date" value={editando.desde} onChange={(ev) => ed2({ desde: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Periodo hasta</label><input type="date" value={editando.hasta} onChange={(ev) => ed2({ hasta: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
-              <div><label className="text-xs block mb-1" style={lbl}>Días trabajados (de {editando.desde && editando.hasta && editando.desde <= editando.hasta ? difDias(editando.hasta, editando.desde) + 1 : '—'})</label><input type="number" min="0" value={editando.trabajados} onChange={(ev) => ed2({ trabajados: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Días trabajados (de {editando.desde && editando.hasta && editando.desde <= editando.hasta ? difDias(editando.hasta, editando.desde) + 1 : '—'}) · automático</label><div className="w-full rounded-md px-2 py-1.5 text-sm font-semibold" style={{ ...inp, opacity: 0.85 }}>{editando.trabajados}</div></div>
               <div><label className="text-xs block mb-1" style={lbl}>Importe base ($)</label><input type="number" step="0.01" value={editando.base} onChange={(ev) => ed2({ base: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Descuento ($){editando.descAuto ? ' · automático' : ' · manual'}</label><input type="number" step="0.01" value={editando.descuento} onChange={(ev) => ed2({ descuento: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
               {pagado ? <div><label className="text-xs block mb-1" style={lbl}>Tareas ($)</label><input type="number" step="0.01" value={editando.tareas} onChange={(ev) => ed2({ tareas: ev.target.value })} className="w-full rounded-md px-2 py-1.5 text-sm" style={inp} /></div>
@@ -356,7 +355,7 @@ export default function ManagerPayments() {
             <div className="flex items-center gap-3 flex-wrap mt-3">
               <p className="text-sm">Total a pagar: <strong className="gold-text tabular-nums">{money(totalEdicion(editando))}</strong></p>
               <Button onClick={guardarEdicion}>Guardar cambios</Button>
-              <button className="text-xs underline" style={lbl} onClick={() => { const c = autoCalc(editando.mgId, editando.desde, editando.hasta); setEditando((e) => ({ ...e, libres: [...libresDe(e.mgId)].filter((d) => d >= e.desde && d <= e.hasta), trabManual: false, baseManual: false, descAuto: true, base: String(c.base), trabajados: String(c.trabajados), descuento: String(c.descuento) })) }}>Volver a los días, base y descuento originales</button>
+              <button className="text-xs underline" style={lbl} onClick={() => { const c = autoCalc(editando.mgId, editando.desde, editando.hasta); setEditando((e) => ({ ...e, libres: [...libresDe(e.mgId)].filter((d) => d >= e.desde && d <= e.hasta), baseManual: false, descAuto: true, base: String(c.base), trabajados: String(c.trabajados), descuento: String(c.descuento) })) }}>Volver a los días, base y descuento originales</button>
               {editando.hay && !pagado && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={restablecerEdicion}>Restablecer todo al original</button>}
             </div>
           </td>
