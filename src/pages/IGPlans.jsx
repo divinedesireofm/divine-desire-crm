@@ -20,6 +20,14 @@ const sinArroba = (u) => String(u || '').replace(/^@/, '')
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`
 const fmtTS = (ts) => (ts ? new Date(ts).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '')
 // Fecha exacta de creación: «10/10/2026 23:53»
+// Semana (lunes a domingo, hora local) a la que pertenece una fecha → { clave: lunes en ISO, texto: "26/10 al 01/11/2026" }
+function semanaDe(ts) {
+  const d = new Date(ts); if (Number.isNaN(d.getTime())) return { clave: '', texto: '' }
+  const l = new Date(d.getFullYear(), d.getMonth(), d.getDate()); l.setDate(l.getDate() - ((l.getDay() + 6) % 7))
+  const f = new Date(l); f.setDate(f.getDate() + 6)
+  const dm = (x) => String(x.getDate()).padStart(2, '0') + '/' + String(x.getMonth() + 1).padStart(2, '0')
+  return { clave: `${l.getFullYear()}-${l.getMonth()}-${l.getDate()}`, texto: `${dm(l)} al ${dm(f)}/${f.getFullYear()}` }
+}
 const fmtExacta = (ts) => (ts ? new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
 const aIso = (t) => { const m = String(t || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '' }
 const deIso = (i) => { const m = String(i || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '' }
@@ -459,10 +467,19 @@ export default function IGPlans() {
                 </tr>
               </thead>
               <tbody>
-                {(vista === 'planes' ? visibles : borradores).map((p) => {
+                {(vista === 'planes' ? visibles : borradores).map((p, idx, arr) => {
                   const est = ESTADOS[p.estado] || ESTADOS.guardada
+                  const sem = semanaDe(p.created_at)
+                  const nuevaSemana = idx === 0 || semanaDe(arr[idx - 1].created_at).clave !== sem.clave
                   return (
                     <Fragment key={p.id}>
+                    {nuevaSemana && (
+                      <tr>
+                        <td colSpan={6} className="px-3 pt-5 pb-1.5" style={{ borderTop: idx === 0 ? 'none' : '2px solid var(--accent)' }}>
+                          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--accent)' }}>Semana del {sem.texto}</span>
+                        </td>
+                      </tr>
+                    )}
                     <tr style={{ borderBottom: abiertos.has(p.id) ? 'none' : '1px solid var(--border)' }}>
                       <td className="px-3 py-2 whitespace-nowrap"><strong>@{sinArroba(usuarioDe(p.account_id))}</strong></td>
                       <td className="px-3 py-2 whitespace-nowrap">{fmtExacta(p.created_at)}</td>
