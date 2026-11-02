@@ -50,6 +50,7 @@ export const SECTIONS = [
       { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant', 'modelo'] },
       { to: '/informes-manager-ig', label: 'Informes del manager', icon: 'file', roles: ['admin', 'ig_manager'] },
       { to: '/planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['admin', 'ig_manager', 'ig_assistant'] },
+      { to: '/enlaces', label: 'Enlaces', icon: 'target', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/lo-que-funciona', label: 'Lo que funciona', icon: 'chart', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/reels-referencia', label: 'Reels de referencia', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/trial-reels', label: 'Trial Reels', icon: 'target', roles: ['admin', 'ig_manager'] },

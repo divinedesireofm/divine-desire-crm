@@ -48,6 +48,7 @@ import ChatterMetrics from './pages/ChatterMetrics'
 import Requests from './pages/Requests'
 import Recaptures from './pages/Recaptures'
 import IGPlans from './pages/IGPlans'
+import SltLinks from './pages/SltLinks'
 import RedditAccounts from './pages/RedditAccounts'
 import RedditReports from './pages/RedditReports'
 import ManagerReports from './pages/ManagerReports'
@@ -144,6 +145,7 @@ function AppRoutes() {
         <Route path="solicitudes" element={<Requests />} />
         <Route path="recaptaciones" element={<Recaptures />} />
         <Route path="planificaciones" element={<IGPlans />} />
+        <Route path="enlaces" element={<SltLinks />} />
         <Route path="reddit/cuentas" element={<RedditAccounts />} />
         <Route path="reddit/reportes" element={<RedditReports />} />
         <Route path="informes-manager" element={<ManagerReports area="chatting" />} />
