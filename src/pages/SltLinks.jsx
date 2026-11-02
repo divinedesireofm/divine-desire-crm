@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { actualizarEnlacesSLT } from '../lib/slt'
+import { actualizarEnlacesSLT, enVivoSLT } from '../lib/slt'
 import { Panel, Button, Select, PageHeader } from '../components/ui'
 import ScrollSuperior from '../components/ScrollSuperior'
 
@@ -11,7 +11,7 @@ const pct = (a, b) => (b > 0 ? (a / b * 100).toLocaleString('es-ES', { maximumFr
 const fCorta = (d) => (d ? d.slice(8, 10) + '/' + d.slice(5, 7) : '')
 const hoyISO = () => new Date().toISOString().slice(0, 10)
 const sumarDias = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
-const hace = (d) => { if (!d) return 'nunca'; const min = Math.floor((Date.now() - new Date(d).getTime()) / 60000); return min < 1 ? 'hace un momento' : min < 60 ? `hace ${min} min` : min < 1440 ? `hace ${Math.floor(min / 60)} h` : `hace ${Math.floor(min / 1440)} d` }
+const hace = (d) => { if (!d) return 'nunca'; const seg = Math.floor((Date.now() - new Date(d).getTime()) / 1000); if (seg < 60) return `hace ${Math.max(seg, 0)} s`; const min = Math.floor(seg / 60); return min < 1 ? 'hace un momento' : min < 60 ? `hace ${min} min` : min < 1440 ? `hace ${Math.floor(min / 60)} h` : `hace ${Math.floor(min / 1440)} d` }
 const RANGOS = [['hoy', 'Hoy'], ['7', 'Últimos 7 días'], ['30', 'Últimos 30 días'], ['60', 'Últimos 60 días']]
 const desdeDe = (r) => (r === 'hoy' ? hoyISO() : sumarDias(hoyISO(), -(Number(r) - 1)))
 
@@ -31,6 +31,11 @@ export default function SltLinks() {
   const [rango, setRango] = useState('7')
   const [abierta, setAbierta] = useState(null)
   const [filtro, setFiltro] = useState('todas') // todas | sin_asignar
+  const [vivo, setVivo] = useState(true)
+  const [ultimoTick, setUltimoTick] = useState(null)
+  const [tickErr, setTickErr] = useState('')
+  const [, setReloj] = useState(0)
+  const tickRef = useRef(false)
 
   async function cargar() {
     const [acc, pg, lk, pd, ld, st] = await Promise.all([
@@ -66,12 +71,40 @@ export default function SltLinks() {
     setBusy(false)
   }
 
+  // Tiempo real: cada 45 s (con la pestaña a la vista) se pide a SLT solo lo nuevo; además, si cambian los números
+  // guardados (porque lo ha lanzado otra persona) la pantalla se refresca sola.
+  async function tick() {
+    if (tickRef.current || document.hidden) return
+    tickRef.current = true
+    try {
+      await enVivoSLT(); await cargar(); setUltimoTick(Date.now()); setTickErr('')
+    } catch (e) {
+      const m = e.message || ''
+      setTickErr(/Failed to send|not found|404|FunctionsFetch/i.test(m) ? 'No se encuentra la función «slt-links» en Supabase (mira el LEEME del lote).' : m)
+      if (/limitado|300|429/i.test(m)) setVivo(false) // límite de SLT: se pausa para no empeorarlo
+    }
+    tickRef.current = false
+  }
+
+  useEffect(() => { cargar() }, [])
   useEffect(() => {
-    cargar().then((st) => {
-      // al entrar, si los datos tienen más de una hora, se refrescan solos
-      if (!st?.ultima_sync || Date.now() - new Date(st.ultima_sync).getTime() > 3600000) actualizar(false, true)
-    })
+    if (!vivo) return undefined
+    tick()
+    const id = setInterval(tick, 45000)
+    const alVolver = () => { if (!document.hidden) tick() }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', alVolver) }
+  }, [vivo])
+  useEffect(() => {
+    let t = null
+    const programar = () => { if (tickRef.current) return; clearTimeout(t); t = setTimeout(() => cargar(), 1500) }
+    const canal = supabase.channel('slt-enlaces')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'slt_page_daily' }, programar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'slt_link_daily' }, programar)
+      .subscribe()
+    return () => { clearTimeout(t); supabase.removeChannel(canal) }
   }, [])
+  useEffect(() => { const id = setInterval(() => setReloj((x) => x + 1), 5000); return () => clearInterval(id) }, [])
 
   const desde = desdeDe(rango)
   const cuentaDe = useMemo(() => new Map(cuentas.map((c) => [c.id, c])), [cuentas])
@@ -133,10 +166,19 @@ export default function SltLinks() {
               style={{ background: rango === k ? 'var(--accent)' : 'var(--panel-alt)', color: rango === k ? '#000' : 'var(--text)', border: '1px solid ' + (rango === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
           ))}
         </div>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Última lectura de SLT: {hace(estado?.ultima_sync)} · fechas en hora UTC</span>
+        <span className="inline-flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <style>{'@keyframes sltpulso{0%,100%{opacity:1}50%{opacity:.25}}'}</style>
+          <button type="button" onClick={() => { setTickErr(''); setVivo((v) => !v) }} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md"
+            style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: vivo ? 'var(--success)' : 'var(--text-muted)' }} title={vivo ? 'Pulsa para pausar' : 'Pulsa para reanudar'}>
+            <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: vivo ? 'var(--success)' : 'var(--text-muted)', animation: vivo ? 'sltpulso 1.6s ease-in-out infinite' : 'none' }} />
+            {vivo ? 'En vivo' : 'En pausa'}
+          </button>
+          {ultimoTick ? `Actualizado ${hace(new Date(ultimoTick))}` : `Última lectura de SLT: ${hace(estado?.ultima_sync)}`} · se refresca cada 45 s · fechas en hora UTC
+        </span>
       </div>
 
       {err && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{err}</p>}
+      {tickErr && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>En vivo: {tickErr}</p>}
       {msg && <p className="text-sm mb-3" style={{ color: msg.startsWith('✓') || msg.startsWith('Ya estaba') ? 'var(--success)' : 'var(--danger)' }}>{msg}</p>}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
