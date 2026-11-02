@@ -106,6 +106,8 @@ function medias(rows) {
   })
   return out
 }
+// JSON compacto: sin campos vacíos, números redondeados y sin el texto duplicado del tiempo de respuesta
+const J = (x) => JSON.stringify(x, (k, v) => (v === null || v === undefined || v === '' || k === 'tiempo_respuesta' || k === 'tiempo_respuesta_horas_programadas' ? undefined : typeof v === 'number' ? Math.round(v * 1000) / 1000 : v))
 const recorta = (t, n) => (t.length > n ? t.slice(0, n) + '\n[…recortado]' : t)
 
 export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos, equipo, onClose }) {
@@ -155,23 +157,25 @@ export default function InformeIAModal({ ambito, chatterId, chatterNombre, datos
         previos = (rp || []).map((r) => `--- Informe del ${new Date(r.created_at).toLocaleDateString('es-ES')} (${r.periodo}) ---\n${recorta(r.contenido || '', 3500)}`).join('\n\n')
       } catch (e) { /* sin informes previos */ }
       const sinPrevios = 'No hay informes anteriores guardados.'
-      let cabecera
-      if (esEquipo) {
-        const hist = datos.map((d) => ({ chatter: d.chatter, semanas: d.semanas.filter(antes).slice(-NPREV) })).filter((d) => d.semanas.length)
-        cabecera = `ANÁLISIS DE TODO EL EQUIPO DE CHATTERS.\n\n== (a) PERIODO A ANALIZAR: ${periodo} ==\nDatos semanales por chatter (JSON):\n${JSON.stringify(filtrado)}\n\nMedias del periodo por chatter (JSON):\n${JSON.stringify(filtrado.map((d) => ({ chatter: d.chatter, media_periodo: medias(d.semanas) })))}\n\n== (b) HISTÓRICO ANTERIOR (hasta ${NPREV} semanas previas al periodo) ==\n${hist.length ? `Medias históricas por chatter (JSON):\n${JSON.stringify(hist.map((d) => ({ chatter: d.chatter, semanas_previas: d.semanas.length, media_historica: medias(d.semanas) })))}\n\nSemanas previas (JSON):\n${JSON.stringify(hist)}` : 'No hay semanas anteriores registradas.'}\n\n== (d) INFORMES ANTERIORES DEL EQUIPO ==\n${previos || sinPrevios}`
-      } else {
-        const hist = datos.filter(antes).slice(-NPREV)
-        const eqPeriodo = (equipo || []).filter((d) => d.chatter !== chatterNombre).flatMap((d) => d.semanas.filter(enRango))
-        cabecera = `ANÁLISIS DEL CHATTER: ${chatterNombre}\n\n== (a) PERIODO A ANALIZAR: ${periodo} ==\nSemanas (JSON):\n${JSON.stringify(filtrado)}\nMedia del periodo (JSON): ${JSON.stringify(medias(filtrado))}\n\n== (b) HISTÓRICO ANTERIOR (${hist.length} semanas previas al periodo) ==\n${hist.length ? `Media histórica (JSON): ${JSON.stringify(medias(hist))}\nSemanas previas (JSON):\n${JSON.stringify(hist)}` : 'No hay semanas anteriores registradas.'}\n\n== (c) MEDIA DEL RESTO DEL EQUIPO EN EL MISMO PERIODO ==\n${eqPeriodo.length ? JSON.stringify(medias(eqPeriodo)) : 'Sin datos del equipo.'}\n\n== (d) INFORMES ANTERIORES DE ${chatterNombre} ==\n${previos || sinPrevios}`
+      const armarTexto = (nivel) => {
+        let cabecera
+        if (esEquipo) {
+          const hist = datos.map((d) => ({ chatter: d.chatter, semanas: d.semanas.filter(antes).slice(-NPREV) })).filter((d) => d.semanas.length)
+          cabecera = `ANÁLISIS DE TODO EL EQUIPO DE CHATTERS.\n\n== (a) PERIODO A ANALIZAR: ${periodo} ==\nDatos semanales por chatter (JSON):\n${J(nivel >= 3 ? filtrado.map((d) => ({ chatter: d.chatter, semanas: d.semanas.slice(-6) })) : filtrado)}\n\nMedias del periodo por chatter (JSON):\n${J(filtrado.map((d) => ({ chatter: d.chatter, media_periodo: medias(d.semanas) })))}\n\n== (b) HISTÓRICO ANTERIOR (hasta ${NPREV} semanas previas al periodo) ==\n${hist.length ? `Medias históricas por chatter (JSON):\n${J(hist.map((d) => ({ chatter: d.chatter, semanas_previas: d.semanas.length, media_historica: medias(d.semanas) })))}${nivel >= 2 ? '' : `\n\nSemanas previas (JSON):\n${J(hist)}`}` : 'No hay semanas anteriores registradas.'}\n\n== (d) INFORMES ANTERIORES DEL EQUIPO ==\n${nivel >= 3 ? sinPrevios : (nivel >= 2 ? recorta(previos, 3000) : previos) || sinPrevios}`
+        } else {
+          const hist = datos.filter(antes).slice(-NPREV)
+          const eqPeriodo = (equipo || []).filter((d) => d.chatter !== chatterNombre).flatMap((d) => d.semanas.filter(enRango))
+          cabecera = `ANÁLISIS DEL CHATTER: ${chatterNombre}\n\n== (a) PERIODO A ANALIZAR: ${periodo} ==\nSemanas (JSON):\n${J(filtrado)}\nMedia del periodo (JSON): ${J(medias(filtrado))}\n\n== (b) HISTÓRICO ANTERIOR (${hist.length} semanas previas al periodo) ==\n${hist.length ? `Media histórica (JSON): ${J(medias(hist))}\nSemanas previas (JSON):\n${J(hist)}` : 'No hay semanas anteriores registradas.'}\n\n== (c) MEDIA DEL RESTO DEL EQUIPO EN EL MISMO PERIODO ==\n${eqPeriodo.length ? J(medias(eqPeriodo)) : 'Sin datos del equipo.'}\n\n== (d) INFORMES ANTERIORES DE ${chatterNombre} ==\n${nivel >= 3 ? sinPrevios : (nivel >= 2 ? recorta(previos, 3000) : previos) || sinPrevios}`
+        }
+        return `${cabecera}\n\n${contexto.trim() ? `CONTEXTO E INSTRUCCIONES DE KEVIN (prioridad):\n${contexto.trim()}` : 'Kevin no ha añadido contexto: haz un análisis general completo.'}`
       }
-      const texto = `${cabecera}\n\n${contexto.trim() ? `CONTEXTO E INSTRUCCIONES DE KEVIN (prioridad):\n${contexto.trim()}` : 'Kevin no ha añadido contexto: haz un análisis general completo.'}`
       // La primera llamada a veces llega vacía (la función estaba «dormida»): se reintenta sola hasta 3 veces
       let md = ''
       let ultimoErr = null
       for (let n = 1; n <= 3 && !md; n++) {
         setIntento(n)
         try {
-          const res = await iaCall(system, [{ role: 'user', content: texto }], 4000)
+          const res = await iaCall(system, [{ role: 'user', content: armarTexto(n) }], esEquipo ? 6000 : 4000)
           md = typeof res === 'string' ? res.trim() : ''
         } catch (e) { ultimoErr = e }
         if (!md && n < 3) await new Promise((r) => setTimeout(r, 1500))

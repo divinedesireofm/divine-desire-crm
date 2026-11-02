@@ -12,12 +12,24 @@ export function withVoiceGuide(system, guia) {
   return `${system}\n\nGUÍA DE VOZ DEL EQUIPO (sigue esto por encima de cualquier otra indicación de estilo):\n${guia}`
 }
 
+// Las funciones de Supabase devuelven un error genérico ("non-2xx status code"): aquí se saca el mensaje real
+async function detalleError(error) {
+  try {
+    const r = error?.context
+    if (r && typeof r.text === 'function') {
+      const t = await r.text()
+      try { const j = JSON.parse(t); return j.error?.message || j.error || j.message || t } catch { return t }
+    }
+  } catch { /* sin detalle */ }
+  return error?.message || 'Error llamando a la IA.'
+}
+
 // Llama a la Edge Function "generate-ai", que a su vez llama a la API de Claude de forma segura.
 export async function iaCall(system, messages, max_tokens) {
   const { data, error } = await supabase.functions.invoke('generate-ai', {
     body: { system, messages, max_tokens },
   })
-  if (error) throw new Error(error.message || 'Error llamando a la IA.')
+  if (error) throw new Error(await detalleError(error))
   if (data?.error) throw new Error(data.error)
   return data.text
 }
@@ -33,7 +45,7 @@ export async function iaCallJSON(system, messages, { tool_name, tool_description
       tool: { name: tool_name, description: tool_description, input_schema: schema },
     },
   })
-  if (error) throw new Error(error.message || 'Error llamando a la IA.')
+  if (error) throw new Error(await detalleError(error))
   if (data?.error) throw new Error(data.error)
   return data.data
 }
