@@ -410,7 +410,7 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
               const pago = b?.aplicado_en ? pagos.find((p) => p.id === b.aplicado_en) : null
               const sinGuardar = !!local[c.id]
               const estado = guardando[c.id] ? 'Guardando…'
-                : sinGuardar ? 'Sin guardar (sal del campo para guardar)'
+                : sinGuardar ? 'Cambios sin guardar'
                 : !calc ? '—'
                 : !(calc.monto > 0) ? 'No se cumple ninguna regla'
                 : pago ? `✓ Sumado al pago del ${fmtF(pago.fecha)}${pago.estado === 'Pagado' ? ' (pagado)' : ''}`
@@ -418,22 +418,23 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
                 : 'Falta enviarlo: vuelve a guardar la fila'
               const ok = !sinGuardar && calc && calc.monto > 0 && b
               const cambiar = (k, val) => setLocal((l) => ({ ...l, [c.id]: { datos: { ...(l[c.id]?.datos || {}), [k.id]: val }, fecha: l[c.id]?.fecha } }))
-              const alSalir = () => { if (local[c.id]) guardarFila(c, { ...v.datos, ...(local[c.id].datos || {}) }, local[c.id].fecha ?? v.fecha) }
+              const guardar = () => guardarFila(c, { ...v.datos, ...(local[c.id]?.datos || {}) }, local[c.id]?.fecha ?? v.fecha)
               return (
                 <tr key={c.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td className="px-3 py-2 whitespace-nowrap">{c.nombre}</td>
                   {campos.map((k) => (
                     <td key={k.id} className="px-3 py-2"><div className="w-36">
                       {k.tipo === 'dinero'
-                        ? <MoneyInput value={v.datos[k.id]} placeholder="$ 0.00" onChange={(e) => cambiar(k, e.target.value)} onBlur={alSalir} />
-                        : <MoneyInput value={v.datos[k.id]} placeholder="0" onChange={(e) => cambiar(k, e.target.value.replace(/,/g, '.'))} onBlur={alSalir} />}
+                        ? <MoneyInput value={v.datos[k.id]} placeholder="$ 0.00" onChange={(e) => cambiar(k, e.target.value)} />
+                        : <MoneyInput value={v.datos[k.id]} placeholder="0" onChange={(e) => cambiar(k, e.target.value.replace(/,/g, '.'))} />}
                     </div></td>
                   ))}
                   <td className="px-3 py-2 text-xs" style={lbl}>{vivo.aplicadas.length ? vivo.aplicadas.map((a) => `${a.nombre} ${money(a.monto)}`).join(' + ') : '—'}</td>
                   <td className="px-3 py-2 tabular-nums font-semibold gold-text whitespace-nowrap">{vivo.monto > 0 ? money(vivo.monto) : <span style={lbl}>—</span>}</td>
                   <td className="px-3 py-2"><div className="w-36"><Input type="date" value={v.fecha}
-                    onChange={(e) => { const f = e.target.value; setLocal((l) => ({ ...l, [c.id]: { datos: l[c.id]?.datos || {}, fecha: f } })); if (hayDatos(v.datos) && f) guardarFila(c, { ...v.datos, ...(local[c.id]?.datos || {}) }, f) }} /></div></td>
+                    onChange={(e) => { const f = e.target.value; setLocal((l) => ({ ...l, [c.id]: { datos: l[c.id]?.datos || {}, fecha: f } })); }} /></div></td>
                   <td className="px-3 py-2 text-xs" style={{ color: ok ? 'var(--success)' : 'var(--text-muted)' }}>
+                    {sinGuardar && !guardando[c.id] && <button type="button" onClick={guardar} className="mr-2 px-3 py-1 rounded-md text-xs font-medium" style={{ background: 'var(--accent)', color: '#000' }}>Guardar</button>}
                     {estado}
                     {calc && !guardando[c.id] && <button className="ml-2 underline" style={{ color: 'var(--danger)' }} onClick={() => { if (confirm(`¿Quitar el cálculo de ${c.nombre}? El bono dejará de aparecer en el cuadro general.`)) quitar(calc).then(onCambio) }}>quitar</button>}
                   </td>
@@ -443,7 +444,7 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
           </tbody>
         </table>
       </div>
-      <p className="px-4 py-3 text-xs" style={lbl}>Escribe los datos de cada chatter y sal del campo: el bono se calcula con tus reglas y se envía solo al cuadro general con su fecha de pago. Puedes cambiar la fecha de cobro de cada chatter con el calendario de su fila: el bono se mueve solo al pago de esa fecha (si no hay pago ese día, se crea uno).</p>
+      <p className="px-4 py-3 text-xs" style={lbl}>Escribe los datos de cada chatter (el bono se calcula al momento) y pulsa Guardar en su fila: se envía al cuadro general con su fecha de cobro. Puedes cambiar la fecha de cobro de cada chatter con el calendario de su fila: el bono se mueve solo al pago de esa fecha (si no hay pago ese día, se crea uno).</p>
     </Panel>
   )
 }
