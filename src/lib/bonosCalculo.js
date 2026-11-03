@@ -176,18 +176,38 @@ export async function sumarBonoAPago(b) {
   const { data, error: e1 } = await supabase.from('chatter_payouts').select('id, account_id, fecha, bonos, estado').eq('account_id', b.account_id).eq('fecha', b.fecha_cobro)
   if (e1) return { ok: false, error: true }
   const cand = (data || []).filter((x) => x.account_id === b.account_id && x.fecha === b.fecha_cobro)
-  const pago = cand.find((x) => x.estado !== 'Pagado') || cand[0]
-  if (!pago) return { ok: false }
+  let pago = cand.find((x) => x.estado !== 'Pagado') || cand[0]
+  let creado = false
+  if (!pago) {
+    // No hay pago ese día: se crea uno solo con el bono para que salga en el cuadro general (luego puedes editarlo y añadir la facturación)
+    const { data: cu } = await supabase.from('payout_accounts').select('id, pct_defecto').eq('id', b.account_id)
+    const cuenta = (cu || []).find((x) => x.id === b.account_id)
+    const ins = await supabase.from('chatter_payouts').insert([{ account_id: b.account_id, fecha: b.fecha_cobro, fact_neta: 0, pct: cuenta?.pct_defecto ?? null, bonos: 0, adelanto: 0, penalizacion: 0, deuda: 0, estado: 'Pendiente' }]).select().single()
+    if (ins.error || !ins.data) return { ok: false, error: true }
+    pago = ins.data; creado = true
+  }
   const r1 = await supabase.from('payout_bonuses').update({ aplicado_en: pago.id }).eq('id', b.id)
   const r2_ = await supabase.from('chatter_payouts').update({ bonos: r2(num(pago.bonos) + num(b.monto)) }).eq('id', pago.id)
   if (r1.error || r2_.error) return { ok: false, error: true }
-  return { ok: true, pagado: pago.estado === 'Pagado' }
+  return { ok: true, pagado: pago.estado === 'Pagado', creado }
 }
 // Quita un bono ya sumado del pago donde estaba
 export async function restarBonoDePago(b) {
   if (!b?.aplicado_en) return
-  const { data } = await supabase.from('chatter_payouts').select('id, bonos').eq('id', b.aplicado_en)
+  const { data } = await supabase.from('chatter_payouts').select('*').eq('id', b.aplicado_en)
   const pago = (data || []).find((x) => x.id === b.aplicado_en)
   if (!pago) return
-  await supabase.from('chatter_payouts').update({ bonos: Math.max(0, r2(num(pago.bonos) - num(b.monto))) }).eq('id', pago.id)
+  const quedan = Math.max(0, r2(num(pago.bonos) - num(b.monto)))
+  await supabase.from('chatter_payouts').update({ bonos: quedan }).eq('id', pago.id)
+  // Si ese pago solo existía por este bono (todo a cero, sin nada más enlazado), se elimina para no dejar filas vacías
+  const vacio = quedan === 0 && !num(pago.fact_neta) && !num(pago.fact_bruta) && !num(pago.adelanto) && !num(pago.penalizacion) && !num(pago.deuda) && !pago.notas && pago.estado !== 'Pagado'
+  if (vacio) {
+    const [o, c, t] = await Promise.all([
+      supabase.from('payout_bonuses').select('id, aplicado_en').eq('aplicado_en', pago.id),
+      supabase.from('payout_advance_installments').select('id, aplicado_en').eq('aplicado_en', pago.id),
+      supabase.from('pay_task_items').select('id, aplicado_en').eq('aplicado_en', pago.id),
+    ])
+    const hay = [o, c, t].some((r) => r.error || (r.data || []).some((x) => x.aplicado_en === pago.id && x.id !== b.id))
+    if (!hay) await supabase.from('chatter_payouts').delete().eq('id', pago.id)
+  }
 }

@@ -358,7 +358,7 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
         if (b) { const r = await supabase.from('payout_bonuses').update(datosB).eq('id', b.id); if (r.error) throw new Error(errMig(r.error.message)); nuevo = { ...b, ...datosB } }
         else { const r = await supabase.from('payout_bonuses').insert([datosB]).select().single(); if (r.error) throw new Error(errMig(r.error.message)); nuevo = r.data }
         const s = await sumarBonoAPago({ ...nuevo, account_id: c.id })
-        setMsg(`✓ ${c.nombre}: bono de ${money(calc.monto)} enviado al cuadro general (cobro ${fmtF(calc.fecha_pago)})${s.ok ? ' y sumado al pago de esa fecha' : ''}.${s.pagado ? ' Ese pago ya estaba marcado como Pagado: revisa que el extra se abone.' : ''}`)
+        setMsg(`✓ ${c.nombre}: bono de ${money(calc.monto)} enviado al cuadro general (cobro ${fmtF(calc.fecha_pago)})${s.creado ? ' (no había pago ese día: se creó uno en el cuadro general con este bono)' : s.ok ? ' y sumado al pago de esa fecha' : ''}.${s.pagado ? ' Ese pago ya estaba marcado como Pagado: revisa que el extra se abone.' : ''}`)
       }
     } catch (e) { setErr(e.message) } finally {
       setLocal((l) => { const { [c.id]: _x, ...resto } = l; return resto })
@@ -375,7 +375,7 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
 
   const totalPeriodo = filas.reduce((t, c) => t + (calcDe(c.id)?.monto || 0), 0)
   const th = (t) => <th key={t} className="px-3 py-2 text-left text-xs font-medium whitespace-nowrap" style={lbl}>{t}</th>
-  const cabeceras = ['Chatter', ...campos.map((k) => k.nombre), 'Reglas cumplidas', 'Bono', 'Fecha de pago', 'Estado']
+  const cabeceras = ['Chatter', ...campos.map((k) => k.nombre), 'Reglas cumplidas', 'Bono', 'Fecha de cobro', 'Estado']
 
   return (
     <Panel className="mb-5">
@@ -395,7 +395,7 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
         <select value={clave} onChange={(e) => setClave(e.target.value)} className="rounded px-2 py-1.5 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }}>
           {periodos.map((x) => <option key={x.clave} value={x.clave}>{x.etiqueta}{x.enCurso ? ' · en curso' : ''}</option>)}
         </select>
-        <span className="text-xs" style={lbl}>Fecha de pago por defecto: <strong style={{ color: 'var(--text)' }}>{fmtF(fechaDef)}</strong></span>
+        <span className="text-xs" style={lbl}>Fecha de cobro por defecto: <strong style={{ color: 'var(--text)' }}>{fmtF(fechaDef)}</strong></span>
         <span className="ml-auto text-sm" style={lbl}>Total de bonos de este periodo: <strong className="gold-text">{money(totalPeriodo)}</strong></span>
       </div>
       <div className="overflow-x-auto">
@@ -443,7 +443,7 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
           </tbody>
         </table>
       </div>
-      <p className="px-4 py-3 text-xs" style={lbl}>Escribe los datos de cada chatter y sal del campo: el bono se calcula con tus reglas y se envía solo al cuadro general con su fecha de pago. Si ese día ya hay un pago registrado, se suma automáticamente.</p>
+      <p className="px-4 py-3 text-xs" style={lbl}>Escribe los datos de cada chatter y sal del campo: el bono se calcula con tus reglas y se envía solo al cuadro general con su fecha de pago. Puedes cambiar la fecha de cobro de cada chatter con el calendario de su fila: el bono se mueve solo al pago de esa fecha (si no hay pago ese día, se crea uno).</p>
     </Panel>
   )
 }
