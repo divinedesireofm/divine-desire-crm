@@ -312,7 +312,7 @@ function FormPlan({ form, setForm, cuentas, onSubmit, onCancel }) {
 // ---------- cuadro independiente de un bono ----------
 function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar, onCambio, setMsg, setErr }) {
   const periodos = useMemo(() => periodosBono(plan.periodicidad, undefined, 8), [plan.periodicidad])
-  const [clave, setClave] = useState(() => (periodos[1] || periodos[0]).clave)   // por defecto, el último periodo ya terminado
+  const [clave, setClave] = useState(() => (periodos.find((x) => x.enCurso) || periodos[0]).clave)   // por defecto, el periodo actual según la fecha de hoy
   const periodo = periodos.find((x) => x.clave === clave) || periodos[0]
   const [local, setLocal] = useState({})      // ediciones sin guardar: { cuentaId: { datos: {campo: texto}, fecha } }
   const [guardando, setGuardando] = useState({})
