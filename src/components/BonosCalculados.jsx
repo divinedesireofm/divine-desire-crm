@@ -13,8 +13,8 @@ const money = (n) => (n < 0 ? '−' : '') + '$' + Math.abs(num(n)).toLocaleStrin
 const fmtF = (iso) => { if (!iso) return ''; const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}` }
 const lbl = { color: 'var(--text-muted)' }
 const selStyle = { background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }
-const FALTA_MIGRACION = 'Falta ejecutar la migración 86 y la 87 en Supabase (bonos con cálculo).'
-const errMig = (m) => (/bonus_plans|bonus_calculos|calculo_id|campos|reglas|modo_reglas|tope|datos|detalle/.test(m || '') ? FALTA_MIGRACION : m)
+const FALTA_MIGRACION = 'Falta ejecutar las migraciones 86, 87 y 92 en Supabase (bonos con cálculo).'
+const errMig = (m) => (/bonus_plans|bonus_calculos|calculo_id|campos|reglas|modo_reglas|tope|datos|detalle|no_aplica|motivo/.test(m || '') ? FALTA_MIGRACION : m)
 const uid = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'r' + Math.random().toString(36).slice(2, 10))
 const slug = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30)
 
@@ -328,20 +328,30 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
     const calc = calcDe(c.id); const l = local[c.id] || {}
     const base = calc?.datos || (calc ? { facturado: calc.facturado } : {})
     const datos = Object.fromEntries(campos.map((k) => [k.id, l.datos?.[k.id] ?? texto(k, base[k.id])]))
-    return { datos, fecha: l.fecha ?? (calc?.fecha_pago || fechaDef) }
+    return { datos, fecha: l.fecha ?? (calc?.fecha_pago || fechaDef), noAplica: l.noAplica ?? !!calc?.no_aplica, motivo: l.motivo ?? (calc?.motivo || '') }
   }
   const numeros = (datos) => Object.fromEntries(campos.map((k) => [k.id, num(datos[k.id])]))
   const hayDatos = (datos) => campos.some((k) => num(datos[k.id]) > 0)
 
-  async function guardarFila(c, datosTxt, fecha) {
+  async function guardarFila(c, datosTxt, fecha, noAplica = false, motivo = '') {
     const prev = calcDe(c.id)
     setGuardando((g) => ({ ...g, [c.id]: true })); setErr('')
     try {
+      if (noAplica) {
+        const datos = numeros(datosTxt)
+        const fila = { plan_id: plan.id, account_id: c.id, periodo_desde: periodo.desde, periodo_hasta: periodo.hasta, facturado: datos.facturado ?? datos[primerCampoDinero(campos)] ?? 0, datos, detalle: [], escalon_idx: null, monto: 0, fecha_pago: fecha || fechaDef, no_aplica: true, motivo: motivo.trim() || null, updated_at: new Date().toISOString() }
+        const { data: calc, error } = await supabase.from('bonus_calculos').upsert(fila, { onConflict: 'plan_id,account_id,periodo_desde' }).select().single()
+        if (error) throw new Error(errMig(error.message))
+        const { data: ex } = await supabase.from('payout_bonuses').select('*').eq('calculo_id', calc.id)
+        for (const b of (ex || []).filter((x) => x.calculo_id === calc.id)) { await restarBonoDePago(b); await supabase.from('payout_bonuses').delete().eq('id', b.id) }
+        setMsg(`${c.nombre}: marcado como «No aplica»${motivo.trim() ? ` (${motivo.trim()})` : ''}. No se envía bono al cuadro general.`)
+        return
+      }
       if (!hayDatos(datosTxt)) { if (prev) await quitar(prev); return }
       const datos = numeros(datosTxt)
       const res = calcularPlan(plan, datos)
       const facturado = datos.facturado ?? datos[primerCampoDinero(campos)] ?? 0
-      const fila = { plan_id: plan.id, account_id: c.id, periodo_desde: periodo.desde, periodo_hasta: periodo.hasta, facturado, datos, detalle: res.aplicadas, escalon_idx: null, monto: res.monto, fecha_pago: fecha || fechaDef, updated_at: new Date().toISOString() }
+      const fila = { plan_id: plan.id, account_id: c.id, periodo_desde: periodo.desde, periodo_hasta: periodo.hasta, facturado, datos, detalle: res.aplicadas, escalon_idx: null, monto: res.monto, fecha_pago: fecha || fechaDef, no_aplica: false, motivo: null, updated_at: new Date().toISOString() }
       const { data: calc, error } = await supabase.from('bonus_calculos').upsert(fila, { onConflict: 'plan_id,account_id,periodo_desde' }).select().single()
       if (error) throw new Error(errMig(error.message))
       const { data: ex } = await supabase.from('payout_bonuses').select('*').eq('calculo_id', calc.id)
@@ -375,7 +385,7 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
 
   const totalPeriodo = filas.reduce((t, c) => t + (calcDe(c.id)?.monto || 0), 0)
   const th = (t) => <th key={t} className="px-3 py-2 text-left text-xs font-medium whitespace-nowrap" style={lbl}>{t}</th>
-  const cabeceras = ['Chatter', ...campos.map((k) => k.nombre), 'Reglas cumplidas', 'Bono', 'Fecha de cobro', 'Estado']
+  const cabeceras = ['Chatter', ...campos.map((k) => k.nombre), 'Reglas cumplidas', 'Bono', 'Fecha de cobro', 'No aplica', 'Estado']
 
   return (
     <Panel className="mb-5">
@@ -405,20 +415,22 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
             {filas.length === 0 && <tr><td colSpan={cabeceras.length} className="px-3 py-4 text-center text-sm" style={lbl}>No hay chatters en este bono.</td></tr>}
             {filas.map((c) => {
               const v = valores(c); const calc = calcDe(c.id)
-              const vivo = calcularPlan(plan, numeros(v.datos))
+              const vivo = v.noAplica ? { monto: 0, aplicadas: [] } : calcularPlan(plan, numeros(v.datos))
               const b = calc ? bonos.find((x) => x.calculo_id === calc.id) : null
               const pago = b?.aplicado_en ? pagos.find((p) => p.id === b.aplicado_en) : null
               const sinGuardar = !!local[c.id]
               const estado = guardando[c.id] ? 'Guardando…'
                 : sinGuardar ? 'Cambios sin guardar'
                 : !calc ? '—'
+                : calc.no_aplica ? `No aplica${calc.motivo ? ': ' + calc.motivo : ''}`
                 : !(calc.monto > 0) ? 'No se cumple ninguna regla'
                 : pago ? `✓ Sumado al pago del ${fmtF(pago.fecha)}${pago.estado === 'Pagado' ? ' (pagado)' : ''}`
                 : b ? `✓ En el cuadro general · se suma al pago del ${fmtF(calc.fecha_pago)}`
                 : 'Falta enviarlo: vuelve a guardar la fila'
-              const ok = !sinGuardar && calc && calc.monto > 0 && b
-              const cambiar = (k, val) => setLocal((l) => ({ ...l, [c.id]: { datos: { ...(l[c.id]?.datos || {}), [k.id]: val }, fecha: l[c.id]?.fecha } }))
-              const guardar = () => guardarFila(c, { ...v.datos, ...(local[c.id]?.datos || {}) }, local[c.id]?.fecha ?? v.fecha)
+              const ok = !sinGuardar && calc && !calc.no_aplica && calc.monto > 0 && b
+              const cambiar = (k, val) => setLocal((l) => ({ ...l, [c.id]: { ...(l[c.id] || {}), datos: { ...(l[c.id]?.datos || {}), [k.id]: val } } }))
+              const ponLocal = (patch) => setLocal((l) => ({ ...l, [c.id]: { ...(l[c.id] || {}), ...patch } }))
+              const guardar = () => guardarFila(c, { ...v.datos, ...(local[c.id]?.datos || {}) }, local[c.id]?.fecha ?? v.fecha, v.noAplica, v.motivo)
               return (
                 <tr key={c.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td className="px-3 py-2 whitespace-nowrap">{c.nombre}</td>
@@ -430,9 +442,14 @@ function PlanCard({ plan, cuentas, calculos, bonos, pagos, onEditar, onEliminar,
                     </div></td>
                   ))}
                   <td className="px-3 py-2 text-xs" style={lbl}>{vivo.aplicadas.length ? vivo.aplicadas.map((a) => `${a.nombre} ${money(a.monto)}`).join(' + ') : '—'}</td>
-                  <td className="px-3 py-2 tabular-nums font-semibold gold-text whitespace-nowrap">{vivo.monto > 0 ? money(vivo.monto) : <span style={lbl}>—</span>}</td>
+                  <td className="px-3 py-2 tabular-nums font-semibold gold-text whitespace-nowrap">{v.noAplica ? <span style={lbl}>No aplica</span> : vivo.monto > 0 ? money(vivo.monto) : <span style={lbl}>—</span>}</td>
                   <td className="px-3 py-2"><div className="w-36"><Input type="date" value={v.fecha}
-                    onChange={(e) => { const f = e.target.value; setLocal((l) => ({ ...l, [c.id]: { datos: l[c.id]?.datos || {}, fecha: f } })); }} /></div></td>
+                    onChange={(e) => ponLocal({ fecha: e.target.value })} /></div></td>
+                  <td className="px-3 py-2">
+                    <button type="button" onClick={() => ponLocal({ noAplica: !v.noAplica })} className="px-3 py-1 rounded-md text-xs whitespace-nowrap"
+                      style={{ background: v.noAplica ? 'var(--danger)' : 'var(--panel-alt)', color: v.noAplica ? '#fff' : 'var(--text)', border: `1px solid ${v.noAplica ? 'var(--danger)' : 'var(--border)'}` }}>{v.noAplica ? '✕ No aplica' : 'No aplica'}</button>
+                    {v.noAplica && <div className="w-48 mt-1"><Input value={v.motivo} onChange={(e) => ponLocal({ motivo: e.target.value })} placeholder="¿Por qué no aplica?" /></div>}
+                  </td>
                   <td className="px-3 py-2 text-xs" style={{ color: ok ? 'var(--success)' : 'var(--text-muted)' }}>
                     {sinGuardar && !guardando[c.id] && <button type="button" onClick={guardar} className="mr-2 px-3 py-1 rounded-md text-xs font-medium" style={{ background: 'var(--accent)', color: '#000' }}>Guardar</button>}
                     {estado}
