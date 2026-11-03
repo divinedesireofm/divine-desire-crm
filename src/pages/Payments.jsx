@@ -9,6 +9,8 @@ import TareasPagos from '../components/TareasPagos'
 import { cargarTareas } from '../lib/payTasks'
 import { num, fmtNum } from '../lib/numeros'
 import MoneyInput from '../components/MoneyInput'
+import BonosCalculados from '../components/BonosCalculados'
+import { sumarBonoAPago, restarBonoDePago } from '../lib/bonosCalculo'
 import { leerQr, analizarQr, NOMBRE_SLOT } from '../lib/walletQr'
 import { cargarDatosManagers, calcularFilasManagers, unicasTareas, registrarPagoManager } from '../lib/managerPagos'
 
@@ -562,7 +564,7 @@ function PagosAdmin({ area = 'chatting' }) {
       ) : vista === 'extrabajadores' ? (
         <ExtrabajadoresTab cuentas={cuentasEx} pagos={pagosEx} sel={selEx} setSel={setSelEx} notasDe={notasDe} />
       ) : vista === 'bonos' ? (
-        <BonosTab cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={cargar} />
+        <BonosTab cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={cargar} area={area} />
       ) : vista === 'adelantos' ? (
         <AdelantosTab cuentas={cuentas} cuotas={cuotas} pagos={pagos} onCambio={cargar} />
       ) : vista === 'calendario' ? (
@@ -1281,9 +1283,29 @@ function notasCompletas(p, bonos, sanciones, cuotas) {
 }
 
 // =====================================================================================
+// BONOS: «con cálculo» (escalones por facturación, mensual o quincenal) o «manuales» (importe suelto a mano)
+// =====================================================================================
+function BonosTab({ cuentas, bonos, pagos, onCambio, area }) {
+  const [modo, setModo] = useState('calculo')
+  return (
+    <div>
+      <div className="flex gap-2 mb-4 flex-wrap">
+        {[['calculo', 'Bonos con cálculo'], ['manuales', 'Bonos manuales']].map(([k, t]) => (
+          <button key={k} onClick={() => setModo(k)} className="px-4 py-2 rounded-md text-sm"
+            style={{ background: modo === k ? 'var(--accent)' : 'var(--panel-alt)', color: modo === k ? '#000' : 'var(--text)', border: `1px solid ${modo === k ? 'var(--accent)' : 'var(--border)'}` }}>{t}</button>
+        ))}
+      </div>
+      {modo === 'calculo'
+        ? <BonosCalculados area={area || 'chatting'} cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={onCambio} />
+        : <BonosManuales cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={onCambio} />}
+    </div>
+  )
+}
+
+// =====================================================================================
 // BONOS: el admin define cada bono, su importe por chatter y la fecha de cobro
 // =====================================================================================
-function BonosTab({ cuentas, bonos, pagos, onCambio }) {
+function BonosManuales({ cuentas, bonos, pagos, onCambio }) {
   const activas = cuentas.filter((c) => c.activa !== false)
   const [nombre, setNombre] = useState('')
   const [fecha, setFecha] = useState(proximoBono(hoyISO()))
@@ -1299,26 +1321,6 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
   const nombres = [...new Set(bonos.map((b) => b.nombre))]
 
   function aplicarComun() { const m = {}; activas.forEach((c) => { m[c.id] = comun }); setMontos(m) }
-
-  // Busca el pago de esa cuenta en esa fecha (datos frescos de la BD) y le suma el bono
-  async function sumarBonoAPago(b) {
-    const { data, error: e1 } = await supabase.from('chatter_payouts').select('id, account_id, fecha, bonos, estado').eq('account_id', b.account_id).eq('fecha', b.fecha_cobro)
-    if (e1) return { ok: false, error: true }
-    const cand = (data || []).filter((x) => x.account_id === b.account_id && x.fecha === b.fecha_cobro)
-    const pago = cand.find((x) => x.estado !== 'Pagado') || cand[0]
-    if (!pago) return { ok: false }
-    const r1 = await supabase.from('payout_bonuses').update({ aplicado_en: pago.id }).eq('id', b.id)
-    const r2_ = await supabase.from('chatter_payouts').update({ bonos: r2(num(pago.bonos) + num(b.monto)) }).eq('id', pago.id)
-    if (r1.error || r2_.error) return { ok: false, error: true }
-    return { ok: true, pagado: pago.estado === 'Pagado' }
-  }
-  // Quita un bono ya aplicado del pago donde estaba sumado
-  async function restarBonoDePago(b) {
-    const { data } = await supabase.from('chatter_payouts').select('id, bonos').eq('id', b.aplicado_en)
-    const pago = (data || []).find((x) => x.id === b.aplicado_en)
-    if (!pago) return
-    await supabase.from('chatter_payouts').update({ bonos: Math.max(0, r2(num(pago.bonos) - num(b.monto))) }).eq('id', pago.id)
-  }
 
   async function crear(e) {
     e.preventDefault(); setError('')
@@ -1438,8 +1440,9 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
                       </td>
                       <td className="px-3 py-2.5 text-xs" style={lbl}>{b.nota || ''}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                        {b.calculo_id ? <span style={lbl}>Se gestiona en «Bonos con cálculo»</span> : (<>
                         <button onClick={() => { setEdit(b); window.scrollTo({ top: 0, behavior: 'smooth' }) }} className="hover:underline mr-3" style={{ color: 'var(--accent)' }}>Editar</button>
-                        <button onClick={() => borrar(b)} style={{ color: 'var(--danger)' }}>✕</button>
+                        <button onClick={() => borrar(b)} style={{ color: 'var(--danger)' }}>✕</button></>)}
                       </td>
                     </tr>
                   )
@@ -1453,6 +1456,60 @@ function BonosTab({ cuentas, bonos, pagos, onCambio }) {
   )
 }
 
+// Desglose desplegable de un pago: cada concepto por separado
+function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos }) {
+  const [abierto, setAbierto] = useState(false)
+  const lbl = { color: 'var(--text-muted)' }
+  const grp = (x) => x.origen_id || x.adelanto_id || x.id
+  const totalAdel = (x) => r2(cuotas.filter((y) => grp(y) === grp(x)).reduce((t, y) => t + num(y.monto), 0))
+  const bs = bonos.filter((x) => x.aplicado_en === p.id)
+  const ts = tareas.filter((x) => x.aplicado_en === p.id)
+  const ss = sanciones.filter((x) => x.payout_id === p.id)
+  const descontadas = cuotas.filter((x) => x.aplicado_en === p.id).sort((a, b) => a.num - b.num)
+  const entregadas = cuotas.filter((x) => x.origen_id === p.id).sort((a, b) => a.num - b.num)
+  const sumBs = r2(bs.reduce((t, x) => t + num(x.monto), 0) + ts.reduce((t, x) => t + num(x.monto), 0))
+  const otrosBonos = r2(num(p.bonos) - sumBs)
+  const otrasDeudas = r2(Math.abs(num(p.deuda)) - descontadas.reduce((t, x) => t + num(x.monto), 0))
+  const fechaPagoDe = (id) => pagos.find((x) => x.id === id)?.fecha
+  const Fila = ({ k, v, sub, color }) => (
+    <div className="flex justify-between gap-3 py-1" style={{ borderBottom: '1px solid var(--border)' }}>
+      <span>{k}{sub && <span className="block text-[11px]" style={lbl}>{sub}</span>}</span>
+      <strong className="tabular-nums whitespace-nowrap" style={color ? { color } : undefined}>{v}</strong>
+    </div>
+  )
+  const Tit = ({ children }) => <p className="text-xs font-semibold uppercase tracking-wide mt-3 mb-1" style={{ color: 'var(--accent)' }}>{children}</p>
+  return (
+    <div className="mt-3">
+      <button type="button" onClick={() => setAbierto((v) => !v)} className="text-xs underline" style={{ color: 'var(--accent)' }}>{abierto ? '▾ Ocultar desglose' : '▸ Ver desglose detallado'}</button>
+      {abierto && (
+        <div className="mt-2 rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+          <Tit>Comisión</Tit>
+          {num(p.fact_bruta) > 0 && <Fila k="Facturación bruta" v={money(p.fact_bruta)} />}
+          <Fila k="Facturación neta" v={money(p.fact_neta)} />
+          <Fila k={`Comisión ${Math.round(num(p.pct) * 100)}%`} v={money(num(p.fact_neta) * num(p.pct))} />
+          {(bs.length > 0 || ts.length > 0 || otrosBonos > 0.009) && <Tit>Bonos (+)</Tit>}
+          {bs.map((x) => <Fila key={x.id} k={x.nombre} sub={x.nota || `Cobro ${fmtF(x.fecha_cobro)}`} v={'+' + money(x.monto)} color="var(--success)" />)}
+          {ts.map((x) => <Fila key={x.id} k={x.titulo || 'Tarea'} sub="Pago por tarea" v={'+' + money(x.monto)} color="var(--success)" />)}
+          {otrosBonos > 0.009 && <Fila k="Otros bonos" sub="Añadidos a mano en el pago" v={'+' + money(otrosBonos)} color="var(--success)" />}
+          {(num(p.adelanto) > 0 || entregadas.length > 0) && <Tit>Adelanto entregado (+)</Tit>}
+          {num(p.adelanto) > 0 && <Fila k="Adelanto recibido" v={'+' + money(p.adelanto)} />}
+          {entregadas.map((x) => (
+            <Fila key={x.id} k={`Cuota ${x.num}/${x.total} a descontar`} sub={x.aplicado_en ? `Descontada en el pago del ${fmtF(fechaPagoDe(x.aplicado_en) || x.fecha_prevista)}` : `Prevista ${fmtF(x.fecha_prevista)}`} v={money(x.monto)} />
+          ))}
+          {(descontadas.length > 0 || otrasDeudas > 0.009) && <Tit>Descuentos por deuda (−)</Tit>}
+          {descontadas.map((x) => <Fila key={x.id} k={`Adelanto ${money(totalAdel(x))} : cuota ${x.num}/${x.total}`} v={'−' + money(x.monto)} color="var(--danger)" />)}
+          {otrasDeudas > 0.009 && <Fila k="Otras deudas" v={'−' + money(otrasDeudas)} color="var(--danger)" />}
+          {(ss.length > 0 || num(p.penalizacion) !== 0) && <Tit>Sanciones (−)</Tit>}
+          {ss.map((x) => <Fila key={x.id} k={x.motivo || 'Sanción'} sub={x.fecha ? fmtF(x.fecha) : undefined} v={num(x.monto) ? '−' + money(Math.abs(num(x.monto))) : '—'} color="var(--danger)" />)}
+          {ss.length === 0 && num(p.penalizacion) !== 0 && <Fila k="Sanciones" v={'−' + money(Math.abs(num(p.penalizacion)))} color="var(--danger)" />}
+          <div className="flex justify-between pt-3 mt-1"><span className="font-medium">Total del pago</span><strong className="gold-text tabular-nums">{money(calcPago(p))}</strong></div>
+          {p.notas && <p className="text-xs mt-2" style={lbl}>Nota: {p.notas}</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // =====================================================================================
 // CHATTER / MANAGER: solo ve sus propios pagos
 // =====================================================================================
@@ -1461,13 +1518,15 @@ function MisPagos() {
   const [bonos, setBonos] = useState([])
   const [sanciones, setSanciones] = useState([])
   const [cuotas, setCuotas] = useState([])
+  const [tareas, setTareas] = useState([])
   useEffect(() => {
     Promise.all([
       supabase.from('chatter_payouts').select('*').order('fecha', { ascending: false }),
       supabase.from('payout_bonuses').select('*'),
       supabase.from('sanctions').select('id, motivo, monto, fecha, payout_id').not('payout_id', 'is', null),
       supabase.from('payout_advance_installments').select('*'),
-    ]).then(([{ data: p }, { data: b }, { data: s }, { data: c }]) => { setFilas(p || []); setBonos(b || []); setSanciones(s || []); setCuotas(c || []) })
+      supabase.from('pay_task_items').select('id, titulo, monto, aplicado_en, aplicado_tipo').not('aplicado_en', 'is', null),
+    ]).then(([{ data: p }, { data: b }, { data: s }, { data: c }, { data: t }]) => { setFilas(p || []); setBonos(b || []); setSanciones(s || []); setCuotas(c || []); setTareas(t || []) })
   }, [])
   const total = (filas || []).filter((p) => p.estado === 'Pagado').reduce((s, p) => s + calcPago(p), 0)
   return (
@@ -1500,6 +1559,7 @@ function MisPagos() {
                   ))}
                 </div>
                 {notasCompletas(p, bonos, sanciones, cuotas) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones, cuotas)}</p>}
+                <DesglosePago p={p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={filas} />
               </Panel>
             ))}
           </>
