@@ -36,6 +36,106 @@ export function resumenEscalones(escalones) {
   return es.length ? es.map((e) => `≥ ${money(e.desde)} → ${e.tipo === 'pct' ? e.valor + '%' : money(e.valor)}`).join(' · ') : 'Sin escalones'
 }
 
+// =====================================================================================
+// REGLAS LIBRES: el admin define qué datos se introducen por chatter y qué condiciones dan qué pago
+// =====================================================================================
+export const OPERADORES = [['>=', 'es mayor o igual que'], ['>', 'es mayor que'], ['<=', 'es menor o igual que'], ['<', 'es menor que'], ['=', 'es igual a'], ['!=', 'es distinto de'], ['entre', 'está entre']]
+export const TIPOS_PAGO = [['fijo', 'un importe fijo ($)'], ['pct', 'un % de un dato'], ['pct_exceso', 'un % de lo que pase de una cifra'], ['por_cada', 'un importe por cada X de un dato']]
+export const CAMPO_FACTURADO = { id: 'facturado', nombre: 'Facturado ($)', tipo: 'dinero' }
+
+export function camposDePlan(plan) {
+  const c = Array.isArray(plan?.campos) ? plan.campos.filter((x) => x && x.id) : []
+  return c.length ? c : [CAMPO_FACTURADO]
+}
+export const primerCampoDinero = (campos) => (campos.find((c) => c.tipo === 'dinero') || campos[0] || CAMPO_FACTURADO).id
+
+// Los bonos creados con escalones (lote 93) se leen como reglas: de mayor a menor, se paga la primera que se cumpla
+export function reglasDePlan(plan) {
+  if (Array.isArray(plan?.reglas) && plan.reglas.length) return plan.reglas
+  return escalonesOrdenados(plan?.escalones).reverse().map((e, i) => ({
+    id: 'esc' + i, nombre: '', union: 'y',
+    condiciones: [{ campo: 'facturado', op: '>=', valor: e.desde, valor2: null }],
+    pago: { tipo: e.tipo === 'pct' ? 'pct' : 'fijo', valor: e.valor, campo: 'facturado', desde: 0, cada: 0 },
+  }))
+}
+export const modoDePlan = (plan) => (plan?.reglas?.length ? plan.modo_reglas : 'primera') || 'primera'
+
+const hayValor = (v) => v !== null && v !== undefined && String(v).trim() !== ''
+export function condicionValida(c) { return !!c && !!c.campo && hayValor(c.valor) && (c.op !== 'entre' || hayValor(c.valor2)) }
+
+export function cumple(c, datos) {
+  const x = num(datos?.[c.campo]); const a = num(c.valor)
+  switch (c.op) {
+    case '>=': return x >= a
+    case '>': return x > a
+    case '<=': return x <= a
+    case '<': return x < a
+    case '=': return x === a
+    case '!=': return x !== a
+    case 'entre': { const b = num(c.valor2); return x >= Math.min(a, b) && x <= Math.max(a, b) }
+    default: return false
+  }
+}
+
+export function pagoRegla(pago, datos, campos) {
+  if (!pago) return 0
+  const v = num(pago.valor)
+  const x = num(datos?.[pago.campo || primerCampoDinero(campos)])
+  switch (pago.tipo) {
+    case 'fijo': return r2(v)
+    case 'pct': return r2(x * v / 100)
+    case 'pct_exceso': return r2(Math.max(0, x - num(pago.desde)) * v / 100)
+    case 'por_cada': { const cada = num(pago.cada); return cada > 0 ? r2(Math.floor(Math.max(0, x - num(pago.desde)) / cada) * v) : 0 }
+    default: return 0
+  }
+}
+
+// Calcula el bono de un chatter. datos = { idCampo: número }. Devuelve { monto, aplicadas: [{ idx, nombre, monto }], topado }
+export function calcularPlan(plan, datos) {
+  const campos = camposDePlan(plan); const reglas = reglasDePlan(plan); const modo = modoDePlan(plan)
+  const aplicadas = []
+  for (let i = 0; i < reglas.length; i++) {
+    const r = reglas[i]
+    const conds = (r.condiciones || []).filter(condicionValida)
+    const ok = conds.length === 0 ? true : r.union === 'o' ? conds.some((c) => cumple(c, datos)) : conds.every((c) => cumple(c, datos))
+    if (!ok) continue
+    const m = pagoRegla(r.pago, datos, campos)
+    if (m <= 0) continue
+    aplicadas.push({ idx: i + 1, nombre: (r.nombre || '').trim() || `Regla ${i + 1}`, monto: m })
+    if (modo === 'primera') break
+  }
+  let monto = r2(aplicadas.reduce((t, a) => t + a.monto, 0))
+  let topado = false
+  if (num(plan?.tope) > 0 && monto > num(plan.tope)) { monto = r2(num(plan.tope)); topado = true }
+  return { monto, aplicadas, topado }
+}
+
+const fmtValor = (campo, v) => (campo?.tipo === 'dinero' ? money(v) : String(num(v)))
+export function textoCondicion(c, campos) {
+  const campo = campos.find((x) => x.id === c.campo)
+  const op = { '>=': '≥', '>': '>', '<=': '≤', '<': '<', '=': '=', '!=': '≠' }[c.op]
+  return c.op === 'entre' ? `${campo?.nombre || c.campo} entre ${fmtValor(campo, c.valor)} y ${fmtValor(campo, c.valor2)}` : `${campo?.nombre || c.campo} ${op} ${fmtValor(campo, c.valor)}`
+}
+export function textoPago(p, campos) {
+  const nom = (id) => campos.find((x) => x.id === (id || primerCampoDinero(campos)))?.nombre || id
+  switch (p?.tipo) {
+    case 'fijo': return money(p.valor)
+    case 'pct': return `${num(p.valor)}% de ${nom(p.campo)}`
+    case 'pct_exceso': return `${num(p.valor)}% de lo que ${nom(p.campo)} pase de ${money(p.desde)}`
+    case 'por_cada': return `${money(p.valor)} por cada ${num(p.cada)} de ${nom(p.campo)}${num(p.desde) ? ` (a partir de ${num(p.desde)})` : ''}`
+    default: return '—'
+  }
+}
+export function textoRegla(r, campos) {
+  const conds = (r.condiciones || []).filter(condicionValida)
+  const si = conds.length ? conds.map((c) => textoCondicion(c, campos)).join(r.union === 'o' ? ' o ' : ' y ') : 'siempre'
+  return `Si ${si} → ${textoPago(r.pago, campos)}`
+}
+export function resumenPlan(plan) {
+  const campos = camposDePlan(plan)
+  return reglasDePlan(plan).map((r, i) => `${(r.nombre || '').trim() || 'Regla ' + (i + 1)}: ${textoRegla(r, campos)}`)
+}
+
 // Periodos de un bono, del más reciente (el actual) hacia atrás.
 // mensual: mes natural · quincenal: 1-15 y 16-fin de mes. Cada uno: { clave, desde, hasta, etiqueta, enCurso }
 export function periodosBono(periodicidad, hoy = hoyLocal(), n = 8) {
