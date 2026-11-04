@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Panel } from '../components/ui'
 import CopyButton from '../components/CopyButton'
-import { textoPlan, textoDia } from './IGPlans'
+import { textoPlan, textoDia, textoPeriodo } from './IGPlans'
 import VideoReel from '../components/VideoReel'
 
 const nOrigen = (id) => (id === 'ganador' ? 'Ganador' : 'Nuevo')
@@ -18,6 +18,7 @@ export default function PlanContenido({ plan, usuario, linkPlan }) {
         <CopyButton text={linkPlan} label="🔗 Copiar link de esta planificación" />
         <CopyButton text={texto} label="Copiar texto" />
       </div>
+      {(plan.periodo_desde || plan.periodo_hasta) && <p className="text-sm mb-3">📅 <strong>Planificación del</strong> {textoPeriodo(plan)}</p>}
       {plan.reglas?.trim() && (
         <Panel className="p-4 mb-4">
           <p className="text-xs mb-1" style={lbl}>Reglas / avisos</p>

@@ -33,6 +33,10 @@ function semanaDe(ts) {
 const fmtExacta = (ts) => (ts ? new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '')
 const aIso = (t) => { const m = String(t || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '' }
 const deIso = (i) => { const m = String(i || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? `${m[3]}/${m[2]}/${m[1]}` : '' }
+const sumaDias = (iso, n) => { const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); if (!m) return ''; const d = new Date(+m[1], +m[2] - 1, +m[3] + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+// Periodo que cubre la planificación (distinto de la fecha de la planificación): «09/11/2026 al 15/11/2026»
+export const textoPeriodo = (p) => (p?.periodo_desde && p?.periodo_hasta ? `${deIso(p.periodo_desde)} al ${deIso(p.periodo_hasta)}` : p?.periodo_desde ? `desde el ${deIso(p.periodo_desde)}` : p?.periodo_hasta ? `hasta el ${deIso(p.periodo_hasta)}` : '')
+const perPayload = (e) => ('periodo_desde' in e ? { periodo_desde: e.periodo_desde || null, periodo_hasta: e.periodo_hasta || null } : {})
 const tituloHoy = () => new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
 const ESTADOS = { borrador: ['Borrador', 'var(--gold)'], guardada: ['Guardada', 'var(--text-muted)'] }
 
@@ -52,6 +56,7 @@ export function textoDia(d, i) {
 export function textoPlan(p, usuario) {
   const todos = (p.dias || []).flatMap((d) => d.reels || [])
   const partes = [`REELS ${sinArroba(usuario)} ${String(p.titulo || tituloHoy()).toUpperCase()}`.trim()]
+  if (textoPeriodo(p)) partes.push(`📅 Planificación del ${textoPeriodo(p)}`)
   if (p.mostrar_resumen) {
     // Una línea por cada combinación que realmente haya en la planificación (origen + tipo)
     const cuenta = (o, t) => todos.filter((r) => r.origen === o && r.tipo === t).length
@@ -133,7 +138,7 @@ export default function IGPlans() {
   const [auto, setAuto] = useState({ estado: '', hora: '' }) // '' | pendiente | ok | error
   const baseRef = useRef('')
   const ocupadoRef = useRef(false)
-  const instantanea = (e) => JSON.stringify({ a: e.account_id, t: e.titulo, r: e.reglas, m: e.mostrar_resumen, p: e.responsable_id, d: e.dias })
+  const instantanea = (e) => JSON.stringify({ a: e.account_id, t: e.titulo, r: e.reglas, m: e.mostrar_resumen, p: e.responsable_id, pd: e.periodo_desde || '', ph: e.periodo_hasta || '', d: e.dias })
   const tieneContenido = (e) => e.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.tematica || r.prueba || r.video))
   // Una planificación nueva o que ya es borrador se autoguarda; las guardadas/enviadas no (no se les cambia el estado sin querer)
   const autoguardable = (e) => !!e && !!e.account_id && (e.id ? e.estado === 'borrador' : true)
@@ -153,7 +158,7 @@ export default function IGPlans() {
     ocupadoRef.current = true
     const payload = {
       account_id: e.account_id, titulo: e.titulo.trim() || tituloHoy(), reglas: e.reglas.trim(), mostrar_resumen: e.mostrar_resumen,
-      dias: e.dias, estado: 'borrador', responsable_id: e.responsable_id || profile?.id || null,
+      dias: e.dias, estado: 'borrador', responsable_id: e.responsable_id || profile?.id || null, ...perPayload(e),
     }
     const { data, error } = e.id
       ? await supabase.from('ig_plans').update(payload).eq('id', e.id).select().single()
@@ -224,7 +229,7 @@ export default function IGPlans() {
   }
   function abrir(p) {
     setMsg(''); setErr('')
-    const abierta = { id: p.id, account_id: p.account_id, titulo: p.titulo, reglas: p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: p.estado || 'guardada', responsable_id: p.responsable_id || '', created_at: p.created_at, dias: JSON.parse(JSON.stringify(p.dias || [])) }
+    const abierta = { id: p.id, account_id: p.account_id, titulo: p.titulo, reglas: p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: p.estado || 'guardada', responsable_id: p.responsable_id || '', created_at: p.created_at, ...('periodo_desde' in p ? { periodo_desde: p.periodo_desde || '', periodo_hasta: p.periodo_hasta || '' } : {}), dias: JSON.parse(JSON.stringify(p.dias || [])) }
     baseRef.current = instantanea(abierta); setAuto({ estado: '', hora: '' })
     setEd(abierta)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -235,6 +240,7 @@ export default function IGPlans() {
     setAuto({ estado: '', hora: '' })
     const copia = {
       id: null, account_id: p.account_id, titulo: tituloHoy(), reglas: ultimasReglas(p.account_id) || p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: 'guardada', responsable_id: profile?.id || '', created_at: null,
+      ...(p.periodo_hasta ? { periodo_desde: sumaDias(p.periodo_hasta, 1), periodo_hasta: sumaDias(p.periodo_hasta, 7) } : {}),
       dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '', tematica: '', prueba: false })) })),
     }
     baseRef.current = instantanea(copia)
@@ -280,6 +286,7 @@ export default function IGPlans() {
   async function guardar(destino = 'guardada') {
     setErr(''); setMsg('')
     if (!ed.account_id) { setErr('Elige la cuenta de Instagram.'); return }
+    if (ed.periodo_desde && ed.periodo_hasta && ed.periodo_hasta < ed.periodo_desde) { setErr('La fecha final del periodo no puede ser anterior a la inicial.'); return }
     if (ocupadoRef.current) { setErr('Se está autoguardando; vuelve a pulsar en un segundo.'); return }
     setGuardando(true)
     const payload = {
@@ -287,13 +294,13 @@ export default function IGPlans() {
       // La planificación se identifica por su fecha exacta de creación (ya no por la semana)
       titulo: ed.titulo.trim() || tituloHoy(),
       reglas: ed.reglas.trim(), mostrar_resumen: ed.mostrar_resumen, dias: ed.dias,
-      estado: destino, responsable_id: ed.responsable_id || profile?.id || null,
+      estado: destino, responsable_id: ed.responsable_id || profile?.id || null, ...perPayload(ed),
     }
     const { data, error } = ed.id
       ? await supabase.from('ig_plans').update(payload).eq('id', ed.id).select().single()
       : await supabase.from('ig_plans').insert([payload]).select().single()
     setGuardando(false)
-    if (error) { setErr(error.message.includes('does not exist') || error.message.includes('column') ? 'Falta ejecutar la migración 52b en Supabase.' : 'No se pudo guardar. Revisa que tengas acceso a esa cuenta.'); return }
+    if (error) { setErr(error.message.includes('does not exist') || error.message.includes('column') ? (/periodo_/.test(error.message) ? 'Falta ejecutar la migración 94 en Supabase (fechas de periodo).' : 'Falta ejecutar la migración 52b en Supabase.') : 'No se pudo guardar. Revisa que tengas acceso a esa cuenta.'); return }
     baseRef.current = instantanea({ ...ed, titulo: data.titulo }); setAuto({ estado: '', hora: '' })
     limpiarPendientes()
     setEd((e) => ({ ...e, id: data.id, titulo: data.titulo, estado: data.estado, created_at: data.created_at }))
@@ -381,6 +388,16 @@ export default function IGPlans() {
                 <div>
                   <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Fecha de la planificación</label>
                   <Input type="date" value={aIso(ed.titulo)} onChange={(e) => setEd({ ...ed, titulo: deIso(e.target.value) || tituloHoy() })} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs block mb-1" style={{ color: 'var(--text-muted)' }}>Periodo que cubre esta planificación (de qué fecha a qué fecha)</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm">Del</span>
+                    <div className="w-44"><Input type="date" value={ed.periodo_desde || ''} onChange={(e) => { const d = e.target.value; setEd({ ...ed, periodo_desde: d, periodo_hasta: d && (!ed.periodo_hasta || ed.periodo_hasta < d) ? sumaDias(d, 6) : (ed.periodo_hasta || '') }) }} /></div>
+                    <span className="text-sm">al</span>
+                    <div className="w-44"><Input type="date" value={ed.periodo_hasta || ''} min={ed.periodo_desde || undefined} onChange={(e) => setEd({ ...ed, periodo_desde: ed.periodo_desde || '', periodo_hasta: e.target.value })} /></div>
+                    {(ed.periodo_desde || ed.periodo_hasta) && <button type="button" className="text-xs underline" onClick={() => setEd({ ...ed, periodo_desde: '', periodo_hasta: '' })}>Quitar</button>}
+                  </div>
                 </div>
                 <div className="sm:col-span-2 text-xs flex flex-wrap items-center gap-x-4 gap-y-1" style={{ color: 'var(--text-muted)' }}>
                   <span>{ed.created_at ? `Creada el ${fmtExacta(ed.created_at)}` : 'Se registra quién la crea y la hora exacta al guardar'}</span>
@@ -512,7 +529,7 @@ export default function IGPlans() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Cuenta', 'Fecha de creación', 'Responsable', 'Estado', 'Contenido', ''].map((c) => <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>)}
+                  {['Cuenta', 'Fecha de creación', 'Periodo', 'Responsable', 'Estado', 'Contenido', ''].map((c) => <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -524,7 +541,7 @@ export default function IGPlans() {
                     <Fragment key={p.id}>
                     {nuevaSemana && (
                       <tr>
-                        <td colSpan={6} className="px-3 pt-5 pb-1.5" style={{ borderTop: idx === 0 ? 'none' : '2px solid var(--accent)' }}>
+                        <td colSpan={7} className="px-3 pt-5 pb-1.5" style={{ borderTop: idx === 0 ? 'none' : '2px solid var(--accent)' }}>
                           <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--accent)' }}>Semana del {sem.texto}</span>
                         </td>
                       </tr>
@@ -532,6 +549,7 @@ export default function IGPlans() {
                     <tr style={{ borderBottom: abiertos.has(p.id) ? 'none' : '1px solid var(--border)' }}>
                       <td className="px-3 py-2 whitespace-nowrap"><strong>@{sinArroba(usuarioDe(p.account_id))}</strong></td>
                       <td className="px-3 py-2 whitespace-nowrap">{fmtExacta(p.created_at)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">{textoPeriodo(p) || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{nombreDe(p.responsable_id || p.created_by)}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span style={{ color: est[1] }}>{est[0]}</span>
@@ -556,7 +574,7 @@ export default function IGPlans() {
                     </tr>
                     {abiertos.has(p.id) && (
                       <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td colSpan={6} className="px-3 pb-4 pt-1">
+                        <td colSpan={7} className="px-3 pb-4 pt-1">
                           <PlanContenido plan={p} usuario={usuarioDe(p.account_id)} linkPlan={linkDe(p.id)} />
                         </td>
                       </tr>
