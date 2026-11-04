@@ -6,6 +6,8 @@ import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { useSearchParams } from 'react-router-dom'
 import PlanContenido from './IGPlanView'
 import CopyButton from '../components/CopyButton'
+import VideoReel from '../components/VideoReel'
+import { subirVideo, borrarVideos, videosDe, quitarVideos } from '../lib/planVideos'
 
 const ORIGENES = [{ id: 'nuevo', n: 'Nuevo' }, { id: 'ganador', n: 'Ganador' }]
 const TIPOS = [{ id: 'sugerente', n: 'Sugerente' }, { id: 'marca_personal', n: 'Marca personal' }]
@@ -132,14 +134,19 @@ export default function IGPlans() {
   const baseRef = useRef('')
   const ocupadoRef = useRef(false)
   const instantanea = (e) => JSON.stringify({ a: e.account_id, t: e.titulo, r: e.reglas, m: e.mostrar_resumen, p: e.responsable_id, d: e.dias })
-  const tieneContenido = (e) => e.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.tematica || r.prueba))
+  const tieneContenido = (e) => e.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.tematica || r.prueba || r.video))
   // Una planificación nueva o que ya es borrador se autoguarda; las guardadas/enviadas no (no se les cambia el estado sin querer)
   const autoguardable = (e) => !!e && !!e.account_id && (e.id ? e.estado === 'borrador' : true)
 
   const pendRef = useRef(null)   // último estado que no pudo guardarse porque había otro guardado en curso
   const edRef = useRef(null)     // siempre el estado más reciente (para guardar al salir)
+  const porBorrar = useRef([])   // videos que ya no se usan: se borran del almacén cuando se guarda la planificación
+  const [subiendoV, setSubiendoV] = useState({})
   const autoRef = useRef(null)
   edRef.current = ed
+
+  function limpiarPendientes() { const ps = porBorrar.current; porBorrar.current = []; if (ps.length) borrarVideos(ps) }
+  const marcarParaBorrar = (dias) => { videosDe(dias).forEach((v) => porBorrar.current.push(v.path)) }
 
   async function autoGuardar(e) {
     if (ocupadoRef.current) { pendRef.current = e; return }
@@ -154,6 +161,7 @@ export default function IGPlans() {
     ocupadoRef.current = false
     if (error) { setAuto({ estado: 'error', hora: '' }); return false }
     baseRef.current = instantanea(e)
+    limpiarPendientes()
     if (pendRef.current) { // había cambios nuevos mientras se guardaba: se guardan también (ya con el id)
       const n = pendRef.current
       pendRef.current = null
@@ -235,18 +243,36 @@ export default function IGPlans() {
   }
 
   function crearEstructura() {
-    const hayContenido = ed.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto))
+    const hayContenido = ed.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.video))
     if (hayContenido && !confirm('Esto reemplaza los días y reels actuales, y se pierde lo que ya has escrito. ¿Continuar?')) return
+    marcarParaBorrar(ed.dias)
     setEd({ ...ed, dias: estructura(Math.min(Math.max(nDias, 1), 14), Math.min(Math.max(nPorDia, 1), 8)) })
   }
   const setDias = (fn) => setEd((e) => ({ ...e, dias: fn(e.dias) }))
   const setReel = (di, ri, k, v) => setDias((ds) => ds.map((d, i) => (i !== di ? d : { ...d, reels: d.reels.map((r, j) => (j === ri ? { ...r, [k]: v } : r)) })))
   const addReel = (di) => setDias((ds) => ds.map((d, i) => (i === di ? { ...d, reels: [...d.reels, reelVacio(d.reels.length)] } : d)))
-  const quitarReel = (di, ri) => setDias((ds) => ds.map((d, i) => (i === di ? { ...d, reels: d.reels.filter((_, j) => j !== ri) } : d)))
+  const quitarReel = (di, ri) => {
+    const v = ed.dias[di]?.reels[ri]?.video; if (v?.path) porBorrar.current.push(v.path)
+    setDias((ds) => ds.map((d, i) => (i === di ? { ...d, reels: d.reels.filter((_, j) => j !== ri) } : d)))
+  }
+  async function subirReel(di, ri, file) {
+    const k = `${di}-${ri}`; setErr(''); setSubiendoV((s0) => ({ ...s0, [k]: true }))
+    const res = await subirVideo(file, ed.account_id)
+    setSubiendoV((s0) => ({ ...s0, [k]: false }))
+    if (res.error) { setErr(res.error); return }
+    const previo = edRef.current?.dias[di]?.reels[ri]?.video; if (previo?.path) porBorrar.current.push(previo.path)
+    setReel(di, ri, 'video', res.video)
+  }
+  function quitarVideoReel(di, ri) {
+    const v = ed.dias[di]?.reels[ri]?.video; if (!v?.path) return
+    if (!confirm('¿Quitar el video de este reel? Se borrará del CRM al guardar.')) return
+    porBorrar.current.push(v.path); setReel(di, ri, 'video', null)
+  }
   const addDia = () => setDias((ds) => [...ds, { reels: [reelVacio(0), reelVacio(1)] }])
   function quitarDia(di) {
     const d = ed.dias[di]
-    if (d.reels.some((r) => r.link || r.gancho || r.texto) && !confirm(`El día ${di + 1} tiene contenido. ¿Quitarlo?`)) return
+    if (d.reels.some((r) => r.link || r.gancho || r.texto || r.video) && !confirm(`El día ${di + 1} tiene contenido${videosDe([d]).length ? ' y videos (se borrarán al guardar)' : ''}. ¿Quitarlo?`)) return
+    marcarParaBorrar([d])
     setDias((ds) => ds.filter((_, i) => i !== di))
   }
 
@@ -269,6 +295,7 @@ export default function IGPlans() {
     setGuardando(false)
     if (error) { setErr(error.message.includes('does not exist') || error.message.includes('column') ? 'Falta ejecutar la migración 52b en Supabase.' : 'No se pudo guardar. Revisa que tengas acceso a esa cuenta.'); return }
     baseRef.current = instantanea({ ...ed, titulo: data.titulo }); setAuto({ estado: '', hora: '' })
+    limpiarPendientes()
     setEd((e) => ({ ...e, id: data.id, titulo: data.titulo, estado: data.estado, created_at: data.created_at }))
     setMsg(destino === 'borrador' ? 'Guardada como borrador.' : 'Guardada.')
     cargar()
@@ -280,10 +307,31 @@ export default function IGPlans() {
     if (error) { alert('No se pudo guardar la marca.'); return }
     cargar(true)
   }
+  // Planificación terminada: se borran sus videos del CRM para que no se acumulen (los enlaces y textos se conservan)
+  async function marcarHecha(p) {
+    const vs = videosDe(p.dias)
+    const aviso = vs.length
+      ? `Al marcar «${p.titulo}» como hecha se BORRARÁN del CRM ${vs.length === 1 ? 'el video' : `los ${vs.length} videos`} de esta planificación y no se podrán recuperar.\n\nLos enlaces y textos se conservan. ¿Continuar?`
+      : `Esta planificación no tiene videos guardados. ¿Marcarla como hecha?`
+    if (!confirm(aviso)) return
+    const { error } = await supabase.from('ig_plans').update({ dias: quitarVideos(p.dias), hecha_at: new Date().toISOString(), hecha_por: profile?.id || null }).eq('id', p.id)
+    if (error) { alert(/column|hecha/.test(error.message) ? 'Falta ejecutar la migración 93 en Supabase.' : 'No se pudo marcar como hecha.'); return }
+    const r = await borrarVideos(vs.map((v) => v.path))
+    if (!r.ok) alert('Se marcó como hecha, pero no se pudieron borrar algunos videos del almacén: ' + r.error)
+    if (ed?.id === p.id) { const sin = quitarVideos(ed.dias); baseRef.current = instantanea({ ...ed, dias: sin }); setEd((e) => ({ ...e, dias: sin })) }
+    setToast(vs.length ? `✓ Marcada como hecha · ${vs.length} video${vs.length === 1 ? '' : 's'} borrado${vs.length === 1 ? '' : 's'}` : '✓ Marcada como hecha'); setTimeout(() => setToast(''), 3500)
+    cargar(true)
+  }
+  async function quitarHecha(p) {
+    const { error } = await supabase.from('ig_plans').update({ hecha_at: null, hecha_por: null }).eq('id', p.id)
+    if (error) { alert('No se pudo quitar la marca.'); return }
+    cargar(true)
+  }
   async function borrar(p) {
     if (!confirm(`¿Borrar la planificación «${p.titulo}» de @${sinArroba(usuarioDe(p.account_id))}? No se puede deshacer.`)) return
     const { error } = await supabase.from('ig_plans').delete().eq('id', p.id)
     if (error) { alert('No se pudo borrar.'); return }
+    borrarVideos(videosDe(p.dias).map((v) => v.path))
     if (ed?.id === p.id) setEd(null)
     cargar()
   }
@@ -396,6 +444,7 @@ export default function IGPlans() {
                         <Input placeholder="🎣 Gancho" value={r.gancho} onChange={(e) => setReel(di, ri, 'gancho', e.target.value)} />
                         <Input placeholder="📝 Texto / indicaciones" value={r.texto} onChange={(e) => setReel(di, ri, 'texto', e.target.value)} />
                       </div>
+                      <VideoReel video={r.video} subiendo={!!subiendoV[`${di}-${ri}`]} onSubir={(f) => subirReel(di, ri, f)} onQuitar={() => quitarVideoReel(di, ri)} />
                       {d.reels.length > 1 && (
                         <button onClick={() => quitarReel(di, ri)} className="text-xs hover:underline mt-2" style={{ color: 'var(--danger)' }}>Quitar este reel</button>
                       )}
@@ -487,8 +536,9 @@ export default function IGPlans() {
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span style={{ color: est[1] }}>{est[0]}</span>
                         {p.estado !== 'borrador' && p.enviado_at && <span className="text-xs block" style={{ color: 'var(--success)' }}>✓ Enviada · {fmtExacta(p.enviado_at)}</span>}
+                        {p.hecha_at && <span className="text-xs block" style={{ color: 'var(--success)' }}>✓ Hecha · {fmtExacta(p.hecha_at)} · videos borrados</span>}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}{videosDe(p.dias).length > 0 && <span> · 🎞 {plural(videosDe(p.dias).length, 'video', 'videos')}</span>}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         <button className="text-xs underline mr-3" style={{ color: 'var(--accent)' }} aria-expanded={abiertos.has(p.id)} onClick={() => alternar(p.id)}>{abiertos.has(p.id) ? '▲ Ocultar' : '▼ Ver'}</button>
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(linkDe(p.id)).catch(() => {}); alert('Link copiado.') }}>🔗 Copiar link</button>
@@ -497,6 +547,9 @@ export default function IGPlans() {
                         {p.estado !== 'borrador' && (p.enviado_at
                           ? <button className="text-xs underline mr-3" onClick={() => marcarEnviada(p, false)}>Quitar marca de enviada</button>
                           : <button className="text-xs underline mr-3" style={{ color: 'var(--success)' }} onClick={() => marcarEnviada(p, true)}>✓ Marcar como enviada</button>)}
+                        {p.estado !== 'borrador' && (p.hecha_at
+                          ? <button className="text-xs underline mr-3" onClick={() => quitarHecha(p)}>Quitar marca de hecha</button>
+                          : <button className="text-xs underline mr-3" style={{ color: 'var(--success)' }} onClick={() => marcarHecha(p)}>✔ Marcar como hecha (borra los videos)</button>)}
                         <button className="text-xs underline mr-3" onClick={() => duplicarEstructura(p)}>Duplicar estructura</button>
                         {puedeBorrar && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(p)}>Borrar</button>}
                       </td>

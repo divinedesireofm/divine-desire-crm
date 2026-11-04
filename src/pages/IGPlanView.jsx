@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Panel } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import { textoPlan, textoDia } from './IGPlans'
+import VideoReel from '../components/VideoReel'
 
 const nOrigen = (id) => (id === 'ganador' ? 'Ganador' : 'Nuevo')
 const nTipo = (id) => (id === 'marca_personal' ? 'Marca personal' : 'Sugerente')
@@ -47,9 +48,10 @@ export default function PlanContenido({ plan, usuario, linkPlan }) {
                       <CopyButton text={r.link.trim()} label="Copiar link" />
                     </p>
                   )}
-                  {r.gancho?.trim() && <p className="mb-1 whitespace-pre-wrap">🎣 {r.gancho}</p>}
+                  {r.video?.path && <VideoReel video={r.video} soloLectura />}
+                  {r.gancho?.trim() && <p className="mb-1 mt-1 whitespace-pre-wrap">🎣 {r.gancho}</p>}
                   {r.texto?.trim() && <p className="whitespace-pre-wrap">📝 {r.texto}</p>}
-                  {!r.tematica?.trim() && !r.link?.trim() && !r.gancho?.trim() && !r.texto?.trim() && <p style={lbl}>Sin contenido todavía.</p>}
+                  {!r.tematica?.trim() && !r.link?.trim() && !r.gancho?.trim() && !r.texto?.trim() && !r.video?.path && <p style={lbl}>Sin contenido todavía.</p>}
                 </div>
               ))}
             </div>
