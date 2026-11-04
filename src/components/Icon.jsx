@@ -24,7 +24,7 @@ const PATHS = {
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>',
 }
 
-export default function Icon({ name, size = 16 }) {
+export default function Icon({ name, size = 16, color = 'var(--gold)' }) {
   const path = PATHS[name]
   if (!path) return null
   return (
@@ -33,7 +33,7 @@ export default function Icon({ name, size = 16 }) {
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke="var(--gold)"
+      stroke={color}
       strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"

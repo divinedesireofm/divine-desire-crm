@@ -38,6 +38,15 @@ const SECCION_FIJA_POR_ROL = {
   reddit_assistant: 'reddit',
 }
 
+// Color de iconos y nombres por departamento. Chatting no tiene (se queda con el dorado y el texto de siempre).
+const TONO_SECCION = {
+  instagram: 'var(--menu-ig)',
+  reddit: 'var(--menu-reddit)',
+  general: 'var(--menu-admin)',
+  gestion: 'var(--menu-admin)',
+  recursos: 'var(--menu-admin)',
+}
+
 export default function Layout() {
   const { profile, roles, puedeVer, signOut, hasRole } = useAuth()
   const esAdmin = hasRole('admin')
@@ -46,7 +55,10 @@ export default function Layout() {
   const [ordenCfg, setOrdenCfg] = useState(null)      // orden del menú guardado por el admin
   const [editandoMenu, setEditandoMenu] = useState(false)
   const [errMenu, setErrMenu] = useState('')
+  const [arrastre, setArrastre] = useState(null)   // { tipo: 'item'|'seccion', si, ii } lo que se está arrastrando
+  const [destino, setDestino] = useState(null)     // { tipo, si, ii } dónde caería
   const mainRef = useRef(null)
+  const navRef = useRef(null)
   const location = useLocation()
   const { pendiente: reportePend, marcarEnviado } = useReportePendiente()
   const enReportes = location.pathname.startsWith('/reportes-turno')
@@ -87,22 +99,22 @@ export default function Layout() {
     await supabase.from('menu_orden').delete().eq('clave', 'menu')
   }
   const copia = () => visibleSections.map((s) => ({ ...s, items: [...s.items] }))
-  function moverSeccion(i, d) {
-    const e = copia(); const j = i + d
-    if (j < 0 || j >= e.length) return
-    ;[e[i], e[j]] = [e[j], e[i]]; guardarOrden(e)
+  // Arrastrar y soltar con el ratón (sin flechas)
+  function soltar() {
+    if (!arrastre || !destino) { setArrastre(null); setDestino(null); return }
+    const e = copia()
+    if (arrastre.tipo === 'seccion' && destino.tipo === 'seccion') {
+      const [sec] = e.splice(arrastre.si, 1)
+      let at = destino.si; if (arrastre.si < destino.si) at -= 1
+      e.splice(Math.max(0, at), 0, sec); guardarOrden(e)
+    } else if (arrastre.tipo === 'item' && destino.tipo === 'item') {
+      const [it] = e[arrastre.si].items.splice(arrastre.ii, 1)
+      let at = destino.ii; if (arrastre.si === destino.si && arrastre.ii < destino.ii) at -= 1
+      e[destino.si].items.splice(Math.max(0, at), 0, it); guardarOrden(e)
+    }
+    setArrastre(null); setDestino(null)
   }
-  function moverItem(si, ii, d) {
-    const e = copia(); const it = e[si].items; const j = ii + d
-    if (j < 0 || j >= it.length) return
-    ;[it[ii], it[j]] = [it[j], it[ii]]; guardarOrden(e)
-  }
-  function cambiarCategoria(si, ii, destinoId) {
-    const e = copia(); const [item] = e[si].items.splice(ii, 1)
-    const dest = e.find((s) => s.id === destinoId)
-    if (!dest) return
-    dest.items.push(item); guardarOrden(e)
-  }
+  const mitad = (ev) => { const r = ev.currentTarget.getBoundingClientRect(); return ev.clientY > r.top + r.height / 2 ? 1 : 0 }
 
   const itemActual = buscarItem(location.pathname)
   const sinAcceso = itemActual && !puedeVer(itemActual.to, itemActual.roles)
@@ -159,34 +171,58 @@ export default function Layout() {
             <div className="h-px w-full mt-4" style={{ background: 'linear-gradient(90deg, transparent, var(--gold), transparent)' }} />
           </div>
 
-        <nav className="flex-1 space-y-4 overflow-y-auto">
+        <nav
+          ref={navRef}
+          className="flex-1 space-y-4 overflow-y-auto"
+          onDragOverCapture={(ev) => {
+            // al arrastrar cerca del borde de arriba o abajo, el menú se desplaza solo
+            if (!arrastre || !navRef.current) return
+            const r = navRef.current.getBoundingClientRect()
+            if (ev.clientY < r.top + 50) navRef.current.scrollTop -= 14
+            else if (ev.clientY > r.bottom - 50) navRef.current.scrollTop += 14
+          }}
+        >
           {visibleSections.map((section, si) => {
             const fija = seccionesFijas.has(section.id)
+            const tono = TONO_SECCION[section.id]
             const abierta = editandoMenu || fija || !collapsed[section.id]
             return (
               <div key={section.id}>
                 {editandoMenu && (
-                  <div className="flex items-center justify-between px-2 py-1 mb-1 rounded" style={{ background: 'var(--accent-soft)' }}>
+                  <div
+                    draggable
+                    onDragStart={(ev) => { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', section.id); setArrastre({ tipo: 'seccion', si }) }}
+                    onDragEnd={() => { setArrastre(null); setDestino(null) }}
+                    onDragOver={(ev) => {
+                      if (!arrastre) return
+                      ev.preventDefault()
+                      if (arrastre.tipo === 'seccion') setDestino({ tipo: 'seccion', si: si + mitad(ev) })
+                      else setDestino({ tipo: 'item', si, ii: 0 })
+                    }}
+                    onDrop={(ev) => { ev.preventDefault(); soltar() }}
+                    className="flex items-center gap-2 px-2 py-1 mb-1 rounded cursor-grab active:cursor-grabbing select-none"
+                    style={{ background: 'var(--accent-soft)',
+                      boxShadow: destino?.tipo === 'seccion' && destino.si === si ? '0 -2px 0 var(--accent)' : destino?.tipo === 'seccion' && destino.si === si + 1 && si === visibleSections.length - 1 ? '0 2px 0 var(--accent)' : 'none',
+                      opacity: arrastre?.tipo === 'seccion' && arrastre.si === si ? 0.4 : 1 }}
+                    title="Arrastra para mover la categoría entera"
+                  >
+                    <span style={{ color: 'var(--accent)' }}>⠿</span>
                     <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--accent)' }}>{section.label || 'Principal'}</span>
-                    <span className="flex gap-1">
-                      <button onClick={() => moverSeccion(si, -1)} disabled={si === 0} className="px-1.5 text-xs disabled:opacity-30" aria-label="Subir categoría">▲</button>
-                      <button onClick={() => moverSeccion(si, 1)} disabled={si === visibleSections.length - 1} className="px-1.5 text-xs disabled:opacity-30" aria-label="Bajar categoría">▼</button>
-                    </span>
                   </div>
                 )}
                 {!editandoMenu && section.label && (
                   fija ? (
-                    <p className="px-2 py-1 mb-1 text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
-                      <Icon name={section.icon} size={13} />
+                    <p className="px-2 py-1 mb-1 text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5" style={{ color: tono || 'var(--text-muted)' }}>
+                      <Icon name={section.icon} size={13} color={tono} />
                       {section.label}
                     </p>
                   ) : (
                     <button
                       onClick={() => setCollapsed((c) => ({ ...c, [section.id]: !c[section.id] }))}
                       className="w-full flex items-center justify-between px-2 py-1 mb-1 text-xs font-semibold uppercase tracking-wide"
-                      style={{ color: 'var(--text-muted)' }}
+                      style={{ color: tono || 'var(--text-muted)' }}
                     >
-                      <span className="flex items-center gap-1.5"><Icon name={section.icon} size={13} />{section.label}</span>
+                      <span className="flex items-center gap-1.5"><Icon name={section.icon} size={13} color={tono} />{section.label}</span>
                       <span style={{ fontSize: 10 }}>{collapsed[section.id] ? '▸' : '▾'}</span>
                     </button>
                   )
@@ -194,18 +230,25 @@ export default function Layout() {
                 {abierta && (
                   <div className="space-y-1 animate-in">
                     {editandoMenu && section.items.map((item, ii) => (
-                      <div key={item.to} className="flex items-center gap-1 px-2 py-1 rounded-md text-sm" style={{ background: 'var(--panel)' }}>
+                      <div
+                        key={item.to}
+                        draggable
+                        onDragStart={(ev) => { ev.dataTransfer.effectAllowed = 'move'; ev.dataTransfer.setData('text/plain', item.to); setArrastre({ tipo: 'item', si, ii }) }}
+                        onDragEnd={() => { setArrastre(null); setDestino(null) }}
+                        onDragOver={(ev) => { if (arrastre?.tipo !== 'item') return; ev.preventDefault(); ev.stopPropagation(); setDestino({ tipo: 'item', si, ii: ii + mitad(ev) }) }}
+                        onDrop={(ev) => { ev.preventDefault(); ev.stopPropagation(); soltar() }}
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-grab active:cursor-grabbing select-none"
+                        style={{ background: 'var(--panel)', opacity: arrastre?.tipo === 'item' && arrastre.si === si && arrastre.ii === ii ? 0.4 : 1,
+                          boxShadow: destino?.tipo === 'item' && destino.si === si && destino.ii === ii ? '0 -2px 0 var(--accent)' : destino?.tipo === 'item' && destino.si === si && destino.ii === ii + 1 && ii === section.items.length - 1 ? '0 2px 0 var(--accent)' : 'none' }}
+                      >
+                        <span style={{ color: 'var(--text-muted)' }}>⠿</span>
                         <span className="flex-1 truncate">{item.label}</span>
-                        <select
-                          value={section.id} onChange={(e) => cambiarCategoria(si, ii, e.target.value)} aria-label="Mover a otra categoría"
-                          className="text-[10px] rounded px-0.5 w-16" style={{ background: 'var(--panel-alt)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
-                        >
-                          {visibleSections.map((s) => <option key={s.id} value={s.id}>{s.label || 'Principal'}</option>)}
-                        </select>
-                        <button onClick={() => moverItem(si, ii, -1)} disabled={ii === 0} className="px-1 text-xs disabled:opacity-30" aria-label="Subir">▲</button>
-                        <button onClick={() => moverItem(si, ii, 1)} disabled={ii === section.items.length - 1} className="px-1 text-xs disabled:opacity-30" aria-label="Bajar">▼</button>
                       </div>
                     ))}
+                    {editandoMenu && section.items.length === 0 && (
+                      <div onDragOver={(ev) => { if (arrastre?.tipo === 'item') { ev.preventDefault(); setDestino({ tipo: 'item', si, ii: 0 }) } }} onDrop={(ev) => { ev.preventDefault(); soltar() }}
+                        className="px-2 py-2 text-xs rounded-md" style={{ border: '1px dashed var(--border)', color: 'var(--text-muted)' }}>Suelta aquí un apartado</div>
+                    )}
                     {!editandoMenu && section.items.map((item) => (
                       <NavLink
                         key={item.to}
@@ -213,12 +256,12 @@ export default function Layout() {
                         end={item.end}
                         className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors"
                         style={({ isActive }) => ({
-                          background: isActive ? 'var(--accent-soft)' : 'transparent',
-                          color: isActive ? 'var(--accent)' : 'var(--text)',
-                          fontWeight: isActive ? 500 : 400,
+                          background: isActive ? (tono ? `color-mix(in srgb, ${tono} 16%, transparent)` : 'var(--accent-soft)') : 'transparent',
+                          color: tono || (isActive ? 'var(--accent)' : 'var(--text)'),
+                          fontWeight: isActive ? 600 : 400,
                         })}
                       >
-                        <Icon name={item.icon} />
+                        <Icon name={item.icon} color={tono} />
                         {item.label}
                       </NavLink>
                     ))}
@@ -236,7 +279,7 @@ export default function Layout() {
                 {editandoMenu ? '✓ Terminar de ordenar' : '↕ Ordenar menú'}
               </button>
               {editandoMenu && ordenCfg && <button onClick={restablecerOrden} className="text-xs hover:underline ml-3" style={{ color: 'var(--text-muted)' }}>Restablecer</button>}
-              {editandoMenu && <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>Sube/baja con ▲▼ o cambia un apartado de categoría con el desplegable. Lo ve todo el equipo.</p>}
+              {editandoMenu && <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>Arrastra con el ratón los apartados (o categorías enteras) hasta donde quieras, incluso a otra categoría. Lo ve todo el equipo.</p>}
               {errMenu && <p className="text-[10px] mt-1" style={{ color: 'var(--danger)' }}>{errMenu}</p>}
             </div>
           )}

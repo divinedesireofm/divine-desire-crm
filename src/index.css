@@ -15,7 +15,12 @@
   --gold-deep: #B8860B;
   --danger: #E5646B;
   --success: #4FBF8B;
+  /* Colores del menú por departamento (Chatting conserva el dorado de siempre) */
+  --menu-ig: #F472B6;
+  --menu-reddit: #FF7A45;
+  --menu-admin: #FFFFFF;
 }
+:root[data-theme='light'] { --menu-ig: #DB2777; --menu-reddit: #EA580C; --menu-admin: #1F1B16; }
 
 .gold-text {
   background: linear-gradient(180deg, var(--gold-light), var(--gold-deep));
