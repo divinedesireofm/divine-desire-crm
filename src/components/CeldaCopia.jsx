@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 //  - el texto largo se corta con «…» y aparece «ver más» (abre una ventanita con el texto completo)
 //  - siempre hay un botón para copiar el texto
 // `texto` es lo que se copia / se ve completo; `children` permite mostrar otra cosa en la celda (enlace, etiqueta…).
-export default function CeldaCopia({ texto, titulo, children, muted = false, vacio = '—' }) {
+export default function CeldaCopia({ texto, titulo, children, muted = false, vacio = '—', completo = false }) {
   const t = texto == null ? '' : String(texto)
   const refTxt = useRef(null)
   const [corta, setCorta] = useState(false)   // ¿se está cortando el texto?
@@ -14,13 +14,13 @@ export default function CeldaCopia({ texto, titulo, children, muted = false, vac
   useEffect(() => {
     const el = refTxt.current
     if (!el) return undefined
-    const medir = () => setCorta(el.scrollWidth > el.clientWidth + 1)
+    const medir = () => setCorta(!completo && el.scrollWidth > el.clientWidth + 1)
     medir()
     if (typeof ResizeObserver === 'undefined') return undefined
     const ro = new ResizeObserver(medir)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [t, children])
+  }, [t, children, completo])
 
   async function copiar(e) {
     e?.stopPropagation()
@@ -37,7 +37,7 @@ export default function CeldaCopia({ texto, titulo, children, muted = false, vac
   return (
     <>
       <div className="flex items-center gap-1.5" style={{ minWidth: 0 }}>
-        <span ref={refTxt} className="truncate" style={{ minWidth: 0, flex: '0 1 auto', color: muted ? 'var(--text-muted)' : undefined }} title={corta ? t : undefined}>{children ?? t}</span>
+        <span ref={refTxt} className={completo ? 'whitespace-nowrap' : 'truncate'} style={{ minWidth: 0, flex: '0 1 auto', color: muted ? 'var(--text-muted)' : undefined }} title={corta ? t : undefined}>{children ?? t}</span>
         {corta && <button type="button" className="text-xs underline whitespace-nowrap shrink-0" style={{ color: 'var(--accent)' }} onClick={() => setAbierto(true)}>ver más</button>}
         <button type="button" onClick={copiar} aria-label="Copiar texto" title="Copiar texto" className="shrink-0 text-xs px-1 rounded" style={{ color: copiado ? 'var(--success)' : 'var(--text-muted)', opacity: copiado ? 1 : 0.7 }}>
           {copiado ? '✓' : '⧉'}

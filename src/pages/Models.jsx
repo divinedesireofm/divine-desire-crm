@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { Panel, Button, Input, Select, Table, Td, StatusBadge, PageHeader } from '../components/ui'
+import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
+import Desplegable from '../components/Desplegable'
+import FichaModelo from '../components/FichaModelo'
+import { progresoFicha } from '../lib/fichaModelo'
 import { ModelAvatar } from '../components/ModelAvatar'
 import { reducirImagen, refrescarFotosModelos } from '../lib/modelPhotos'
 
@@ -20,6 +23,9 @@ export default function Models() {
   const [error, setError] = useState(null)
   const [subiendo, setSubiendo] = useState(null)
   const [privados, setPrivados] = useState({}) // { model_id: { email, phone, notas } } — solo lo ve el admin
+  const [fichas, setFichas] = useState({})     // { model_id: datos } — ficha general, la ve todo el equipo
+  const [fichaAbierta, setFichaAbierta] = useState(null)
+  const [fichaCerrando, setFichaCerrando] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -29,10 +35,20 @@ export default function Models() {
       const { data: pv } = await supabase.from('model_private').select('*')
       setPrivados(Object.fromEntries((pv || []).map((r) => [r.model_id, r])))
     }
+    const { data: fg } = await supabase.from('model_general').select('model_id, datos')
+    setFichas(Object.fromEntries((fg || []).map((r) => [r.model_id, r.datos || {}])))
     setLoading(false)
   }
 
   useEffect(() => { load() }, [])
+
+  async function guardarFicha(modeloId, datos) {
+    const { error: e } = await supabase.from('model_general').upsert({ model_id: modeloId, datos, updated_at: new Date().toISOString() }, { onConflict: 'model_id' })
+    if (e) return { error: /model_general|relation/.test(e.message) ? 'Falta ejecutar la migración 95 en Supabase (ficha general de modelos).' : 'No se pudo guardar: ' + e.message }
+    setFichas((f) => ({ ...f, [modeloId]: datos }))
+    return {}
+  }
+  const alternarFicha = (id) => { if (fichaAbierta === id && !fichaCerrando) { setFichaCerrando(true) } else { setFichaCerrando(false); setFichaAbierta(id) } }
 
   async function subirFoto(m, file) {
     if (!file) return
@@ -191,11 +207,25 @@ export default function Models() {
         {loading ? (
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
         ) : (
-          <Table
-            columns={canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono', 'Notas', 'Información privada', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', '']}
-            rows={models}
-            renderRow={(m) => (
-              <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  {(canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono', 'Notas', 'Información privada', 'Ficha general', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', 'Ficha general', '']).map((col, i) => (
+                    <th key={col + i} className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-muted)' }}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {models.length === 0 ? (
+                  <tr><td colSpan={canEdit ? 9 : 6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay datos aquí.</td></tr>
+                ) : models.map((m) => {
+                  const pr = progresoFicha(fichas[m.id])
+                  const abierta = fichaAbierta === m.id
+                  return (
+                    <Fragment key={m.id}>
+                      <tr style={{ borderBottom: abierta ? 'none' : '1px solid var(--border)' }}>
+
                 <Td>
                   <div className="flex items-center gap-3">
                     {canEdit ? (
@@ -220,15 +250,33 @@ export default function Models() {
                 <Td style={{ color: 'var(--text-muted)' }}>{m.notes || '—'}</Td>
                 {canEdit && <Td style={{ color: 'var(--text-muted)', maxWidth: 280 }}><span className="block whitespace-pre-wrap text-xs" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{privados[m.id]?.notas || '—'}</span></Td>}
                 <Td>
+                  <button onClick={() => alternarFicha(m.id)} className="text-xs px-3 py-1.5 rounded-md whitespace-nowrap" style={{ background: abierta && !fichaCerrando ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${abierta && !fichaCerrando ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--accent)' }}>
+                    {abierta && !fichaCerrando ? '▲ Ocultar ficha' : '▼ Ver ficha'}{pr.hechos ? ` · ${pr.hechos}/${pr.total}` : ' · vacía'}
+                  </button>
+                </Td>
+                <Td>
                   {canEdit && (
                     <button onClick={() => startEdit(m)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
                       Editar
                     </button>
                   )}
                 </Td>
-              </>
-            )}
-          />
+                      </tr>
+                      {abierta && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td colSpan={canEdit ? 9 : 6} style={{ padding: 0 }}>
+                            <Desplegable abierto={!fichaCerrando} onCerrado={() => { setFichaAbierta(null); setFichaCerrando(false) }}>
+                              <FichaModelo modelo={m} datos={fichas[m.id]} canEdit={canEdit} onGuardar={(d) => guardarFicha(m.id, d)} onCerrar={() => setFichaCerrando(true)} />
+                            </Desplegable>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </Panel>
     </div>

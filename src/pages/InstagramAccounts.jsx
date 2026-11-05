@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -6,16 +6,17 @@ import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
 import CeldaCopia from '../components/CeldaCopia'
 import ScrollSuperior from '../components/ScrollSuperior'
+import Desplegable from '../components/Desplegable'
 import ZeroAccounts from './ZeroAccounts'
 import IGProfileMetrics from './IGProfileMetrics'
 
-// Columnas: k = clave de orden, n = cabecera, w = ancho en px. Todas las filas miden lo mismo; lo que no cabe se corta con «ver más».
+// Columnas: k = clave de orden, n = cabecera. Todo se ve completo salvo 2FA, Observaciones y Restricciones, que se abrevian (con «ver más») si son largas: `w` es su ancho máximo.
 const COLS = [
-  { k: 'cuenta', n: 'Cuenta actual', w: 200 }, { k: 'modelo', n: 'Modelo', w: 180 }, { k: 'estado', n: 'Estado', w: 180 },
-  { k: 'responsable', n: 'Responsable', w: 180 }, { k: 'seguidores', n: 'Seguidores', w: 130 }, { k: 'original', n: 'IG original', w: 200 },
-  { k: 'correo', n: 'Correo', w: 250 }, { k: 'dosfa', n: '2FA', w: 140 }, { k: 'publico', n: 'Público', w: 180 },
-  { k: 'asignacion', n: 'Asignación', w: 130 }, { k: 'dias', n: 'Días', w: 90 }, { k: 'obs', n: 'Observaciones', w: 260 },
-  { k: 'restr', n: 'Restricciones', w: 260 }, { k: 'acc', n: '', w: 150 },
+  { k: 'cuenta', n: 'Cuenta actual' }, { k: 'modelo', n: 'Modelo' }, { k: 'estado', n: 'Estado' },
+  { k: 'responsable', n: 'Responsable' }, { k: 'seguidores', n: 'Seguidores' }, { k: 'original', n: 'IG original' },
+  { k: 'correo', n: 'Correo' }, { k: 'dosfa', n: '2FA', w: 150 }, { k: 'publico', n: 'Público' },
+  { k: 'asignacion', n: 'Asignación' }, { k: 'dias', n: 'Días' }, { k: 'obs', n: 'Observaciones', w: 260 },
+  { k: 'restr', n: 'Restricciones', w: 260 }, { k: 'acc', n: '' },
 ]
 // Foto de perfil del propio Instagram (la última leída con ScrapeCreators); si no hay o no carga, la inicial de la cuenta
 function FotoIG({ url, nombre, size = 36 }) {
@@ -74,6 +75,9 @@ export default function InstagramAccounts() {
   const [fEstado, setFEstado] = useState('todos')
   const [fResp, setFResp] = useState('todos')
   const [busca, setBusca] = useState('')
+  const [cerrando, setCerrando] = useState(false)   // la ventana de edición se está plegando
+  const panelRef = useRef(null)
+  const [anchoVista, setAnchoVista] = useState(900)
 
   // Valor de cada columna para ordenar
   function valorDe(a, k) {
@@ -140,14 +144,24 @@ export default function InstagramAccounts() {
   }
 
   useEffect(() => { load() }, [])
+  // La ventana de edición se ajusta al ancho visible de la tabla (aunque la tabla sea más ancha y tenga scroll)
+  useEffect(() => {
+    const el = panelRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    const medir = () => setAnchoVista(Math.max(320, el.clientWidth - 2))
+    medir()
+    const ro = new ResizeObserver(medir); ro.observe(el)
+    return () => ro.disconnect()
+  }, [loading, tab])
 
   function startCreate() {
-    setEditingId(null)
+    setEditingId(null); setCerrando(false)
     setForm(EMPTY_FORM)
     setShowForm(true)
   }
 
   function startEdit(a) {
+    setShowForm(false); setCerrando(false)
     setEditingId(a.id)
     setForm({
       original_username: a.original_username || '',
@@ -164,8 +178,9 @@ export default function InstagramAccounts() {
       observations: a.observations || '',
       restrictions: a.restrictions || '',
     })
-    setShowForm(true)
   }
+  const cerrarEdicion = () => setCerrando(true)          // se pliega con animación y luego se quita
+  const finEdicion = () => { setEditingId(null); setCerrando(false); setError(null) }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -196,9 +211,7 @@ export default function InstagramAccounts() {
       setError('No se pudo guardar. Comprueba que el usuario no esté ya registrado.')
       return
     }
-    setShowForm(false)
-    setEditingId(null)
-    setForm(EMPTY_FORM)
+    if (editingId) cerrarEdicion(); else { setShowForm(false); setForm(EMPTY_FORM) }
     load()
   }
 
@@ -206,7 +219,7 @@ export default function InstagramAccounts() {
     if (!confirm(`¿Eliminar la cuenta @${a.username}?\n\nSe borrarán también sus planificaciones, reels ganadores y registros de seguidores. No se puede deshacer.`)) return
     const { error: err } = await supabase.from('instagram_accounts').delete().eq('id', a.id)
     if (err) { setError('No se pudo eliminar: ' + err.message); return }
-    if (editingId === a.id) { setShowForm(false); setEditingId(null) }
+    if (editingId === a.id) finEdicion()
     load()
   }
 
@@ -249,8 +262,54 @@ export default function InstagramAccounts() {
     )
   }
 
+  // Campos del formulario (sirven para «Añadir cuenta» y para la ventana que se despliega bajo la fila al editar)
+  const C = ({ t, children, cls = '' }) => (
+    <div className={cls}><label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>{t}</label>{children}</div>
+  )
+  const formulario = (
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {C({ t: '@ usuario actual', children: <Input placeholder="@usuario actual" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required /> })}
+      {C({ t: 'Modelo', children: (
+        <Select value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })}>
+          <option value="">Sin modelo asignado</option>
+          {models.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
+        </Select>) })}
+      {C({ t: 'Estado', children: (
+        <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+          {STATUS_OPTIONS.map((st) => <option key={st} value={st}>{st.replaceAll('_', ' ')}</option>)}
+        </Select>) })}
+      {C({ t: 'Responsable (asistente)', children: (
+        <Select value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}>
+          <option value="">Sin asistente asignado</option>
+          {assistants.map((x) => <option key={x.id} value={x.id}>{x.full_name}</option>)}
+        </Select>) })}
+      {C({ t: 'Instagram original (si la cuenta fue comprada)', children: <Input placeholder="Instagram original" value={form.original_username} onChange={(e) => setForm({ ...form, original_username: e.target.value })} /> })}
+      {C({ t: 'Correo de la cuenta', children: <Input placeholder="Correo de la cuenta" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /> })}
+      {C({ t: 'Código 2FA', children: <Input placeholder="Código 2FA" value={form.two_fa_code} onChange={(e) => setForm({ ...form, two_fa_code: e.target.value })} /> })}
+      {C({ t: 'Link de Instagram', children: <Input placeholder="Link de Instagram" value={form.profile_link} onChange={(e) => setForm({ ...form, profile_link: e.target.value })} /> })}
+      {C({ t: 'Link bio', children: <Input placeholder="Link bio" value={form.bio_link} onChange={(e) => setForm({ ...form, bio_link: e.target.value })} /> })}
+      {C({ t: 'Público objetivo (separado por comas)', children: <Input placeholder="Ej: Español, USA" value={form.target_audience} onChange={(e) => setForm({ ...form, target_audience: e.target.value })} /> })}
+      {C({ t: 'Fecha de creación/asignación', children: <Input type="date" value={form.assigned_at} onChange={(e) => setForm({ ...form, assigned_at: e.target.value })} /> })}
+      {C({ t: 'Observaciones', cls: 'lg:col-span-1', children: <Input placeholder="Observaciones" value={form.observations} onChange={(e) => setForm({ ...form, observations: e.target.value })} /> })}
+      {C({ t: 'Restricciones', children: <Input placeholder="Restricciones" value={form.restrictions} onChange={(e) => setForm({ ...form, restrictions: e.target.value })} /> })}
+      {error && <p className="sm:col-span-2 lg:col-span-3 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
+      <div className="sm:col-span-2 lg:col-span-3 flex flex-wrap gap-2">
+        <Button type="submit">{editingId ? 'Guardar cambios' : 'Guardar cuenta'}</Button>
+        <Button type="button" variant="ghost" onClick={() => (editingId ? cerrarEdicion() : setShowForm(false))}>Cancelar</Button>
+      </div>
+    </form>
+  )
+  const fila = { whiteSpace: 'nowrap' }
+  const corta = (c) => ({ width: c.w, maxWidth: c.w })
+
   return (
     <div>
+      <style>{`
+        .tabla-ig tbody tr.fila-ig { transition: background-color .2s ease; }
+        .tabla-ig tbody tr.fila-ig:hover > td { background: var(--panel-alt) !important; }
+        .tabla-ig tbody tr.fila-ig.editando > td { background: color-mix(in srgb, var(--accent) 14%, var(--panel)) !important; }
+        .tabla-ig thead th { text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+      `}</style>
       <PageHeader
         title="Cuentas de Instagram"
         subtitle="Ficha completa de cada cuenta: origen, credenciales, responsable y estado."
@@ -262,153 +321,70 @@ export default function InstagramAccounts() {
       />
 
       {pestanas}
-      {error && !showForm && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{error}</p>}
+      {error && !showForm && !editingId && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{error}</p>}
 
-      {showForm && (
-        <Panel className="p-5 mb-6">
-          <p className="text-sm mb-4 font-medium">{editingId ? 'Editar cuenta' : 'Nueva cuenta'}</p>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <Input
-              placeholder="Instagram original (si la cuenta fue comprada)"
-              value={form.original_username}
-              onChange={(e) => setForm({ ...form, original_username: e.target.value })}
-            />
-            <Input
-              placeholder="Correo de la cuenta"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-            <Input
-              placeholder="Link de Instagram"
-              value={form.profile_link}
-              onChange={(e) => setForm({ ...form, profile_link: e.target.value })}
-            />
-            <Input
-              placeholder="@usuario actual"
-              value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-              required
-            />
-            <Select value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })}>
-              <option value="">Sin modelo asignado</option>
-              {models.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
-            </Select>
-            <Input
-              placeholder="Público objetivo (ej: Español, USA)"
-              value={form.target_audience}
-              onChange={(e) => setForm({ ...form, target_audience: e.target.value })}
-            />
-            <Input
-              placeholder="Link bio"
-              value={form.bio_link}
-              onChange={(e) => setForm({ ...form, bio_link: e.target.value })}
-            />
-            <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
-            </Select>
-            <Select value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}>
-              <option value="">Sin asistente asignado</option>
-              {assistants.map((a) => <option key={a.id} value={a.id}>{a.full_name}</option>)}
-            </Select>
-            <Input
-              placeholder="Código 2FA"
-              value={form.two_fa_code}
-              onChange={(e) => setForm({ ...form, two_fa_code: e.target.value })}
-            />
-            <div>
-              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fecha de creación/asignación</label>
-              <Input
-                type="date"
-                value={form.assigned_at}
-                onChange={(e) => setForm({ ...form, assigned_at: e.target.value })}
-              />
-            </div>
-            <Input
-              placeholder="Observaciones"
-              className="col-span-1"
-              value={form.observations}
-              onChange={(e) => setForm({ ...form, observations: e.target.value })}
-            />
-            <Input
-              placeholder="Restricciones"
-              className="col-span-1"
-              value={form.restrictions}
-              onChange={(e) => setForm({ ...form, restrictions: e.target.value })}
-            />
-            {error && <p className="sm:col-span-2 lg:col-span-3 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
-            <div className="sm:col-span-2 lg:col-span-3 flex flex-wrap gap-2">
-              <Button type="submit">{editingId ? 'Guardar cambios' : 'Guardar cuenta'}</Button>
-              {editingId && (
-                <Button type="button" variant="ghost" onClick={() => { setShowForm(false); setEditingId(null) }}>
-                  Cancelar
-                </Button>
-              )}
-            </div>
-          </form>
+      {showForm && !editingId && (
+        <Panel className="p-5 mb-5">
+          <p className="text-sm mb-4 font-medium">Nueva cuenta</p>
+          {formulario}
         </Panel>
       )}
 
-      {/* Orden y filtros */}
-      <Panel className="p-4 mb-4">
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 items-end">
-          <div className="col-span-2 lg:col-span-1">
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Ordenar por</label>
-            <div className="flex gap-2">
-              <Select value={ordenK} onChange={(e) => { setOrdenK(e.target.value); setOrdenDir('asc') }}>
-                {ORDENABLES.map((c) => <option key={c.k} value={c.k}>{c.n}</option>)}
+      <Panel ref={panelRef} className="overflow-hidden" style={{ boxShadow: '0 8px 30px rgba(0,0,0,.25)' }}>
+        {/* Filtros y orden, integrados en la propia tabla para que esta quede arriba */}
+        <div className="px-4 py-3" style={{ background: 'var(--panel-alt)', borderBottom: '1px solid var(--border)' }}>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="grow basis-52">
+              <Input placeholder="🔎 Buscar cuenta, correo, texto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+            </div>
+            <div className="w-44">
+              <Select value={fModelo} onChange={(e) => setFModelo(e.target.value)} aria-label="Modelo">
+                <option value="todos">Modelo: todas</option><option value="sin">Sin modelo</option>
+                {models.slice().sort((x, y) => String(x.stage_name).localeCompare(String(y.stage_name), 'es')).map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
               </Select>
+            </div>
+            <div className="w-40">
+              <Select value={fEstado} onChange={(e) => setFEstado(e.target.value)} aria-label="Estado">
+                <option value="todos">Estado: todos</option>
+                {STATUS_OPTIONS.map((st) => <option key={st} value={st}>{st.replace(/_/g, ' ')}</option>)}
+              </Select>
+            </div>
+            <div className="w-52">
+              <Select value={fResp} onChange={(e) => setFResp(e.target.value)} aria-label="Responsable">
+                <option value="todos">Responsable: todos</option><option value="sin">Sin asignar</option>
+                {assistants.map((x) => <option key={x.id} value={x.id}>{x.full_name}</option>)}
+              </Select>
+            </div>
+            <div className="flex gap-1.5">
+              <div className="w-44">
+                <Select value={ordenK} onChange={(e) => { setOrdenK(e.target.value); setOrdenDir('asc') }} aria-label="Ordenar por">
+                  {ORDENABLES.map((c) => <option key={c.k} value={c.k}>Ordenar: {c.n}</option>)}
+                </Select>
+              </div>
               <button type="button" onClick={() => setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc'))} title={ordenDir === 'asc' ? 'Ascendente (A→Z, menor a mayor)' : 'Descendente (Z→A, mayor a menor)'}
-                className="px-3 rounded-md text-sm whitespace-nowrap" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>{ordenDir === 'asc' ? '▲ A→Z' : '▼ Z→A'}</button>
+                className="px-3 rounded-md text-sm whitespace-nowrap" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>{ordenDir === 'asc' ? '▲ A→Z' : '▼ Z→A'}</button>
             </div>
           </div>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Modelo</label>
-            <Select value={fModelo} onChange={(e) => setFModelo(e.target.value)}>
-              <option value="todos">Todas</option><option value="sin">Sin modelo</option>
-              {models.slice().sort((x, y) => String(x.stage_name).localeCompare(String(y.stage_name), 'es')).map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Estado</label>
-            <Select value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
-              <option value="todos">Todos</option>
-              {STATUS_OPTIONS.map((st) => <option key={st} value={st}>{st.replace(/_/g, ' ')}</option>)}
-            </Select>
-          </div>
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Responsable</label>
-            <Select value={fResp} onChange={(e) => setFResp(e.target.value)}>
-              <option value="todos">Todos</option><option value="sin">Sin asignar</option>
-              {assistants.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-            </Select>
-          </div>
-          <div className="col-span-2 lg:col-span-1">
-            <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Buscar</label>
-            <Input placeholder="Cuenta, correo, texto…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <div className="flex items-center gap-3 mt-2 text-xs flex-wrap" style={{ color: 'var(--text-muted)' }}>
+            <span>{visibles.length} de {accounts.length} cuentas · orden: {ORDENABLES.find((c) => c.k === ordenK)?.n} ({ordenDir === 'asc' ? 'ascendente' : 'descendente'})</span>
+            {(hayFiltros || ordenK !== 'modelo' || ordenDir !== 'asc') && (
+              <button type="button" className="underline" onClick={() => { setFModelo('todos'); setFEstado('todos'); setFResp('todos'); setBusca(''); setOrdenK('modelo'); setOrdenDir('asc') }}>Restablecer (orden por modelo)</button>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-3 mt-3 text-xs flex-wrap" style={{ color: 'var(--text-muted)' }}>
-          <span>{visibles.length} de {accounts.length} cuentas · orden: {ORDENABLES.find((c) => c.k === ordenK)?.n} ({ordenDir === 'asc' ? 'ascendente' : 'descendente'})</span>
-          {(hayFiltros || ordenK !== 'modelo' || ordenDir !== 'asc') && (
-            <button type="button" className="underline" onClick={() => { setFModelo('todos'); setFEstado('todos'); setFResp('todos'); setBusca(''); setOrdenK('modelo'); setOrdenDir('asc') }}>Restablecer (orden por modelo)</button>
-          )}
-        </div>
-      </Panel>
 
-      <Panel>
         {loading ? (
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
         ) : (
           <ScrollSuperior>
-            <table className="text-sm" style={{ tableLayout: 'fixed', width: '100%', minWidth: COLS.reduce((t, c) => t + c.w, 0) }}>
-              <colgroup>{COLS.map((c) => <col key={c.k} style={{ width: c.w }} />)}</colgroup>
+            <table className="tabla-ig text-sm" style={{ width: '100%' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
                   {COLS.map((c, i) => (
-                    <th key={c.k} className="text-left px-3 py-3 font-medium whitespace-nowrap"
+                    <th key={c.k} className="text-left px-4 py-3 font-medium whitespace-nowrap"
                       style={{ color: ordenK === c.k ? 'var(--accent)' : 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}), ...(c.k === 'acc' ? { position: 'sticky', right: 0, zIndex: 6, background: 'var(--panel)', borderLeft: '1px solid var(--border)' } : {}) }}>
                       {c.k === 'acc' ? '' : (
-                        <button type="button" onClick={() => ordenarPor(c.k)} className="hover:underline" title="Ordenar por esta columna">
+                        <button type="button" onClick={() => ordenarPor(c.k)} className="hover:underline uppercase" title="Ordenar por esta columna">
                           {c.n}{ordenK === c.k ? (ordenDir === 'asc' ? ' ▲' : ' ▼') : ''}
                         </button>
                       )}
@@ -418,44 +394,60 @@ export default function InstagramAccounts() {
               </thead>
               <tbody>
                 {visibles.length === 0 ? (
-                  <tr><td colSpan={COLS.length} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>{accounts.length ? 'Ninguna cuenta coincide con los filtros.' : 'Todavía no hay cuentas.'}</td></tr>
+                  <tr><td colSpan={COLS.length} className="px-4 py-10 text-center" style={{ color: 'var(--text-muted)' }}>{accounts.length ? 'Ninguna cuenta coincide con los filtros.' : 'Todavía no hay cuentas.'}</td></tr>
                 ) : visibles.map((a) => (
-                  <tr key={a.id} style={{ borderBottom: '1px solid var(--border)', height: 56 }}>
-                    <td className="px-3 align-middle" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)' }}>
-                      <CeldaCopia titulo="Cuenta actual" texto={`@${a.username}`}>
-                        <span className="inline-flex items-center gap-2 align-middle">
-                          <FotoIG url={fotos[a.id]} nombre={a.username} />
-                          {a.profile_link ? <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a> : `@${a.username}`}
-                        </span>
-                      </CeldaCopia>
-                    </td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Modelo" texto={a.models?.stage_name} /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Estado" texto={String(a.status || '').replace(/_/g, ' ')}><StatusBadge status={a.status} /></CeldaCopia></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Responsable" texto={a.profiles?.full_name} /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="IG original" texto={a.original_username} /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Correo" texto={a.email} muted /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="2FA" texto={a.two_fa_code} muted /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Público" texto={(a.target_audience || []).join(', ')} /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Asignación" texto={a.assigned_at} /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Días" texto={a.assigned_at ? String(diasTranscurridos(a.assigned_at)) : ''} /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Observaciones" texto={a.observations} muted /></td>
-                    <td className="px-3 align-middle"><CeldaCopia titulo="Restricciones" texto={a.restrictions} muted /></td>
-                    <td className="px-3 align-middle" style={{ position: 'sticky', right: 0, zIndex: 5, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
-                      <div className="flex gap-3 whitespace-nowrap">
-                        {canEdit && (
-                          <button onClick={() => startEdit(a)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
-                            Editar
-                          </button>
-                        )}
-                        {canDelete && (
-                          <button onClick={() => borrarCuenta(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>
-                            Eliminar
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                  <Fragment key={a.id}>
+                    <tr className={`fila-ig${editingId === a.id ? ' editando' : ''}`} style={{ borderBottom: editingId === a.id ? 'none' : '1px solid var(--border)', height: 62 }}>
+                      <td className="px-4 align-middle" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)', ...fila }}>
+                        <CeldaCopia completo titulo="Cuenta actual" texto={`@${a.username}`}>
+                          <span className="inline-flex items-center gap-2.5 align-middle font-medium">
+                            <FotoIG url={fotos[a.id]} nombre={a.username} size={38} />
+                            {a.profile_link ? <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a> : `@${a.username}`}
+                          </span>
+                        </CeldaCopia>
+                      </td>
+                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Modelo" texto={a.models?.stage_name} /></td>
+                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Estado" texto={String(a.status || '').replace(/_/g, ' ')}><StatusBadge status={a.status} /></CeldaCopia></td>
+                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Responsable" texto={a.profiles?.full_name} /></td>
+                      <td className="px-4 align-middle tabular-nums" style={fila}><CeldaCopia completo titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
+                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="IG original" texto={a.original_username} /></td>
+                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Correo" texto={a.email} muted /></td>
+                      <td className="px-4 align-middle" style={corta(COLS[7])}><CeldaCopia titulo="2FA" texto={a.two_fa_code} muted><span className="font-mono tracking-wide">{a.two_fa_code}</span></CeldaCopia></td>
+                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Público" texto={(a.target_audience || []).join(', ')} /></td>
+                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Asignación" texto={a.assigned_at} /></td>
+                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Días" texto={a.assigned_at ? String(diasTranscurridos(a.assigned_at)) : ''} /></td>
+                      <td className="px-4 align-middle" style={corta(COLS[11])}><CeldaCopia titulo="Observaciones" texto={a.observations} muted /></td>
+                      <td className="px-4 align-middle" style={corta(COLS[12])}><CeldaCopia titulo="Restricciones" texto={a.restrictions} muted /></td>
+                      <td className="px-4 align-middle" style={{ position: 'sticky', right: 0, zIndex: 5, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
+                        <div className="flex gap-3 whitespace-nowrap">
+                          {canEdit && (
+                            <button onClick={() => (editingId === a.id ? cerrarEdicion() : startEdit(a))} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
+                              {editingId === a.id && !cerrando ? 'Cerrar' : 'Editar'}
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button onClick={() => borrarCuenta(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>
+                              Eliminar
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    {editingId === a.id && (
+                      <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td colSpan={COLS.length} style={{ padding: 0, background: 'var(--panel-alt)' }}>
+                          <div style={{ position: 'sticky', left: 0, width: anchoVista }}>
+                            <Desplegable abierto={!cerrando} onCerrado={finEdicion}>
+                              <div className="p-5">
+                                <p className="text-sm mb-4 font-medium">Editar @{a.username}</p>
+                                {formulario}
+                              </div>
+                            </Desplegable>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
