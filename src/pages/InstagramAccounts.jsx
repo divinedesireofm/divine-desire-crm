@@ -9,6 +9,8 @@ import ScrollSuperior from '../components/ScrollSuperior'
 import Desplegable from '../components/Desplegable'
 import ZeroAccounts from './ZeroAccounts'
 import IGProfileMetrics from './IGProfileMetrics'
+import TablaRegistros from '../components/TablaRegistros'
+import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
 
 // Columnas: k = clave de orden, n = cabecera. Todo se ve completo salvo 2FA, Observaciones y Restricciones, que se abrevian (con «ver más») si son largas: `w` es su ancho máximo.
 const COLS = [
@@ -57,8 +59,12 @@ export default function InstagramAccounts() {
   const { hasAnyRole } = useAuth()
   const canEdit = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
   const canDelete = hasAnyRole(['admin', 'ig_manager'])
+  const canEditSecciones = canDelete
   const [params, setParams] = useSearchParams()
-  const tab = params.get('tab') === 'cero' ? 'cero' : params.get('tab') === 'metricas' ? 'metricas' : 'cuentas'
+  // Eliminadas, Stock mails, Cuentas propias y Stock Instagram llevan credenciales: solo admin y manager de Instagram
+  const verSecciones = hasAnyRole(['admin', 'ig_manager'])
+  const tabParam = params.get('tab')
+  const tab = tabParam === 'cero' ? 'cero' : tabParam === 'metricas' ? 'metricas' : (verSecciones && SECCIONES[tabParam]) ? tabParam : 'cuentas'
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
   const [assistants, setAssistants] = useState([])
@@ -224,8 +230,8 @@ export default function InstagramAccounts() {
   }
 
   const pestanas = (
-    <div className="flex gap-2 mb-5">
-      {[['cuentas', 'Cuentas'], ['metricas', 'Métricas de perfil'], ['cero', 'Cuentas de cero']].map(([id, label]) => (
+    <div className="flex flex-wrap gap-2 mb-5">
+      {[['cuentas', 'General'], ...(verSecciones ? ORDEN_SECCIONES.map((id) => [id, SECCIONES[id].pestana]) : []), ['metricas', 'Métricas de perfil'], ['cero', 'Cuentas de cero']].map(([id, label]) => (
         <button
           key={id}
           onClick={() => setParams(id === 'cuentas' ? {} : { tab: id })}
@@ -241,6 +247,16 @@ export default function InstagramAccounts() {
       ))}
     </div>
   )
+
+  if (SECCIONES[tab]) {
+    return (
+      <div>
+        <PageHeader title="Cuentas de Instagram" subtitle={SECCIONES[tab].subtitulo} />
+        {pestanas}
+        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} />
+      </div>
+    )
+  }
 
   if (tab === 'metricas') {
     return (

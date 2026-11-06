@@ -1,0 +1,87 @@
+// Configuración de los subapartados de «Cuentas de Instagram» (Eliminadas, Stock mails, Cuentas propias y Stock Instagram).
+// Cada columna: k = columna en Supabase · n = cabecera · tipo = texto | fecha | estado | secreto | largo | enlace | modelo
+// w = ancho máximo (solo si queremos abreviar el texto largo con «ver más»).
+const ESTADOS_CUENTA = ['ACTIVA', 'ELIMINADA', 'SUSPENDIDA', 'BLOQUEADA', 'RESTRINGIDA', 'EN REPOSO']
+
+export const SECCIONES = {
+  eliminadas: {
+    id: 'eliminadas', pestana: 'Eliminadas', tabla: 'ig_eliminadas',
+    titulo: 'Cuentas eliminadas o suspendidas',
+    subtitulo: 'Cuentas suspendidas de forma permanente o eliminadas voluntariamente, con la fecha y el motivo.',
+    singular: 'cuenta eliminada', vacio: 'Todavía no hay cuentas eliminadas.',
+    estados: ESTADOS_CUENTA, nuevo: { estado: 'ELIMINADA' },
+    cols: [
+      { k: 'instagram_nuevo', n: 'Instagram nuevo', tipo: 'texto', principal: true },
+      { k: 'estado', n: 'Estado', tipo: 'estado' },
+      { k: 'motivo', n: 'Motivo eliminación / suspensión', tipo: 'texto', ancho: 2 },
+      { k: 'fecha_eliminacion', n: 'Fecha eliminación', tipo: 'fecha' },
+      { k: 'modelo', n: 'Modelo', tipo: 'modelo' },
+      { k: 'instagram_original', n: 'Instagram original', tipo: 'texto' },
+      { k: 'correo', n: 'Correo', tipo: 'texto' },
+      { k: 'link', n: 'Link', tipo: 'enlace' },
+      { k: 'idioma', n: 'Idioma', tipo: 'texto' },
+      { k: 'link_bio', n: 'Link bio', tipo: 'enlace' },
+      { k: 'asistente', n: 'Asistente', tipo: 'texto' },
+      { k: 'proxy', n: 'Proxy', tipo: 'texto' },
+      { k: 'pais_proxy', n: 'País proxy', tipo: 'texto' },
+      { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 150, mono: true },
+      { k: 'fecha_asignacion', n: 'Fecha asignación/creación', tipo: 'fecha' },
+      { k: 'observaciones', n: 'Observaciones', tipo: 'largo', w: 260 },
+    ],
+  },
+  stock_mails: {
+    id: 'stock_mails', pestana: 'Stock mails', tabla: 'ig_stock_mails',
+    titulo: 'Stock de mails',
+    subtitulo: 'Correos que compramos: fecha, proveedor, credenciales, estado y la cuenta de Instagram a la que se han dado.',
+    singular: 'mail', vacio: 'Todavía no hay mails en el stock.',
+    estados: ESTADOS_CUENTA, nuevo: { estado: 'ACTIVA', bloque: 'Stock' },
+    cols: [
+      { k: 'correo', n: 'Correo', tipo: 'texto', principal: true },
+      { k: 'contrasena', n: 'Contraseña', tipo: 'secreto' },
+      { k: 'email_recuperacion', n: 'Email recuperación', tipo: 'texto' },
+      { k: 'estado', n: 'Estado', tipo: 'estado' },
+      { k: 'instagram', n: 'Instagram', tipo: 'texto' },
+      { k: 'fecha_compra', n: 'Fecha compra', tipo: 'fecha' },
+      { k: 'proveedor', n: 'Proveedor', tipo: 'texto' },
+      { k: 'bloque', n: 'Origen', tipo: 'texto' },
+      { k: 'observaciones', n: 'Observaciones', tipo: 'largo', w: 260 },
+    ],
+  },
+  propias: {
+    id: 'propias', pestana: 'Cuentas propias', tabla: 'ig_cuentas_propias',
+    titulo: 'Cuentas propias',
+    subtitulo: 'Cuentas de Instagram que creamos nosotros, con sus credenciales, creador y estado.',
+    singular: 'cuenta propia', vacio: 'Todavía no hay cuentas propias.',
+    estados: ESTADOS_CUENTA, nuevo: { estado: 'ACTIVA' },
+    cols: [
+      { k: 'usuario', n: 'Usuario', tipo: 'texto', principal: true },
+      { k: 'contrasena', n: 'Contraseña', tipo: 'secreto' },
+      { k: 'email', n: 'Email', tipo: 'texto' },
+      { k: 'contrasena_email', n: 'Contraseña email', tipo: 'secreto' },
+      { k: 'fecha_creacion', n: 'Fecha de creación', tipo: 'fecha' },
+      { k: 'creador', n: 'Creador', tipo: 'texto' },
+      { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 150, mono: true },
+      { k: 'estado', n: 'Estado', tipo: 'estado' },
+    ],
+  },
+  stock_ig: {
+    id: 'stock_ig', pestana: 'Stock Instagram', tabla: 'ig_stock_instagram',
+    titulo: 'Stock de Instagram',
+    subtitulo: 'Cuentas de Instagram que compramos: fecha, proveedor, credenciales, estado y 2FA.',
+    singular: 'cuenta de stock', vacio: 'Todavía no hay cuentas en el stock.',
+    estados: ESTADOS_CUENTA, nuevo: { estado: 'ACTIVA' },
+    cols: [
+      { k: 'instagram_actual', n: 'Instagram actual', tipo: 'texto', principal: true },
+      { k: 'instagram_original', n: 'Instagram original', tipo: 'texto' },
+      { k: 'contrasena_ig', n: 'Contraseña Instagram', tipo: 'secreto' },
+      { k: 'estado', n: 'Estado', tipo: 'estado' },
+      { k: 'correo', n: 'Correo', tipo: 'texto' },
+      { k: 'contrasena', n: 'Contraseña correo', tipo: 'secreto' },
+      { k: 'fecha_compra', n: 'Fecha compra', tipo: 'fecha' },
+      { k: 'proveedor', n: 'Proveedor', tipo: 'texto' },
+      { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 150, mono: true },
+      { k: 'pagina_2fa', n: 'Página 2FA', tipo: 'texto' },
+    ],
+  },
+}
+export const ORDEN_SECCIONES = ['eliminadas', 'stock_mails', 'propias', 'stock_ig']
