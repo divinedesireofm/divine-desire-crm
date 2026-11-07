@@ -33,6 +33,53 @@ export default function Models() {
   const [accBusy, setAccBusy] = useState(false)
   const [accErr, setAccErr] = useState('')
   const [accRes, setAccRes] = useState(null)
+  const [activos, setActivos] = useState({})      // { user_id: active } para saber si el acceso está suspendido
+  const [editAcc, setEditAcc] = useState(null)    // modelo cuyo acceso se está editando
+  const [eaEmail, setEaEmail] = useState('')
+  const [eaEmailOrig, setEaEmailOrig] = useState('')
+  const [eaPass, setEaPass] = useState('')
+  const [eaBusy, setEaBusy] = useState(false)
+  const [eaMsg, setEaMsg] = useState(null)        // { ok: bool, text }
+
+  async function invocar(body) {
+    const { data, error: er } = await supabase.functions.invoke('team-admin', { body })
+    if (er) return { error: await readFunctionError(er) }
+    if (data?.error) return { error: data.error }
+    return { data }
+  }
+  async function abrirEditarAcceso(m) {
+    setAccesoDe(null); setEditAcc(m); setEaPass(''); setEaMsg(null); setEaEmail(''); setEaEmailOrig('')
+    const { data } = await invocar({ action: 'get_email', user_id: m.user_id })
+    setEaEmail(data?.email || ''); setEaEmailOrig(data?.email || '')
+  }
+  async function accionAcceso(tipo) {
+    const m = editAcc
+    setEaBusy(true); setEaMsg(null)
+    let res
+    if (tipo === 'email') {
+      const nuevo = eaEmail.trim()
+      if (!/^\S+@\S+\.\S+$/.test(nuevo)) { setEaBusy(false); setEaMsg({ ok: false, text: 'Escribe un email válido.' }); return }
+      // Se mantiene el rol Modelo y su enlace a la ficha; solo cambia el email de acceso
+      res = await invocar({ action: 'update_roles', user_id: m.user_id, full_name: m.stage_name, roles: ['modelo'], email: nuevo })
+      if (!res.error) { setEaEmailOrig(nuevo); setEaMsg({ ok: true, text: 'Email de acceso actualizado ✓' }) }
+    } else if (tipo === 'password') {
+      if (eaPass.length < 8) { setEaBusy(false); setEaMsg({ ok: false, text: 'La contraseña debe tener al menos 8 caracteres.' }); return }
+      res = await invocar({ action: 'reset', user_id: m.user_id, password: eaPass })
+      if (!res.error) { setEaMsg({ ok: true, text: `Contraseña cambiada ✓ Comunícale la nueva: ${eaPass}` }); setEaPass('') }
+    } else if (tipo === 'correo') {
+      res = await invocar({ action: 'send_reset_email', user_id: m.user_id, redirect_to: `${window.location.origin}/restablecer-contrasena` })
+      if (!res.error) setEaMsg({ ok: true, text: `Email para crear nueva contraseña enviado a ${res.data.email || eaEmailOrig} ✓` })
+    } else if (tipo === 'suspender') {
+      if (!confirm(`¿Suspender el acceso de ${m.stage_name}? No podrá entrar, pero conserva todo (cuentas, ficha, planificaciones) y podrás reactivarla cuando quieras.`)) { setEaBusy(false); return }
+      res = await invocar({ action: 'delete', user_id: m.user_id })
+      if (!res.error) { setEaMsg({ ok: true, text: 'Acceso suspendido ✓' }); setActivos((a) => ({ ...a, [m.user_id]: false })) }
+    } else if (tipo === 'reactivar') {
+      res = await invocar({ action: 'reactivate', user_id: m.user_id })
+      if (!res.error) { setEaMsg({ ok: true, text: 'Acceso reactivado ✓' }); setActivos((a) => ({ ...a, [m.user_id]: true })) }
+    }
+    setEaBusy(false)
+    if (res?.error) setEaMsg({ ok: false, text: res.error })
+  }
 
   function abrirAcceso(m) {
     setAccesoDe(m); setAccEmail(privados[m.id]?.email || ''); setAccPass(''); setAccErr(''); setAccRes(null)
@@ -61,6 +108,10 @@ export default function Models() {
     if (canEdit) {
       const { data: pv } = await supabase.from('model_private').select('*')
       setPrivados(Object.fromEntries((pv || []).map((r) => [r.model_id, r])))
+    }
+    if (canEdit) {
+      const { data: pf } = await supabase.from('profiles').select('id, active')
+      setActivos(Object.fromEntries((pf || []).map((x) => [x.id, x.active !== false])))
     }
     const { data: fg } = await supabase.from('model_general').select('model_id, datos')
     setFichas(Object.fromEntries((fg || []).map((r) => [r.model_id, r.datos || {}])))
@@ -230,6 +281,39 @@ export default function Models() {
         </Panel>
       )}
 
+      {editAcc && (
+        <Panel className="p-5 mb-4">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-sm font-medium">⚙️ Acceso de {editAcc.stage_name}</p>
+            <button onClick={() => setEditAcc(null)} className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}>Cerrar</button>
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Aquí cambias cómo entra ella al CRM. Nada de lo suyo (cuentas, ficha, planificaciones) se toca.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Email de acceso</label>
+              <div className="flex gap-2">
+                <Input type="email" value={eaEmail} onChange={(e) => setEaEmail(e.target.value)} />
+                <Button type="button" disabled={eaBusy || !eaEmail.trim() || eaEmail.trim() === eaEmailOrig} onClick={() => accionAcceso('email')}>Guardar</Button>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Nueva contraseña (mín. 8)</label>
+              <div className="flex gap-2">
+                <Input type="text" value={eaPass} onChange={(e) => setEaPass(e.target.value)} />
+                <Button type="button" disabled={eaBusy || !eaPass} onClick={() => accionAcceso('password')}>Cambiar</Button>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Button type="button" variant="ghost" disabled={eaBusy} onClick={() => accionAcceso('correo')}>✉️ Enviarle email para crear contraseña</Button>
+            {activos[editAcc.user_id] === false
+              ? <Button type="button" disabled={eaBusy} onClick={() => accionAcceso('reactivar')}>✅ Reactivar acceso</Button>
+              : <Button type="button" variant="ghost" disabled={eaBusy} onClick={() => accionAcceso('suspender')}>⛔ Suspender acceso</Button>}
+          </div>
+          {eaMsg && <p className="text-sm mt-3" style={{ color: eaMsg.ok ? 'var(--success)' : 'var(--danger)' }}>{eaMsg.text}</p>}
+        </Panel>
+      )}
+
       {accesoDe && (
         <Panel className="p-5 mb-4">
           <p className="text-sm font-medium mb-1">🔑 Dar acceso a {accesoDe.stage_name}</p>
@@ -313,7 +397,12 @@ export default function Models() {
                 {canEdit && (
                   <Td>
                     {m.user_id
-                      ? <span className="text-xs whitespace-nowrap" style={{ color: 'var(--success)' }}>✅ Con acceso</span>
+                      ? <div className="flex items-center gap-2 whitespace-nowrap">
+                          {activos[m.user_id] === false
+                            ? <span className="text-xs" style={{ color: 'var(--danger)' }}>⛔ Suspendido</span>
+                            : <span className="text-xs" style={{ color: 'var(--success)' }}>✅ Con acceso</span>}
+                          <button onClick={() => abrirEditarAcceso(m)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar acceso</button>
+                        </div>
                       : <button onClick={() => abrirAcceso(m)} className="text-xs px-3 py-1.5 rounded-md whitespace-nowrap" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--accent)' }}>🔑 Dar acceso</button>}
                   </Td>
                 )}
