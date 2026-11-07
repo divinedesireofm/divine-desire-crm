@@ -1,8 +1,7 @@
-import { Link } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Panel, PageHeader } from '../components/ui'
 import Dashboard from './Dashboard'
-import ModelPortal from './ModelPortal'
 
 const ROLES_REDDIT = ['reddit_manager', 'reddit_assistant']
 
@@ -22,5 +21,6 @@ export default function Home() {
       </div>
     )
   }
-  return soloModelo ? <ModelPortal /> : <Dashboard />
+  // La modelo (cuenta solo-modelo) entra directamente a sus planificaciones
+  return soloModelo ? <Navigate to="/mis-planificaciones" replace /> : <Dashboard />
 }

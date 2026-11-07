@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { urlVideo, MAX_MB } from '../lib/planVideos'
+import { urlVideo, descargarVideo, MAX_MB } from '../lib/planVideos'
 
 const tam = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB')
 
@@ -7,6 +7,8 @@ const tam = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1
 export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, soloLectura = false }) {
   const [url, setUrl] = useState(null)
   const [fallo, setFallo] = useState(false)
+  const [bajando, setBajando] = useState(false)
+  const [errDesc, setErrDesc] = useState('')
   const ref = useRef(null)
   const inputRef = useRef(null)
   const path = video?.path
@@ -21,6 +23,12 @@ export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, 
   async function reintentar() {
     const u = await urlVideo(path, true)
     if (u) { setFallo(false); setUrl(u) } else setFallo(true)
+  }
+  async function descargar() {
+    setErrDesc(''); setBajando(true)
+    const r = await descargarVideo(path, video.nombre)
+    if (r.error) setErrDesc(r.error)
+    setTimeout(() => setBajando(false), 1500)
   }
   function pantallaCompleta() {
     const v = ref.current
@@ -55,7 +63,8 @@ export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, 
         <p className="truncate" style={lbl} title={video.nombre}>🎞 {video.nombre || 'video'}{video.size ? ` · ${tam(video.size)}` : ''}</p>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           <button type="button" onClick={pantallaCompleta} disabled={!url} className="underline" style={{ color: 'var(--accent)' }}>⛶ Pantalla completa</button>
-          {url && <a href={url} download={video.nombre || 'reel.mp4'} className="underline" style={{ color: 'var(--accent)' }}>⬇ Descargar</a>}
+          <button type="button" onClick={descargar} disabled={bajando} className="underline" style={{ color: 'var(--accent)' }}>{bajando ? '⬇ Descargando…' : '⬇ Descargar'}</button>
+          {errDesc && <span style={{ color: 'var(--danger)' }}>{errDesc}</span>}
           {fallo && <button type="button" onClick={reintentar} className="underline">Reintentar</button>}
           {!soloLectura && (
             <>

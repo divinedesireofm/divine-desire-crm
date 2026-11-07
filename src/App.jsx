@@ -54,6 +54,8 @@ import RedditReports from './pages/RedditReports'
 import ManagerReports from './pages/ManagerReports'
 import Massives from './pages/Massives'
 import SetPassword from './pages/SetPassword'
+import ReelsModelo from './pages/ReelsModelo'
+import MiPerfilModelo from './pages/MiPerfilModelo'
 
 function Protected({ children }) {
   const { session, loading } = useAuth()
@@ -145,6 +147,8 @@ function AppRoutes() {
         <Route path="solicitudes" element={<Requests />} />
         <Route path="recaptaciones" element={<Recaptures />} />
         <Route path="planificaciones" element={<IGPlans />} />
+        <Route path="mis-planificaciones" element={<ReelsModelo />} />
+        <Route path="mi-perfil" element={<MiPerfilModelo />} />
         <Route path="enlaces" element={<SltLinks />} />
         <Route path="reddit/cuentas" element={<RedditAccounts />} />
         <Route path="reddit/reportes" element={<RedditReports />} />

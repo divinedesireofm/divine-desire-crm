@@ -11,10 +11,10 @@ import { subirVideo, borrarVideos, videosDe, quitarVideos } from '../lib/planVid
 
 const ORIGENES = [{ id: 'nuevo', n: 'Nuevo' }, { id: 'ganador', n: 'Ganador' }]
 const TIPOS = [{ id: 'sugerente', n: 'Sugerente' }, { id: 'marca_personal', n: 'Marca personal' }]
-const nOrigen = (id) => ORIGENES.find((o) => o.id === id)?.n || id
-const nTipo = (id) => TIPOS.find((t) => t.id === id)?.n || id
+const nOrigen = (id) => ORIGENES.find((o) => o.id === id)?.n || id || ''
+const nTipo = (id) => TIPOS.find((t) => t.id === id)?.n || id || ''
 
-const reelVacio = (i = 0) => ({ origen: 'nuevo', tipo: i % 2 === 0 ? 'sugerente' : 'marca_personal', link: '', gancho: '', texto: '', tematica: '', prueba: false })
+const reelVacio = (i = 0) => ({ origen: 'nuevo', tipo: i % 2 === 0 ? 'sugerente' : 'marca_personal', link: '', gancho: '', texto: '', edicion: '', tematica: '', prueba: false })
 const estructura = (dias, porDia) => Array.from({ length: dias }, () => ({ reels: Array.from({ length: porDia }, (_, i) => reelVacio(i)) }))
 const VACIA = { id: null, account_id: '', titulo: '', reglas: '', mostrar_resumen: true, estado: 'guardada', responsable_id: '', created_at: null, dias: estructura(7, 2) }
 
@@ -48,6 +48,7 @@ function bloqueReel(r) {
   if (r.link?.trim()) l.push(`🔗 ${r.link.trim()}`)
   if (r.gancho?.trim()) l.push(`🎣 ${r.gancho.trim()}`)
   if (r.texto?.trim()) l.push(`📝 ${r.texto.trim()}`)
+  if (r.edicion?.trim()) l.push(`📹 Edición: ${r.edicion.trim()}`)
   return l.join('\n')
 }
 export function textoDia(d, i) {
@@ -139,7 +140,7 @@ export default function IGPlans() {
   const baseRef = useRef('')
   const ocupadoRef = useRef(false)
   const instantanea = (e) => JSON.stringify({ a: e.account_id, t: e.titulo, r: e.reglas, m: e.mostrar_resumen, p: e.responsable_id, pd: e.periodo_desde || '', ph: e.periodo_hasta || '', d: e.dias })
-  const tieneContenido = (e) => e.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.tematica || r.prueba || r.video))
+  const tieneContenido = (e) => e.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.edicion || r.tematica || r.prueba || r.video))
   // Una planificación nueva o que ya es borrador se autoguarda; las guardadas/enviadas no (no se les cambia el estado sin querer)
   const autoguardable = (e) => !!e && !!e.account_id && (e.id ? e.estado === 'borrador' : true)
 
@@ -241,7 +242,7 @@ export default function IGPlans() {
     const copia = {
       id: null, account_id: p.account_id, titulo: tituloHoy(), reglas: ultimasReglas(p.account_id) || p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: 'guardada', responsable_id: profile?.id || '', created_at: null,
       ...(p.periodo_hasta ? { periodo_desde: sumaDias(p.periodo_hasta, 1), periodo_hasta: sumaDias(p.periodo_hasta, 7) } : {}),
-      dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '', tematica: '', prueba: false })) })),
+      dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '', edicion: '', tematica: '', prueba: false })) })),
     }
     baseRef.current = instantanea(copia)
     setEd(copia)
@@ -249,7 +250,7 @@ export default function IGPlans() {
   }
 
   function crearEstructura() {
-    const hayContenido = ed.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.video))
+    const hayContenido = ed.dias.some((d) => d.reels.some((r) => r.link || r.gancho || r.texto || r.edicion || r.video))
     if (hayContenido && !confirm('Esto reemplaza los días y reels actuales, y se pierde lo que ya has escrito. ¿Continuar?')) return
     marcarParaBorrar(ed.dias)
     setEd({ ...ed, dias: estructura(Math.min(Math.max(nDias, 1), 14), Math.min(Math.max(nPorDia, 1), 8)) })
@@ -277,7 +278,7 @@ export default function IGPlans() {
   const addDia = () => setDias((ds) => [...ds, { reels: [reelVacio(0), reelVacio(1)] }])
   function quitarDia(di) {
     const d = ed.dias[di]
-    if (d.reels.some((r) => r.link || r.gancho || r.texto || r.video) && !confirm(`El día ${di + 1} tiene contenido${videosDe([d]).length ? ' y videos (se borrarán al guardar)' : ''}. ¿Quitarlo?`)) return
+    if (d.reels.some((r) => r.link || r.gancho || r.texto || r.edicion || r.video) && !confirm(`El día ${di + 1} tiene contenido${videosDe([d]).length ? ' y videos (se borrarán al guardar)' : ''}. ¿Quitarlo?`)) return
     marcarParaBorrar([d])
     setDias((ds) => ds.filter((_, i) => i !== di))
   }
@@ -460,6 +461,8 @@ export default function IGPlans() {
                         <Input placeholder="🔗 Enlace del reel de referencia" value={r.link} onChange={(e) => setReel(di, ri, 'link', e.target.value)} />
                         <Input placeholder="🎣 Gancho" value={r.gancho} onChange={(e) => setReel(di, ri, 'gancho', e.target.value)} />
                         <Input placeholder="📝 Texto / indicaciones" value={r.texto} onChange={(e) => setReel(di, ri, 'texto', e.target.value)} />
+                        <textarea rows={2} placeholder="📹 Edición: indicaciones para editar este reel" value={r.edicion || ''} onChange={(e) => setReel(di, ri, 'edicion', e.target.value)}
+                          className="w-full px-3 py-2 rounded-md text-sm outline-none" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', resize: 'vertical' }} />
                       </div>
                       <VideoReel video={r.video} subiendo={!!subiendoV[`${di}-${ri}`]} onSubir={(f) => subirReel(di, ri, f)} onQuitar={() => quitarVideoReel(di, ri)} />
                       {d.reels.length > 1 && (

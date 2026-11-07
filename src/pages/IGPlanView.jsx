@@ -9,13 +9,13 @@ const nTipo = (id) => (id === 'marca_personal' ? 'Marca personal' : 'Sugerente')
 const esUrl = (t) => /^https?:\/\//i.test(String(t || '').trim())
 
 // Contenido de una planificación en solo lectura (se muestra desplegado dentro de la lista)
-export default function PlanContenido({ plan, usuario, linkPlan }) {
+export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = false }) {
   const texto = useMemo(() => textoPlan(plan, usuario || 'cuenta'), [plan, usuario])
   const lbl = { color: 'var(--text-muted)' }
   return (
     <div>
       <div className="flex flex-wrap gap-2 mb-3">
-        <CopyButton text={linkPlan} label="🔗 Copiar link de esta planificación" />
+        {!paraModelo && <CopyButton text={linkPlan} label="🔗 Copiar link de esta planificación" />}
         <CopyButton text={texto} label="Copiar texto" />
       </div>
       {(plan.periodo_desde || plan.periodo_hasta) && <p className="text-sm mb-3">📅 <strong>Planificación del</strong> {textoPeriodo(plan)}</p>}
@@ -52,7 +52,8 @@ export default function PlanContenido({ plan, usuario, linkPlan }) {
                   {r.video?.path && <VideoReel video={r.video} soloLectura />}
                   {r.gancho?.trim() && <p className="mb-1 mt-1 whitespace-pre-wrap">🎣 {r.gancho}</p>}
                   {r.texto?.trim() && <p className="whitespace-pre-wrap">📝 {r.texto}</p>}
-                  {!r.tematica?.trim() && !r.link?.trim() && !r.gancho?.trim() && !r.texto?.trim() && !r.video?.path && <p style={lbl}>Sin contenido todavía.</p>}
+                  {r.edicion?.trim() && <p className="whitespace-pre-wrap mt-1">📹 <strong>Edición:</strong> {r.edicion}</p>}
+                  {!r.tematica?.trim() && !r.link?.trim() && !r.gancho?.trim() && !r.texto?.trim() && !r.edicion?.trim() && !r.video?.path && <p style={lbl}>Sin contenido todavía.</p>}
                 </div>
               ))}
             </div>

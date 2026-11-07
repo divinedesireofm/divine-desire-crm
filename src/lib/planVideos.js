@@ -31,6 +31,17 @@ export async function borrarVideos(paths) {
   return { ok: true, borrados: (data || []).length, pedidos: lista.length }
 }
 
+// Descarga directa: URL firmada con «Content-Disposition: attachment», así el navegador baja el archivo solo (sin abrirlo en otra pestaña)
+export async function descargarVideo(path, nombre) {
+  const fichero = String(nombre || 'reel.mp4').replace(/[\\/:*?"<>|]+/g, '_')
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 600, { download: fichero })
+  if (error || !data?.signedUrl) return { error: 'No se pudo preparar la descarga.' }
+  const a = document.createElement('a')
+  a.href = data.signedUrl; a.download = fichero; a.rel = 'noopener'
+  document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  return { ok: true }
+}
+
 const cache = new Map() // path -> { url, hasta }
 export async function urlVideo(path, forzar = false) {
   const c = cache.get(path)

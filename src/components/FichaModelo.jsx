@@ -6,7 +6,7 @@ const lbl = { color: 'var(--text-muted)' }
 const areaStyle = { background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }
 
 // Ficha general de una modelo: se ve en lectura para todo el equipo y el admin la edita aquí mismo.
-export default function FichaModelo({ modelo, datos, canEdit, onGuardar, onCerrar }) {
+export default function FichaModelo({ modelo, datos, canEdit, onGuardar, onCerrar, propia = false }) {
   const [editando, setEditando] = useState(false)
   const [f, setF] = useState({})
   const [guardando, setGuardando] = useState(false)
@@ -40,13 +40,13 @@ export default function FichaModelo({ modelo, datos, canEdit, onGuardar, onCerra
         <div className="flex flex-wrap gap-2">
           {!editando && <Button variant="ghost" type="button" onClick={copiar}>{copiado ? '✓ Copiada' : 'Copiar ficha'}</Button>}
           {!editando && canEdit && <Button type="button" onClick={empezar}>{hechos ? 'Editar ficha' : 'Rellenar ficha'}</Button>}
-          <Button variant="ghost" type="button" onClick={onCerrar}>Cerrar</Button>
+          {onCerrar && <Button variant="ghost" type="button" onClick={onCerrar}>Cerrar</Button>}
         </div>
       </div>
 
       {!editando ? (
         hechos === 0 ? (
-          <p className="text-sm py-4" style={lbl}>{canEdit ? 'Todavía no hay información general de esta modelo. Pulsa «Rellenar ficha».' : 'Todavía no hay información general de esta modelo.'}</p>
+          <p className="text-sm py-4" style={lbl}>{canEdit ? (propia ? 'Todavía no has rellenado tu ficha. Pulsa «Rellenar ficha».' : 'Todavía no hay información general de esta modelo. Pulsa «Rellenar ficha».') : 'Todavía no hay información general de esta modelo.'}</p>
         ) : (
           <div className="space-y-5">
             {FICHA.map((s) => {

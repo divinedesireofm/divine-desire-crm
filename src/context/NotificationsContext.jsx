@@ -68,7 +68,7 @@ export function NotificationsProvider({ children }) {
         const desde = Date.now() - 7 * 86400000
         ;(planes || []).filter((x) => x.enviado_at && new Date(x.enviado_at).getTime() > desde).forEach((x) => lista.push({
           key: 'plan:' + x.id + ':' + x.enviado_at, tipo: 'planificacion', prioridad: 'alta',
-          texto: `Tienes una planificación de reels nueva para @${String(x.usuario || '').replace(/^@/, '')}`, ruta: '/reels', fecha: x.enviado_at,
+          texto: `Tienes una planificación de reels nueva para @${String(x.usuario || '').replace(/^@/, '')}`, ruta: '/mis-planificaciones', fecha: x.enviado_at,
         }))
       } catch { /* sin planificaciones */ }
     }

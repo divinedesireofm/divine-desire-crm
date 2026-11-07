@@ -7,6 +7,7 @@ import FichaModelo from '../components/FichaModelo'
 import { progresoFicha } from '../lib/fichaModelo'
 import { ModelAvatar } from '../components/ModelAvatar'
 import { reducirImagen, refrescarFotosModelos } from '../lib/modelPhotos'
+import { readFunctionError } from '../lib/functions'
 
 const STATUS_OPTIONS = ['en_preparacion', 'activa', 'pausada', 'baja']
 const STATUS_LABELS = { en_preparacion: 'En preparación', activa: 'Activa', pausada: 'Pausada', en_negociacion: 'En negociación', baja: 'Baja' }
@@ -26,6 +27,32 @@ export default function Models() {
   const [fichas, setFichas] = useState({})     // { model_id: datos } — ficha general, la ve todo el equipo
   const [fichaAbierta, setFichaAbierta] = useState(null)
   const [fichaCerrando, setFichaCerrando] = useState(false)
+  const [accesoDe, setAccesoDe] = useState(null)   // modelo a la que se le está dando acceso
+  const [accEmail, setAccEmail] = useState('')
+  const [accPass, setAccPass] = useState('')
+  const [accBusy, setAccBusy] = useState(false)
+  const [accErr, setAccErr] = useState('')
+  const [accRes, setAccRes] = useState(null)
+
+  function abrirAcceso(m) {
+    setAccesoDe(m); setAccEmail(privados[m.id]?.email || ''); setAccPass(''); setAccErr(''); setAccRes(null)
+  }
+  // Crea el login y lo enlaza a ESTA modelo (no toca nada más de ella: cuentas, ficha, planificaciones…)
+  async function darAcceso(e) {
+    e.preventDefault()
+    const email = accEmail.trim()
+    if (!/^\S+@\S+\.\S+$/.test(email)) { setAccErr('Escribe un email válido.'); return }
+    if (accPass && accPass.length < 8) { setAccErr('La contraseña debe tener al menos 8 caracteres (o déjala vacía para enviar invitación por email).'); return }
+    setAccBusy(true); setAccErr('')
+    const { data, error: er } = await supabase.functions.invoke('team-admin', {
+      body: { action: 'create', email, full_name: accesoDe.stage_name, roles: ['modelo'], model_id: accesoDe.id, password: accPass || undefined, redirect_to: `${window.location.origin}/restablecer-contrasena` },
+    })
+    setAccBusy(false)
+    if (er) { setAccErr(await readFunctionError(er)); return }
+    if (data?.error) { setAccErr(data.error); return }
+    setAccRes({ modo: data.modo, tempPassword: data.tempPassword, email })
+    load()
+  }
 
   async function load() {
     setLoading(true)
@@ -203,6 +230,35 @@ export default function Models() {
         </Panel>
       )}
 
+      {accesoDe && (
+        <Panel className="p-5 mb-4">
+          <p className="text-sm font-medium mb-1">🔑 Dar acceso a {accesoDe.stage_name}</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Se crea su usuario con el rol Modelo y se enlaza a esta ficha. Conserva todo lo que ya tiene (cuentas, ficha, planificaciones). Ella solo verá sus planificaciones y su perfil.</p>
+          {accRes ? (
+            <div>
+              <p className="text-sm mb-3" style={{ color: 'var(--success)' }}>
+                {accRes.modo === 'invitacion'
+                  ? <>Acceso creado ✓. Le hemos enviado un email a <strong>{accRes.email}</strong> para que cree su contraseña y entre.</>
+                  : <>Acceso creado ✓. Comunícale a {accesoDe.stage_name} su email <strong>{accRes.email}</strong> y esta contraseña: <strong>{accRes.tempPassword || accPass}</strong></>}
+              </p>
+              <Button onClick={() => setAccesoDe(null)}>Listo</Button>
+            </div>
+          ) : (
+            <form onSubmit={darAcceso}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <Input type="email" placeholder="Email con el que entrará" value={accEmail} onChange={(e) => setAccEmail(e.target.value)} />
+                <Input type="text" placeholder="Contraseña (opcional: vacío = invitación por email)" value={accPass} onChange={(e) => setAccPass(e.target.value)} />
+              </div>
+              {accErr && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{accErr}</p>}
+              <div className="flex gap-2">
+                <Button type="submit" disabled={accBusy}>{accBusy ? 'Creando…' : 'Dar acceso'}</Button>
+                <Button type="button" variant="ghost" onClick={() => setAccesoDe(null)}>Cancelar</Button>
+              </div>
+            </form>
+          )}
+        </Panel>
+      )}
+
       <Panel>
         {loading ? (
           <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
@@ -211,14 +267,14 @@ export default function Models() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {(canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono', 'Notas', 'Información privada', 'Ficha general', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', 'Ficha general', '']).map((col, i) => (
+                  {(canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono', 'Notas', 'Información privada', 'Ficha general', 'Acceso', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', 'Ficha general', '']).map((col, i) => (
                     <th key={col + i} className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-muted)' }}>{col}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {models.length === 0 ? (
-                  <tr><td colSpan={canEdit ? 9 : 6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay datos aquí.</td></tr>
+                  <tr><td colSpan={canEdit ? 10 : 6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay datos aquí.</td></tr>
                 ) : models.map((m) => {
                   const pr = progresoFicha(fichas[m.id])
                   const abierta = fichaAbierta === m.id
@@ -254,6 +310,13 @@ export default function Models() {
                     {abierta && !fichaCerrando ? '▲ Ocultar ficha' : '▼ Ver ficha'}{pr.hechos ? ` · ${pr.hechos}/${pr.total}` : ' · vacía'}
                   </button>
                 </Td>
+                {canEdit && (
+                  <Td>
+                    {m.user_id
+                      ? <span className="text-xs whitespace-nowrap" style={{ color: 'var(--success)' }}>✅ Con acceso</span>
+                      : <button onClick={() => abrirAcceso(m)} className="text-xs px-3 py-1.5 rounded-md whitespace-nowrap" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--accent)' }}>🔑 Dar acceso</button>}
+                  </Td>
+                )}
                 <Td>
                   {canEdit && (
                     <button onClick={() => startEdit(m)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
@@ -264,7 +327,7 @@ export default function Models() {
                       </tr>
                       {abierta && (
                         <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td colSpan={canEdit ? 9 : 6} style={{ padding: 0 }}>
+                          <td colSpan={canEdit ? 10 : 6} style={{ padding: 0 }}>
                             <Desplegable abierto={!fichaCerrando} onCerrado={() => { setFichaAbierta(null); setFichaCerrando(false) }}>
                               <FichaModelo modelo={m} datos={fichas[m.id]} canEdit={canEdit} onGuardar={(d) => guardarFicha(m.id, d)} onCerrar={() => setFichaCerrando(true)} />
                             </Desplegable>

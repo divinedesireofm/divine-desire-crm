@@ -5,14 +5,16 @@ export const SECTIONS = [
     id: 'general',
     label: null, // sin cabecera, siempre visible arriba del todo
     items: [
-      { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant', 'modelo'], end: true },
+      { to: '/', label: 'Panel general', icon: 'home', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant'], end: true },
       { to: '/asistente', label: 'Asistente IA', icon: 'sparkle', roles: ['admin', 'manager', 'ig_manager'] },
       { to: '/tareas', label: 'Tareas pendientes', icon: 'file', roles: ['admin'] },
-      { to: '/fechas', label: 'Fechas importantes', icon: 'calendar', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'] },
+      { to: '/fechas', label: 'Fechas importantes', icon: 'calendar', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/anuncios', label: 'Anuncios', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
-      { to: '/recursos', label: 'Recursos', icon: 'file', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'] },
+      { to: '/recursos', label: 'Recursos', icon: 'file', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/normas', label: 'Normas y reglas', icon: 'alert', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
-      { to: '/novedades', label: 'Novedades', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'modelo'] },
+      { to: '/novedades', label: 'Novedades', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] }
+      ,{ to: '/mis-planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['modelo'], soloModelo: true },
+      { to: '/mi-perfil', label: 'Mi perfil', icon: 'diamond', roles: ['modelo'], soloModelo: true },
     ],
   },
   {
@@ -47,7 +49,7 @@ export const SECTIONS = [
     icon: 'camera',
     items: [
       { to: '/instagram', label: 'Cuentas de Instagram', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
-      { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant', 'modelo'] },
+      { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/informes-manager-ig', label: 'Informes del manager', icon: 'file', roles: ['admin', 'ig_manager'] },
       { to: '/planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/enlaces', label: 'Enlaces', icon: 'target', roles: ['admin', 'ig_manager', 'ig_assistant'] },

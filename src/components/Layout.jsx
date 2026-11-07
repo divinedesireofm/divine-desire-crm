@@ -50,6 +50,7 @@ const TONO_SECCION = {
 export default function Layout() {
   const { profile, roles, puedeVer, signOut, hasRole } = useAuth()
   const esAdmin = hasRole('admin')
+  const soloModeloCuenta = roles.length > 0 && roles.every((r) => r === 'modelo')
   const [collapsed, setCollapsed] = useState({})
   const [mobileOpen, setMobileOpen] = useState(false)
   const [ordenCfg, setOrdenCfg] = useState(null)      // orden del menú guardado por el admin
@@ -83,7 +84,7 @@ export default function Layout() {
   }, [])
 
   const visibleSections = aplicarOrden(SECTIONS, ordenCfg)
-    .map((s) => ({ ...s, items: s.items.filter((item) => puedeVer(item.to, item.roles)) }))
+    .map((s) => ({ ...s, items: s.items.filter((item) => (!item.soloModelo || soloModeloCuenta) && !(soloModeloCuenta && item.to === '/') && puedeVer(item.to, item.roles)) }))
     .filter((s) => s.items.length > 0)
 
   // ---- Ordenar el menú (solo admin): se guarda para todo el equipo ----
