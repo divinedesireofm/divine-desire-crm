@@ -4,11 +4,12 @@ import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { ModelAvatar } from '../components/ModelAvatar'
+import { horarioTurno } from '../lib/horasTurno'
 
 const TURNOS = [
-  { id: 'noche', n: 'Noche', h: '4:00–12:00' },
-  { id: 'mañana', n: 'Mañana', h: '12:00–20:00' },
-  { id: 'tarde', n: 'Tarde', h: '20:00–4:00' },
+  { id: 'noche', n: 'Noche', h: horarioTurno('noche') },
+  { id: 'mañana', n: 'Mañana', h: horarioTurno('mañana') },
+  { id: 'tarde', n: 'Tarde', h: horarioTurno('tarde') },
 ]
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 

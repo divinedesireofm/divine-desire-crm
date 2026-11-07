@@ -7,11 +7,12 @@ import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import ModelName from '../components/ModelAvatar'
 import { reducirImagen, leerVentasDeCapturas } from '../lib/leerCapturas'
 import InstruccionesIA from '../components/InstruccionesIA'
+import { horarioTurno, fechaHoraDoble } from '../lib/horasTurno'
 
 const TURNOS = [
-  { id: 'noche', n: 'Noche', h: '4:00 – 12:00 VE' },
-  { id: 'mañana', n: 'Mañana', h: '12:00 – 20:00 VE' },
-  { id: 'tarde', n: 'Tarde', h: '20:00 – 4:00 VE' },
+  { id: 'noche', n: 'Noche', h: horarioTurno('noche') },
+  { id: 'mañana', n: 'Mañana', h: horarioTurno('mañana') },
+  { id: 'tarde', n: 'Tarde', h: horarioTurno('tarde') },
 ]
 const T_NAME = (id) => TURNOS.find((t) => t.id === (id === 'madrugada' ? 'noche' : id))?.n || id
 const TRAFICO = [
@@ -35,11 +36,7 @@ function fmtFecha(iso) {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
 }
-function fmtTS(ts) {
-  if (!ts) return ''
-  const d = new Date(ts)
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
-}
+const fmtTS = fechaHoraDoble // hora de España y de Venezuela
 
 const normUser = (v) => '@' + String(v || '').replace(/[@\s]/g, '')
 const r2 = (n) => Math.round(n * 100) / 100

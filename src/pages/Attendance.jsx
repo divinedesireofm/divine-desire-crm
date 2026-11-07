@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Select, Input, Button, PageHeader } from '../components/ui'
 import { exportCSV } from '../lib/csv'
+import { horarioTurno } from '../lib/horasTurno'
 
 const TIPOS = {
   entrada: { n: 'Entró', color: 'var(--success)' },
@@ -114,7 +115,7 @@ export default function Attendance() {
     <div>
       <PageHeader
         title="Entradas y salidas"
-        subtitle="Marca tu jornada y tus breaks. Turnos: Noche 4:00–12:00 · Mañana 12:00–20:00 · Tarde 20:00–4:00 (hora Venezuela)"
+        subtitle={`Marca tu jornada y tus breaks. Turnos: Noche ${horarioTurno('noche')} · Mañana ${horarioTurno('mañana')} · Tarde ${horarioTurno('tarde')}`}
       />
 
       {mostrarRecordatorioReporte && (
