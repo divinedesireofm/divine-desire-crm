@@ -48,7 +48,7 @@ export default function IGProfileMetrics() {
   async function cargar() {
     setLoading(true)
     const [{ data: acc }, { data: st, error: e }] = await Promise.all([
-      supabase.from('instagram_accounts').select('id, username, status, profile_link, models(stage_name)').order('username'),
+      supabase.from('instagram_accounts').select('id, username, status, profile_link, models(stage_name)').eq('archivada', false).order('username'),
       supabase.from('ig_profile_stats').select('id, account_id, captured_at, followers, following, posts_count, avg_likes, avg_comments, engagement_rate, avg_reel_views, reels_sampled, posts_sampled, last_post_at, is_verified, is_private, biography, external_url, full_name, profile_pic_url').order('captured_at', { ascending: false }).limit(3000),
     ])
     if (e) setErr(e.message.includes('ig_profile_stats') ? 'Falta ejecutar la migración 61 en Supabase.' : e.message)

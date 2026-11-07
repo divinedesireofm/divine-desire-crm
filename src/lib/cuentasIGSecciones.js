@@ -8,7 +8,8 @@ export const SECCIONES = {
     id: 'eliminadas', pestana: 'Eliminadas', tabla: 'ig_eliminadas',
     titulo: 'Cuentas eliminadas o suspendidas',
     subtitulo: 'Cuentas suspendidas de forma permanente o eliminadas voluntariamente, con la fecha y el motivo.',
-    singular: 'cuenta eliminada', vacio: 'Todavía no hay cuentas eliminadas.',
+    singular: 'cuenta eliminada', vacio: 'Todavía no hay cuentas eliminadas. Se añaden desde «General» con el botón «Dar de baja» de cada cuenta.',
+    sinAnadir: true, rehabilitar: true,
     estados: ESTADOS_CUENTA, nuevo: { estado: 'ELIMINADA' },
     cols: [
       { k: 'instagram_nuevo', n: 'Instagram nuevo', tipo: 'texto', principal: true },

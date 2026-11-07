@@ -21,7 +21,7 @@ export default function ZeroAccounts({ embebido = false }) {
   const [nuevoConteo, setNuevoConteo] = useState('')
 
   async function loadCuentas() {
-    const { data } = await supabase.from('instagram_accounts').select('*, models(stage_name)').eq('status', 'calentando').order('created_at', { ascending: false })
+    const { data } = await supabase.from('instagram_accounts').select('*, models(stage_name)').eq('status', 'calentando').eq('archivada', false).order('created_at', { ascending: false })
     setCuentas(data || [])
     if (data?.length && !cuentaId) setCuentaId(data[0].id)
   }

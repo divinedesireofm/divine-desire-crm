@@ -10,6 +10,7 @@ import Desplegable from '../components/Desplegable'
 import ZeroAccounts from './ZeroAccounts'
 import IGProfileMetrics from './IGProfileMetrics'
 import TablaRegistros from '../components/TablaRegistros'
+import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
 
 // Columnas: k = clave de orden, n = cabecera. Todo se ve completo salvo 2FA, Observaciones y Restricciones, que se abrevian (con «ver más») si son largas: `w` es su ancho máximo.
@@ -82,6 +83,11 @@ export default function InstagramAccounts() {
   const [fEstado, setFEstado] = useState('todos')
   const [fResp, setFResp] = useState('todos')
   const [busca, setBusca] = useState('')
+  const [bajaDe, setBajaDe] = useState(null)         // cuenta que se va a dar de baja (eliminada/suspendida)
+  const [rehabDe, setRehabDe] = useState(null)        // fila de Eliminadas que se va a rehabilitar
+  const [modalErr, setModalErr] = useState(null)
+  const [trabajando, setTrabajando] = useState(false)
+  const [versionElim, setVersionElim] = useState(0)
   const [cerrando, setCerrando] = useState(false)   // la ventana de edición se está plegando
   const panelRef = useRef(null)
   const [anchoVista, setAnchoVista] = useState(900)
@@ -155,7 +161,7 @@ export default function InstagramAccounts() {
   async function load() {
     setLoading(true)
     const [{ data: acc }, { data: mods }, profs] = await Promise.all([
-      supabase.from('instagram_accounts').select('*, models(stage_name), profiles(full_name)').order('created_at', { ascending: false }),
+      supabase.from('instagram_accounts').select('*, models(stage_name), profiles(full_name)').eq('archivada', false).order('created_at', { ascending: false }),
       supabase.from('models').select('id, stage_name'),
       getProfilesByRoles(['ig_assistant']),
     ])
@@ -243,6 +249,63 @@ export default function InstagramAccounts() {
     load()
   }
 
+  const fmt = (f) => String(f || '').split('-').reverse().join('/')
+
+  // General → Eliminadas: la cuenta NO se borra (conserva planificaciones, reels y métricas), se guarda una ficha en Eliminadas y se oculta del General
+  async function darDeBaja({ tipo, motivo, fecha }) {
+    const a = bajaDe
+    setTrabajando(true); setModalErr(null)
+    const obs = [a.observations, a.restrictions ? `Restricciones: ${a.restrictions}` : null].filter(Boolean).join(' · ') || null
+    const ficha = {
+      cuenta_id: a.id, estado: tipo, motivo, fecha_eliminacion: fecha,
+      instagram_nuevo: a.username, instagram_original: a.original_username || null, correo: a.email || null, link: a.profile_link || null,
+      modelo: a.models?.stage_name || null, idioma: (a.target_audience || []).join(', ') || null, link_bio: a.bio_link || null,
+      asistente: a.profiles?.full_name || null, dos_fa: a.two_fa_code || null, fecha_asignacion: a.assigned_at || null, observaciones: obs,
+    }
+    const { data: ins, error: e1 } = await supabase.from('ig_eliminadas').insert([ficha]).select('id').single()
+    if (e1) { setTrabajando(false); setModalErr('No se pudo guardar en Eliminadas: ' + e1.message); return }
+    const { error: e2 } = await supabase.from('instagram_accounts').update({ archivada: true }).eq('id', a.id)
+    if (e2) { await supabase.from('ig_eliminadas').delete().eq('id', ins.id); setTrabajando(false); setModalErr('No se pudo quitar del General: ' + e2.message); return }
+    setTrabajando(false); setBajaDe(null)
+    if (editingId === a.id) finEdicion()
+    setVersionElim((v) => v + 1)
+    load()
+  }
+
+  // Eliminadas → General (pidiendo el motivo). Si la ficha viene de una cuenta del CRM se reactiva esa misma; si viene del Excel se crea de nuevo en General.
+  async function rehabilitar({ motivo, fecha }) {
+    const f = rehabDe
+    setTrabajando(true); setModalErr(null)
+    const nota = `Eliminada/suspendida${f.fecha_eliminacion ? ' el ' + fmt(f.fecha_eliminacion) : ''}${f.motivo ? ': ' + f.motivo : ''} · Rehabilitada el ${fmt(fecha)}: ${motivo}`
+    const sumar = (previo) => [previo, nota].filter(Boolean).join('\n')
+    let ok = false
+    if (f.cuenta_id) {
+      const { data: cta } = await supabase.from('instagram_accounts').select('id, observations').eq('id', f.cuenta_id).maybeSingle()
+      if (cta) {
+        const { error: e } = await supabase.from('instagram_accounts').update({ archivada: false, status: 'activa', observations: sumar(cta.observations) }).eq('id', cta.id)
+        if (e) { setTrabajando(false); setModalErr('No se pudo rehabilitar: ' + e.message); return }
+        ok = true
+      }
+    }
+    if (!ok) {
+      const usuario = (f.instagram_nuevo || f.instagram_original || '').trim()
+      if (!usuario) { setTrabajando(false); setModalErr('Esta ficha no tiene usuario de Instagram. Edítala y pon el «Instagram nuevo» antes de rehabilitarla.'); return }
+      const mod = models.find((m) => String(m.stage_name || '').trim().toLowerCase() === String(f.modelo || '').trim().toLowerCase())
+      const asis = assistants.find((x) => String(x.full_name || '').trim().toLowerCase() === String(f.asistente || '').trim().toLowerCase())
+      const { error: e } = await supabase.from('instagram_accounts').insert([{
+        username: usuario, original_username: f.instagram_original || null, email: f.correo || null, profile_link: f.link || null,
+        model_id: mod?.id || null, assigned_to: asis?.id || null, target_audience: f.idioma ? f.idioma.split(',').map((x) => x.trim()).filter(Boolean) : null,
+        bio_link: f.link_bio || null, status: 'activa', two_fa_code: f.dos_fa || null, assigned_at: f.fecha_asignacion || null,
+        observations: sumar(f.observaciones), archivada: false,
+      }])
+      if (e) { setTrabajando(false); setModalErr(/duplicate|unique/i.test(e.message) ? `Ya existe en General una cuenta con el usuario «${usuario}». Cambia el «Instagram nuevo» de esta ficha o revisa la cuenta del General.` : 'No se pudo rehabilitar: ' + e.message); return }
+    }
+    await supabase.from('ig_eliminadas').delete().eq('id', f.id)
+    setTrabajando(false); setRehabDe(null)
+    setVersionElim((v) => v + 1)
+    load()
+  }
+
   async function borrarCuenta(a) {
     if (!confirm(`¿Eliminar la cuenta @${a.username}?\n\nSe borrarán también sus planificaciones, reels ganadores y registros de seguidores. No se puede deshacer.`)) return
     const { error: err } = await supabase.from('instagram_accounts').delete().eq('id', a.id)
@@ -275,7 +338,10 @@ export default function InstagramAccounts() {
       <div>
         <PageHeader title="Cuentas de Instagram" subtitle={SECCIONES[tab].subtitulo} />
         {pestanas}
-        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} />
+        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} version={versionElim} onRehabilitar={(f) => { setModalErr(null); setRehabDe(f) }} />
+        {rehabDe && (
+          <ModalMotivo titulo={`Rehabilitar @${rehabDe.instagram_nuevo || rehabDe.instagram_original || ''}`} descripcion="La cuenta volverá al cuadro General como activa. Queda anotado el motivo de la baja y el de la rehabilitación en sus observaciones." etiquetaMotivo="Motivo de la rehabilitación" etiquetaFecha="Fecha de rehabilitación" textoBoton="Rehabilitar cuenta" error={modalErr} trabajando={trabajando} onConfirmar={rehabilitar} onCancelar={() => setRehabDe(null)} />
+        )}
       </div>
     )
   }
@@ -366,6 +432,12 @@ export default function InstagramAccounts() {
           <p className="text-sm mb-4 font-medium">Nueva cuenta</p>
           {formulario}
         </Panel>
+      )}
+
+      {bajaDe && (
+        <ModalMotivo titulo={`Dar de baja @${bajaDe.username}`} descripcion="La cuenta pasa al apartado «Eliminadas» con el motivo y la fecha. No se borra nada: conserva sus planificaciones, reels y métricas, y se puede rehabilitar desde Eliminadas."
+          tipos={[{ v: 'ELIMINADA', n: 'Eliminada' }, { v: 'SUSPENDIDA', n: 'Suspendida' }]} etiquetaTipo="¿Eliminada o suspendida?" etiquetaMotivo="Motivo" etiquetaFecha="Fecha" textoBoton="Pasar a Eliminadas"
+          error={modalErr} trabajando={trabajando} onConfirmar={darDeBaja} onCancelar={() => setBajaDe(null)} />
       )}
 
       <Panel ref={panelRef} className="overflow-hidden" style={{ boxShadow: '0 8px 30px rgba(0,0,0,.25)' }}>
@@ -463,9 +535,14 @@ export default function InstagramAccounts() {
                               {editingId === a.id && !cerrando ? 'Cerrar' : 'Editar'}
                             </button>
                           )}
+                          {canDelete && verSecciones && (
+                            <button onClick={() => { setModalErr(null); setBajaDe(a) }} className="text-xs hover:underline" style={{ color: 'var(--gold)' }} title="Pasar a Eliminadas (eliminada o suspendida) indicando el motivo">
+                              Dar de baja
+                            </button>
+                          )}
                           {canDelete && (
-                            <button onClick={() => borrarCuenta(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>
-                              Eliminar
+                            <button onClick={() => borrarCuenta(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }} title="Borra la cuenta y todo su historial para siempre">
+                              Borrar
                             </button>
                           )}
                         </div>

@@ -43,7 +43,7 @@ function CeldaSecreto({ valor }) {
   )
 }
 
-export default function TablaRegistros({ cfg, canEdit = true, modelos = [], personas = [] }) {
+export default function TablaRegistros({ cfg, canEdit = true, modelos = [], personas = [], onRehabilitar, version = 0 }) {
   const [filas, setFilas] = useState([])
   const [cargando, setCargando] = useState(true)
   const [busca, setBusca] = useState('')
@@ -72,6 +72,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
     setCargando(false)
   }
   useEffect(() => { setEditId(null); setMostrarNuevo(false); setBusca(''); setFEstado('todos'); setOrdenK('orden'); setOrdenDir('asc'); setError(null); cargar() }, [cfg.tabla]) // eslint-disable-line
+
+  useEffect(() => { if (version) cargar() }, [version]) // eslint-disable-line
 
   useEffect(() => {
     const el = panelRef.current
@@ -238,7 +240,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
               </Select>
             </div>
             <button type="button" onClick={() => setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc'))} className="px-3 py-2 rounded-md text-sm whitespace-nowrap" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>{ordenDir === 'asc' ? '▲ A→Z' : '▼ Z→A'}</button>
-            {canEdit && !editId && <Button onClick={mostrarNuevo ? () => setMostrarNuevo(false) : nuevo}>{mostrarNuevo ? 'Cancelar' : `+ Añadir ${cfg.singular}`}</Button>}
+            {canEdit && !editId && !cfg.sinAnadir && <Button onClick={mostrarNuevo ? () => setMostrarNuevo(false) : nuevo}>{mostrarNuevo ? 'Cancelar' : `+ Añadir ${cfg.singular}`}</Button>}
           </div>
           <div className="flex items-center gap-2 mt-2 text-xs flex-wrap" style={{ color: 'var(--text-muted)' }}>
             <span>{visibles.length} de {filas.length}</span>
@@ -275,6 +277,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
                       {colsTabla.map((c, i) => <td key={c.k} className={`px-4 align-middle${i === 0 ? ' font-medium' : ''}`} style={tdStyle(c, i)}>{celda(f, c, continua && cfg.agrupar.includes(c.k))}</td>)}
                       <td className="px-4 align-middle" style={{ position: 'sticky', right: 0, zIndex: 5, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
                         <div className="flex gap-3 whitespace-nowrap">
+                          {canEdit && cfg.rehabilitar && onRehabilitar && <button onClick={() => onRehabilitar(f)} className="text-xs hover:underline" style={{ color: 'var(--success)' }} title="Devolver la cuenta al cuadro General">Rehabilitar</button>}
                           {canEdit && <button onClick={() => (editId === f.id ? cerrar() : editar(f))} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>{editId === f.id && !cerrando ? 'Cerrar' : 'Editar'}</button>}
                           {canEdit && <button onClick={() => borrar(f)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>}
                         </div>

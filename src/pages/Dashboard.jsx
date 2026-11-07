@@ -134,7 +134,7 @@ export default function Dashboard() {
     async function load() {
       const [{ count: modelsCount }, { count: accountsCount }, { count: leadsCount }, { data: lastWeek }] = await Promise.all([
         supabase.from('models').select('*', { count: 'exact', head: true }).eq('status', 'activa'),
-        supabase.from('instagram_accounts').select('*', { count: 'exact', head: true }),
+        supabase.from('instagram_accounts').select('*', { count: 'exact', head: true }).eq('archivada', false),
         supabase.from('recruitment_leads').select('*', { count: 'exact', head: true }).not('stage', 'in', '(firmado,descartado)'),
         supabase.from('weekly_metrics').select('week_start, billing_total').not('billing_total', 'is', null).order('week_start', { ascending: false }).limit(40),
       ])
