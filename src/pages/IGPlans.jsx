@@ -549,8 +549,12 @@ export default function IGPlans() {
                         </td>
                       </tr>
                     )}
-                    <tr style={{ borderBottom: abiertos.has(p.id) ? 'none' : '1px solid var(--border)' }}>
-                      <td className="px-3 py-2 whitespace-nowrap"><strong>@{sinArroba(usuarioDe(p.account_id))}</strong></td>
+                    <tr className="fila-plan cursor-pointer" title={abiertos.has(p.id) ? 'Clic para ocultar' : 'Clic para ver la planificación'} aria-expanded={abiertos.has(p.id)}
+                      style={{ borderBottom: abiertos.has(p.id) ? 'none' : '1px solid var(--border)', background: abiertos.has(p.id) ? 'var(--panel-alt)' : undefined }}
+                      onClick={() => { if (window.getSelection && String(window.getSelection()).length) return; alternar(p.id) }}
+                      onMouseEnter={(e) => { if (!abiertos.has(p.id)) e.currentTarget.style.background = 'var(--panel-alt)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = abiertos.has(p.id) ? 'var(--panel-alt)' : '' }}>
+                      <td className="px-3 py-2 whitespace-nowrap"><span className="text-xs mr-2" style={{ color: 'var(--accent)' }}>{abiertos.has(p.id) ? '▲' : '▼'}</span><strong>@{sinArroba(usuarioDe(p.account_id))}</strong></td>
                       <td className="px-3 py-2 whitespace-nowrap">{fmtExacta(p.created_at)}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{textoPeriodo(p) || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{nombreDe(p.responsable_id || p.created_by)}</td>
@@ -560,8 +564,7 @@ export default function IGPlans() {
                         {p.hecha_at && <span className="text-xs block" style={{ color: 'var(--success)' }}>✓ Hecha · {fmtExacta(p.hecha_at)} · videos borrados</span>}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}{videosDe(p.dias).length > 0 && <span> · 🎞 {plural(videosDe(p.dias).length, 'video', 'videos')}</span>}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <button className="text-xs underline mr-3" style={{ color: 'var(--accent)' }} aria-expanded={abiertos.has(p.id)} onClick={() => alternar(p.id)}>{abiertos.has(p.id) ? '▲ Ocultar' : '▼ Ver'}</button>
+                      <td className="px-3 py-2 text-right whitespace-nowrap cursor-default" onClick={(e) => e.stopPropagation()}>
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(linkDe(p.id)).catch(() => {}); alert('Link copiado.') }}>🔗 Copiar link</button>
                         <button className="text-xs underline mr-3" onClick={() => abrir(p)}>Abrir / editar</button>
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(textoPlan(p, usuarioDe(p.account_id))).catch(() => {}); setMsg(''); alert('Texto copiado.') }}>Copiar texto</button>
