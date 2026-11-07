@@ -323,6 +323,50 @@ export default function InstagramAccounts() {
     load()
   }
 
+  // Cuentas propias → General: al asignar una modelo, la cuenta aparece en el cuadro General (o se actualiza si ya estaba)
+  async function sincronizarPropia(f) {
+    if (!f.modelo_id) return null
+    const est = String(f.estado || '').toUpperCase()
+    if (est.startsWith('ELIMIN')) return { tipo: 'ok', texto: 'Guardada. No se añade al General porque está marcada como ELIMINADA.' }
+    const usuario = String(f.usuario || '').trim().replace(/^@/, '')
+    if (!usuario) return { tipo: 'error', texto: 'Para añadirla al General hace falta el usuario de Instagram.' }
+    const mod = models.find((m) => m.id === f.modelo_id)
+    const status = est.startsWith('ACTIV') ? 'activa' : est.startsWith('SUSP') || est.startsWith('BLOQ') ? 'suspendida' : est.startsWith('RESTR') ? 'en_revision' : est.includes('REPOSO') ? 'en_pausa' : 'activa'
+    const creador = String(f.creador || '').trim().toLowerCase()
+    const asis = assistants.find((x) => String(x.full_name || '').trim().toLowerCase() === creador)
+
+    let cuenta = null
+    if (f.cuenta_id) { const { data } = await supabase.from('instagram_accounts').select('*').eq('id', f.cuenta_id).maybeSingle(); cuenta = data }
+    if (!cuenta) {
+      const { data: cand } = await supabase.from('instagram_accounts').select('*').ilike('username', usuario)
+      cuenta = (cand || []).find((c) => String(c.username).trim().toLowerCase() === usuario.toLowerCase()) || null
+    }
+    if (cuenta?.archivada) return { tipo: 'error', texto: `@${usuario} está dada de baja (en Eliminadas). Se guardó la cuenta propia, pero no se añadió al General: rehabilítala desde Eliminadas.` }
+
+    let texto
+    if (cuenta) {
+      const cambios = { model_id: f.modelo_id }
+      if (!cuenta.email && f.email) cambios.email = f.email
+      if (!cuenta.profile_link && f.enlace) cambios.profile_link = f.enlace
+      if (!cuenta.two_fa_code && f.dos_fa) cambios.two_fa_code = f.dos_fa
+      if (!cuenta.assigned_at && f.fecha_creacion) cambios.assigned_at = f.fecha_creacion
+      const { error } = await supabase.from('instagram_accounts').update(cambios).eq('id', cuenta.id)
+      if (error) throw error
+      texto = `@${usuario} ya estaba en el General: se ha asignado a ${mod?.stage_name || 'la modelo'}.`
+    } else {
+      const { data: nueva, error } = await supabase.from('instagram_accounts').insert([{
+        username: usuario, model_id: f.modelo_id, status, email: f.email || null, profile_link: f.enlace || null, two_fa_code: f.dos_fa || null,
+        assigned_at: f.fecha_creacion || null, assigned_to: asis?.id || null, archivada: false,
+      }]).select('id').single()
+      if (error) throw error
+      cuenta = nueva
+      texto = `@${usuario} se ha añadido al cuadro General con ${mod?.stage_name || 'la modelo'}.`
+    }
+    if (f.cuenta_id !== cuenta.id) await supabase.from('ig_cuentas_propias').update({ cuenta_id: cuenta.id }).eq('id', f.id)
+    load()
+    return { tipo: 'ok', texto }
+  }
+
   async function borrarCuenta(a) {
     if (!confirm(`¿Eliminar la cuenta @${a.username}?\n\nSe borrarán también sus planificaciones, reels ganadores y registros de seguidores. No se puede deshacer.`)) return
     const { error: err } = await supabase.from('instagram_accounts').delete().eq('id', a.id)
@@ -355,7 +399,7 @@ export default function InstagramAccounts() {
       <div>
         <PageHeader title="Cuentas de Instagram" subtitle={SECCIONES[tab].subtitulo} />
         {pestanas}
-        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} version={versionElim} onRehabilitar={(f) => { setModalErr(null); setRehabDe(f) }} />
+        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} modelosLista={models} onGuardado={SECCIONES[tab].sincroniza ? sincronizarPropia : undefined} version={versionElim} onRehabilitar={(f) => { setModalErr(null); setRehabDe(f) }} />
         {rehabDe && (
           <ModalMotivo titulo={`Rehabilitar @${rehabDe.instagram_nuevo || rehabDe.instagram_original || ''}`} descripcion="La cuenta volverá al cuadro General como activa. Queda anotado el motivo de la baja y el de la rehabilitación en sus observaciones." etiquetaMotivo="Motivo de la rehabilitación" etiquetaFecha="Fecha de rehabilitación" textoBoton="Rehabilitar cuenta" error={modalErr} trabajando={trabajando} onConfirmar={rehabilitar} onCancelar={() => setRehabDe(null)} />
         )}

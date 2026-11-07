@@ -54,10 +54,12 @@ export const SECCIONES = {
     titulo: 'Cuentas propias',
     subtitulo: 'Cuentas de Instagram que creamos nosotros, con sus credenciales, creador y estado.',
     singular: 'cuenta propia', vacio: 'Todavía no hay cuentas propias.',
+    sincroniza: true, // al asignar una modelo, la cuenta se añade (o se actualiza) en el cuadro General
     estados: ESTADOS_CUENTA, nuevo: { estado: 'ACTIVA' },
     cols: [
       { k: 'usuario', n: 'Usuario', tipo: 'texto', principal: true, enlaceDe: 'enlace' },
       { k: 'enlace', n: 'Enlace de la cuenta (al pulsar el usuario te lleva aquí)', tipo: 'enlace', soloForm: true, ancho: 2 },
+      { k: 'modelo_id', n: 'Modelo', tipo: 'modeloSel' },
       { k: 'contrasena', n: 'Contraseña', tipo: 'secreto' },
       { k: 'email', n: 'Email', tipo: 'texto' },
       { k: 'contrasena_email', n: 'Contraseña email', tipo: 'secreto' },

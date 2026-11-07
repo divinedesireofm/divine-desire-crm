@@ -44,7 +44,7 @@ function CeldaSecreto({ valor }) {
   )
 }
 
-export default function TablaRegistros({ cfg, canEdit = true, modelos = [], personas = [], onRehabilitar, version = 0 }) {
+export default function TablaRegistros({ cfg, canEdit = true, modelos = [], modelosLista = [], personas = [], onRehabilitar, onGuardado, version = 0 }) {
   const [filas, setFilas] = useState([])
   const [cargando, setCargando] = useState(true)
   const [busca, setBusca] = useState('')
@@ -65,6 +65,9 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
   const cols = cfg.cols                                  // todas (formulario)
   const colsTabla = cols.filter((c) => !c.soloForm)       // las que salen en la tabla
   const colPrincipal = cols.find((c) => c.principal) || cols[0]
+  const nombreModelo = (id) => modelosLista.find((m) => m.id === id)?.stage_name || ''
+  const valorDe = (f, k) => (cols.find((c) => c.k === k)?.tipo === 'modeloSel' ? nombreModelo(f[k]) : f[k])
+  const [aviso, setAviso] = useState(null)
   const colEstado = cols.find((c) => c.tipo === 'estado')?.k
 
   async function cargar() {
@@ -97,12 +100,12 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
     const q = busca.trim().toLowerCase()
     const lista = filas.filter((f) => {
       if (fEstado !== 'todos' && (f[colEstado] || 'SIN ESTADO') !== fEstado) return false
-      if (q && !colsTabla.some((c) => c.tipo !== 'secreto' && String(f[c.k] ?? '').toLowerCase().includes(q))) return false
+      if (q && !colsTabla.some((c) => c.tipo !== 'secreto' && String(valorDe(f, c.k) ?? '').toLowerCase().includes(q))) return false
       return true
     })
     const dir = ordenDir === 'asc' ? 1 : -1
     return lista.sort((a, b) => {
-      const va = a[ordenK], vb = b[ordenK]
+      const va = valorDe(a, ordenK), vb = valorDe(b, ordenK)
       if (vacio(va) !== vacio(vb)) return vacio(va) ? 1 : -1
       if (vacio(va)) return (a.orden - b.orden)
       const c = cmp(typeof va === 'string' ? va.toLowerCase() : va, typeof vb === 'string' ? vb.toLowerCase() : vb)
@@ -139,11 +142,14 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
     setError(null); setGuardando(true)
     const payload = {}
     cols.forEach((c) => { const v = typeof form[c.k] === 'string' ? form[c.k].trim() : form[c.k]; payload[c.k] = vacio(v) ? null : v })
-    const { error: err } = editId
-      ? await supabase.from(cfg.tabla).update(payload).eq('id', editId)
-      : await supabase.from(cfg.tabla).insert([payload])
+    const { data: guardada, error: err } = editId
+      ? await supabase.from(cfg.tabla).update(payload).eq('id', editId).select().single()
+      : await supabase.from(cfg.tabla).insert([payload]).select().single()
+    if (err) { setGuardando(false); setError('No se pudo guardar: ' + err.message); return }
+    // Gancho opcional (Cuentas propias → General): devuelve un aviso con lo que ha hecho
+    setAviso(null)
+    if (onGuardado && guardada) { try { setAviso(await onGuardado(guardada)) } catch (ex) { setAviso({ tipo: 'error', texto: 'Se guardó, pero no se pudo actualizar el General: ' + ex.message }) } }
     setGuardando(false)
-    if (err) { setError('No se pudo guardar: ' + err.message); return }
     if (editId) cerrar(); else { setMostrarNuevo(false); setForm(formVacio()) }
     cargar()
   }
@@ -175,6 +181,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
           {personas.filter((g) => g.items.length).map((g) => <optgroup key={g.grupo} label={g.grupo}>{g.items.map((n) => <option key={g.grupo + n} value={n}>{n}</option>)}</optgroup>)}
         </Select>
       )
+    } else if (c.tipo === 'modeloSel') {
+      control = <Select value={val} onChange={(e) => set(e.target.value)}><option value="">Sin modelo asignada</option>{modelosLista.slice().sort((x, y) => String(x.stage_name).localeCompare(String(y.stage_name), 'es')).map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}</Select>
     } else if (c.tipo === 'modelo') control = <Input list="lista-modelos-ig" value={val} onChange={(e) => set(e.target.value)} placeholder="Modelo" />
     else if (c.tipo === 'largo') control = <textarea rows={2} value={val} onChange={(e) => set(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm outline-none" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', resize: 'vertical' }} />
     else control = <Input value={val} onChange={(e) => set(e.target.value)} style={c.tipo === 'secreto' || c.mono ? { fontFamily: 'ui-monospace, monospace' } : undefined} />
@@ -204,7 +212,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
       return <CeldaCopia completo titulo={c.n} texto={v}>{url ? <a href={/^https?:\/\//i.test(url) ? url : `https://${url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta">{v}</a> : null}</CeldaCopia>
     }
     let cuerpo
-    if (c.tipo === 'secreto') cuerpo = <CeldaSecreto valor={v} />
+    if (c.tipo === 'modeloSel') cuerpo = <CeldaCopia completo titulo={c.n} texto={nombreModelo(v)} />
+    else if (c.tipo === 'secreto') cuerpo = <CeldaSecreto valor={v} />
     else if (c.tipo === 'estado') cuerpo = vacio(v) ? <span style={{ color: 'var(--text-muted)' }}>—</span> : <Etiqueta estado={v} />
     else if (c.tipo === 'enlace') cuerpo = <CeldaCopia completo titulo={c.n} texto={v} muted>{v ? <a href={v} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{String(v).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</a> : null}</CeldaCopia>
     else if (c.tipo === 'fecha') cuerpo = <CeldaCopia completo titulo={c.n} texto={v ? String(v).split('-').reverse().join('/') : ''} />
@@ -268,6 +277,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
             {(busca || fEstado !== 'todos' || ordenK !== 'orden') && <button type="button" className="underline" onClick={() => { setBusca(''); setFEstado('todos'); setOrdenK('orden'); setOrdenDir('asc') }}>Restablecer</button>}
           </div>
         </div>
+        {aviso && <p className="px-4 py-2 text-sm flex items-center gap-3" style={{ color: aviso.tipo === 'error' ? 'var(--danger)' : 'var(--success)', background: 'var(--panel-alt)', borderBottom: '1px solid var(--border)' }}><span className="flex-1">{aviso.tipo === 'error' ? '⚠️ ' : '✅ '}{aviso.texto}</span><button type="button" onClick={() => setAviso(null)} aria-label="Cerrar aviso">✕</button></p>}
         {error && !mostrarNuevo && !editId && <p className="px-4 py-2 text-sm" style={{ color: 'var(--danger)' }}>{error}</p>}
 
         {cargando ? <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p> : (
