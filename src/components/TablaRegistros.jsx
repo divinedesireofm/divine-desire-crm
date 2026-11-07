@@ -43,7 +43,7 @@ function CeldaSecreto({ valor }) {
   )
 }
 
-export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
+export default function TablaRegistros({ cfg, canEdit = true, modelos = [], personas = [] }) {
   const [filas, setFilas] = useState([])
   const [cargando, setCargando] = useState(true)
   const [busca, setBusca] = useState('')
@@ -59,7 +59,9 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
   const panelRef = useRef(null)
   const [anchoVista, setAnchoVista] = useState(900)
 
-  const cols = cfg.cols
+  const cols = cfg.cols                                  // todas (formulario)
+  const colsTabla = cols.filter((c) => !c.soloForm)       // las que salen en la tabla
+  const colPrincipal = cols.find((c) => c.principal) || cols[0]
   const colEstado = cols.find((c) => c.tipo === 'estado')?.k
 
   async function cargar() {
@@ -90,7 +92,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
     const q = busca.trim().toLowerCase()
     const lista = filas.filter((f) => {
       if (fEstado !== 'todos' && (f[colEstado] || 'SIN ESTADO') !== fEstado) return false
-      if (q && !cols.some((c) => c.tipo !== 'secreto' && String(f[c.k] ?? '').toLowerCase().includes(q))) return false
+      if (q && !colsTabla.some((c) => c.tipo !== 'secreto' && String(f[c.k] ?? '').toLowerCase().includes(q))) return false
       return true
     })
     const dir = ordenDir === 'asc' ? 1 : -1
@@ -129,7 +131,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
   }
 
   async function borrar(f) {
-    const nombre = f[cols[0].k] || cfg.singular
+    const nombre = f[colPrincipal.k] || cfg.singular
     if (!confirm(`¿Eliminar «${nombre}» de ${cfg.pestana.toLowerCase()}?\n\nNo se puede deshacer.`)) return
     const { error: err } = await supabase.from(cfg.tabla).delete().eq('id', f.id)
     if (err) { setError('No se pudo eliminar: ' + err.message); return }
@@ -146,6 +148,15 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
     else if (c.tipo === 'estado') {
       const ops = cfg.estados.includes(val) || !val ? cfg.estados : [...cfg.estados, val]
       control = <Select value={val} onChange={(e) => set(e.target.value)}><option value="">Sin estado</option>{ops.map((o) => <option key={o} value={o}>{o}</option>)}</Select>
+    } else if (c.tipo === 'persona') {
+      const todos = personas.flatMap((g) => g.items)
+      control = (
+        <Select value={val} onChange={(e) => set(e.target.value)}>
+          <option value="">Sin indicar</option>
+          {val && !todos.includes(val) && <optgroup label="Valor actual"><option value={val}>{val}</option></optgroup>}
+          {personas.filter((g) => g.items.length).map((g) => <optgroup key={g.grupo} label={g.grupo}>{g.items.map((n) => <option key={g.grupo + n} value={n}>{n}</option>)}</optgroup>)}
+        </Select>
+      )
     } else if (c.tipo === 'modelo') control = <Input list="lista-modelos-ig" value={val} onChange={(e) => set(e.target.value)} placeholder="Modelo" />
     else if (c.tipo === 'largo') control = <textarea rows={2} value={val} onChange={(e) => set(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm outline-none" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', resize: 'vertical' }} />
     else control = <Input value={val} onChange={(e) => set(e.target.value)} style={c.tipo === 'secreto' || c.mono ? { fontFamily: 'ui-monospace, monospace' } : undefined} />
@@ -167,8 +178,13 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
     </form>
   )
 
-  const celda = (f, c) => {
+  const celda = (f, c, ocultar) => {
     const v = f[c.k]
+    if (ocultar) return null
+    if (c.enlaceDe && v) {
+      const url = f[c.enlaceDe]
+      return <CeldaCopia completo titulo={c.n} texto={v}>{url ? <a href={/^https?:\/\//i.test(url) ? url : `https://${url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta">{v}</a> : null}</CeldaCopia>
+    }
     let cuerpo
     if (c.tipo === 'secreto') cuerpo = <CeldaSecreto valor={v} />
     else if (c.tipo === 'estado') cuerpo = vacio(v) ? <span style={{ color: 'var(--text-muted)' }}>—</span> : <Etiqueta estado={v} />
@@ -181,7 +197,10 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
     ...(c.w ? { width: c.w, maxWidth: c.w } : { whiteSpace: 'nowrap' }),
     ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)' } : {}),
   })
-  const nCols = cols.length + 1
+  const nCols = colsTabla.length + 1
+  // Stock: la fecha y el proveedor solo se muestran en la primera fila de cada compra (las siguientes quedan en blanco)
+  const agrupar = !!cfg.agrupar && !busca.trim() && fEstado === 'todos' && ['orden', ...(cfg.agrupar || [])].includes(ordenK)
+  const mismaCompra = (a, b) => !!a && !!b && cfg.agrupar.every((k) => (a[k] ?? '') === (b[k] ?? ''))
 
   return (
     <div>
@@ -215,7 +234,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
             <div className="w-56">
               <Select value={ordenK} onChange={(e) => { setOrdenK(e.target.value); setOrdenDir('asc') }} aria-label="Ordenar por">
                 <option value="orden">Ordenar: como en el Excel</option>
-                {cols.filter((c) => c.tipo !== 'secreto').map((c) => <option key={c.k} value={c.k}>Ordenar: {c.n}</option>)}
+                {colsTabla.filter((c) => c.tipo !== 'secreto').map((c) => <option key={c.k} value={c.k}>Ordenar: {c.n}</option>)}
               </Select>
             </div>
             <button type="button" onClick={() => setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc'))} className="px-3 py-2 rounded-md text-sm whitespace-nowrap" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>{ordenDir === 'asc' ? '▲ A→Z' : '▼ Z→A'}</button>
@@ -236,7 +255,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
             <table className="tabla-reg text-sm" style={{ width: '100%' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
-                  {cols.map((c, i) => (
+                  {colsTabla.map((c, i) => (
                     <th key={c.k} className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: ordenK === c.k ? 'var(--accent)' : 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}) }}>
                       {c.tipo === 'secreto' ? c.n : <button type="button" onClick={() => ordenarPor(c.k)} className="hover:underline uppercase" title="Ordenar por esta columna">{c.n}{ordenK === c.k ? (ordenDir === 'asc' ? ' ▲' : ' ▼') : ''}</button>}
                     </th>
@@ -247,10 +266,13 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
               <tbody>
                 {visibles.length === 0 ? (
                   <tr><td colSpan={nCols} className="px-4 py-10 text-center" style={{ color: 'var(--text-muted)' }}>{filas.length ? 'Nada coincide con los filtros.' : cfg.vacio}</td></tr>
-                ) : visibles.map((f) => (
+                ) : visibles.map((f, idx) => {
+                  const continua = agrupar && mismaCompra(f, visibles[idx - 1])
+                  const inicio = agrupar && idx > 0 && !continua
+                  return (
                   <Fragment key={f.id}>
-                    <tr className={`fila-reg${editId === f.id ? ' editando' : ''}`} style={{ borderBottom: editId === f.id ? 'none' : '1px solid var(--border)', height: 54 }}>
-                      {cols.map((c, i) => <td key={c.k} className={`px-4 align-middle${i === 0 ? ' font-medium' : ''}`} style={tdStyle(c, i)}>{celda(f, c)}</td>)}
+                    <tr className={`fila-reg${editId === f.id ? ' editando' : ''}`} style={{ borderBottom: editId === f.id ? 'none' : '1px solid var(--border)', borderTop: inicio ? '2px solid color-mix(in srgb, var(--accent) 45%, var(--border))' : undefined, height: 54 }}>
+                      {colsTabla.map((c, i) => <td key={c.k} className={`px-4 align-middle${i === 0 ? ' font-medium' : ''}`} style={tdStyle(c, i)}>{celda(f, c, continua && cfg.agrupar.includes(c.k))}</td>)}
                       <td className="px-4 align-middle" style={{ position: 'sticky', right: 0, zIndex: 5, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
                         <div className="flex gap-3 whitespace-nowrap">
                           {canEdit && <button onClick={() => (editId === f.id ? cerrar() : editar(f))} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>{editId === f.id && !cerrando ? 'Cerrar' : 'Editar'}</button>}
@@ -264,7 +286,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
                           <div style={{ position: 'sticky', left: 0, width: anchoVista }}>
                             <Desplegable abierto={!cerrando} onCerrado={finCierre}>
                               <div className="p-5">
-                                <p className="text-sm mb-4 font-medium">Editar {f[cols[0].k] || cfg.singular}</p>
+                                <p className="text-sm mb-4 font-medium">Editar {f[colPrincipal.k] || cfg.singular}</p>
                                 {formulario}
                               </div>
                             </Desplegable>
@@ -273,7 +295,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [] }) {
                       </tr>
                     )}
                   </Fragment>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </ScrollSuperior>

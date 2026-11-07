@@ -68,6 +68,7 @@ export default function InstagramAccounts() {
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
   const [assistants, setAssistants] = useState([])
+  const [creadores, setCreadores] = useState([]) // opciones del campo «Creador» de Cuentas propias
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -131,6 +132,26 @@ export default function InstagramAccounts() {
   const hayFiltros = fModelo !== 'todos' || fEstado !== 'todos' || fResp !== 'todos' || busca.trim() !== ''
   function ordenarPor(k) { if (k === ordenK) setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc')); else { setOrdenK(k); setOrdenDir('asc') } }
 
+  // «Creador»: asistentes de Instagram, extrabajadores de Instagram y modelos
+  async function cargarCreadores(profs, mods) {
+    const limpia = (n) => String(n || '').replace(/\s*\(extrabajador\)\s*$/i, '').trim()
+    let ex = []
+    try {
+      const { data: ur } = await supabase.from('user_roles').select('user_id').in('role', ['ig_assistant', 'ig_manager'])
+      const ids = Array.from(new Set((ur || []).map((r) => r.user_id)))
+      if (ids.length) {
+        const { data: pr, error: e2 } = await supabase.from('profiles').select('id, full_name, extrabajador').in('id', ids).eq('extrabajador', true)
+        if (!e2) ex = (pr || []).map((x) => limpia(x.full_name)).filter(Boolean)
+      }
+    } catch { /* sin extrabajadores */ }
+    const uniq = (a) => Array.from(new Set(a)).sort((x, y) => x.localeCompare(y, 'es'))
+    setCreadores([
+      { grupo: 'Asistentes de Instagram', items: uniq(profs.map((x) => limpia(x.full_name)).filter(Boolean)) },
+      { grupo: 'Extrabajadores de Instagram', items: uniq(ex) },
+      { grupo: 'Modelos', items: uniq(mods.map((m) => m.stage_name).filter(Boolean).map((n) => `${n} (modelo)`)) },
+    ])
+  }
+
   async function load() {
     setLoading(true)
     const [{ data: acc }, { data: mods }, profs] = await Promise.all([
@@ -146,6 +167,7 @@ export default function InstagramAccounts() {
     })
     setModels(mods || [])
     setAssistants(profs)
+    cargarCreadores(profs, mods || [])
     setLoading(false)
   }
 
@@ -253,7 +275,7 @@ export default function InstagramAccounts() {
       <div>
         <PageHeader title="Cuentas de Instagram" subtitle={SECCIONES[tab].subtitulo} />
         {pestanas}
-        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} />
+        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} />
       </div>
     )
   }
