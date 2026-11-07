@@ -4,6 +4,11 @@ import { urlVideo, descargarVideo, MAX_MB } from '../lib/planVideos'
 const tam = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB')
 
 // Ventana pequeña con el video del reel (con pantalla completa). En el editor también sube, cambia y quita el video.
+// Solo se reproduce un video a la vez: al dar play a uno, se pausan todos los demás de la página
+function soloUno(e) {
+  document.querySelectorAll('video').forEach((v) => { if (v !== e.currentTarget && !v.paused) v.pause() })
+}
+
 export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, soloLectura = false }) {
   const [url, setUrl] = useState(null)
   const [fallo, setFallo] = useState(false)
@@ -56,7 +61,7 @@ export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, 
     <div className="mt-2 flex gap-3 items-start">
       <div className="rounded-md overflow-hidden shrink-0" style={{ width: 150, background: '#000', border: '1px solid var(--border)' }}>
         {url
-          ? <video ref={ref} src={url} controls playsInline preload="metadata" onError={reintentar} style={{ width: '100%', maxHeight: 270, display: 'block', background: '#000' }} />
+          ? <video ref={ref} src={url} controls playsInline preload="metadata" onError={reintentar} onPlay={soloUno} style={{ width: '100%', maxHeight: 270, display: 'block', background: '#000' }} />
           : <div className="flex items-center justify-center text-[11px] text-center p-3" style={{ height: 150, ...lbl }}>{fallo ? 'No se pudo cargar el video' : 'Cargando video…'}</div>}
       </div>
       <div className="text-xs space-y-1.5 min-w-0">
