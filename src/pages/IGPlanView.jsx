@@ -3,6 +3,7 @@ import { Panel } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import { textoPlan, textoDia, textoPeriodo } from './IGPlans'
 import VideoReel from '../components/VideoReel'
+import TextoConLinks from '../components/TextoConLinks'
 
 const nOrigen = (id) => (id === 'ganador' ? 'Ganador' : 'Nuevo')
 const nTipo = (id) => (id === 'marca_personal' ? 'Marca personal' : 'Sugerente')
@@ -22,7 +23,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
       {plan.reglas?.trim() && (
         <Panel className="p-4 mb-4">
           <p className="text-xs mb-1" style={lbl}>Reglas / avisos</p>
-          <p className="text-sm whitespace-pre-wrap">{plan.reglas}</p>
+          <p className="text-sm whitespace-pre-wrap"><TextoConLinks texto={plan.reglas} /></p>
         </Panel>
       )}
 
@@ -39,7 +40,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                   <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--gold, var(--accent))' }}>
                     {nOrigen(r.origen)} · {nTipo(r.tipo)}{r.prueba ? ' · 🧪 Prueba' : ''}
                   </p>
-                  {r.tematica?.trim() && <p className="mb-1">🎯 <strong>Temática:</strong> {r.tematica}</p>}
+                  {r.tematica?.trim() && <p className="mb-1">🎯 <strong>Temática:</strong> <TextoConLinks texto={r.tematica} /></p>}
                   {r.link?.trim() && (
                     <p className="mb-1 flex items-center gap-2 flex-wrap">
                       <span>🔗</span>
@@ -50,9 +51,9 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                     </p>
                   )}
                   {r.video?.path && <VideoReel video={r.video} soloLectura />}
-                  {r.gancho?.trim() && <p className="mb-1 mt-1 whitespace-pre-wrap">🎣 {r.gancho}</p>}
-                  {r.texto?.trim() && <p className="whitespace-pre-wrap">📝 {r.texto}</p>}
-                  {r.edicion?.trim() && <p className="whitespace-pre-wrap mt-1">📹 <strong>Edición:</strong> {r.edicion}</p>}
+                  {r.gancho?.trim() && <p className="mb-1 mt-1 whitespace-pre-wrap">🎣 <TextoConLinks texto={r.gancho} /></p>}
+                  {r.texto?.trim() && <p className="whitespace-pre-wrap">📝 <TextoConLinks texto={r.texto} /></p>}
+                  {r.edicion?.trim() && <p className="whitespace-pre-wrap mt-1">📹 <strong>Edición:</strong> <TextoConLinks texto={r.edicion} /></p>}
                   {!r.tematica?.trim() && !r.link?.trim() && !r.gancho?.trim() && !r.texto?.trim() && !r.edicion?.trim() && !r.video?.path && <p style={lbl}>Sin contenido todavía.</p>}
                 </div>
               ))}

@@ -1,3 +1,4 @@
+import { EnlacesDetectados } from '../components/TextoConLinks'
 import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -459,10 +460,11 @@ export default function IGPlans() {
                       </label>
                       <div className="space-y-2">
                         <Input placeholder="🔗 Enlace del reel de referencia" value={r.link} onChange={(e) => setReel(di, ri, 'link', e.target.value)} />
-                        <Input placeholder="🎣 Gancho" value={r.gancho} onChange={(e) => setReel(di, ri, 'gancho', e.target.value)} />
-                        <Input placeholder="📝 Texto / indicaciones" value={r.texto} onChange={(e) => setReel(di, ri, 'texto', e.target.value)} />
+                        <div><Input placeholder="🎣 Gancho" value={r.gancho} onChange={(e) => setReel(di, ri, 'gancho', e.target.value)} /><EnlacesDetectados texto={r.gancho} /></div>
+                        <div><Input placeholder="📝 Texto / indicaciones" value={r.texto} onChange={(e) => setReel(di, ri, 'texto', e.target.value)} /><EnlacesDetectados texto={r.texto} /></div>
                         <textarea rows={2} placeholder="📹 Edición: indicaciones para editar este reel" value={r.edicion || ''} onChange={(e) => setReel(di, ri, 'edicion', e.target.value)}
                           className="w-full px-3 py-2 rounded-md text-sm outline-none" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', resize: 'vertical' }} />
+                        <EnlacesDetectados texto={r.edicion} />
                       </div>
                       <VideoReel video={r.video} subiendo={!!subiendoV[`${di}-${ri}`]} onSubir={(f) => subirReel(di, ri, f)} onQuitar={() => quitarVideoReel(di, ri)} />
                       {d.reels.length > 1 && (
