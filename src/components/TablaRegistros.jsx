@@ -4,6 +4,7 @@ import { Panel, Button, Input, Select } from './ui'
 import CeldaCopia from './CeldaCopia'
 import ScrollSuperior from './ScrollSuperior'
 import Desplegable from './Desplegable'
+import { moverFila, guardarOrden } from '../lib/ordenManual'
 
 const vacio = (v) => v === null || v === undefined || v === ''
 const cmp = (x, y) => (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true }))
@@ -56,6 +57,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
   const [form, setForm] = useState({})
   const [error, setError] = useState(null)
   const [guardando, setGuardando] = useState(false)
+  const [arrastrando, setArrastrando] = useState(null)
+  const [sobre, setSobre] = useState(null)
   const panelRef = useRef(null)
   const [anchoVista, setAnchoVista] = useState(900)
 
@@ -106,6 +109,19 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
       return c ? c * dir : a.orden - b.orden
     })
   }, [filas, busca, fEstado, ordenK, ordenDir]) // eslint-disable-line
+
+  // Orden manual: solo con el orden «manual» (ascendente) y sin búsqueda ni filtro, para que la lista que se ve sea la lista completa
+  const puedeArrastrar = canEdit && ordenK === 'orden' && ordenDir === 'asc' && !busca.trim() && fEstado === 'todos' && !editId
+  async function soltar(haciaId) {
+    const desde = arrastrando
+    setArrastrando(null); setSobre(null)
+    if (!desde || desde === haciaId) return
+    const { lista, cambios } = moverFila(visibles, desde, haciaId)
+    if (!cambios.length) return
+    setFilas((prev) => prev.map((r) => lista.find((x) => x.id === r.id) || r))   // se ve al instante
+    const err = await guardarOrden(cfg.tabla, cambios)
+    if (err) { setError('No se pudo guardar el orden: ' + err.message); cargar() }
+  }
 
   function ordenarPor(k) { if (k === ordenK) setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc')); else { setOrdenK(k); setOrdenDir('asc') } }
 
@@ -210,6 +226,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
         .tabla-reg tbody tr.fila-reg { transition: background-color .2s ease; }
         .tabla-reg tbody tr.fila-reg:hover > td { background: var(--panel-alt) !important; }
         .tabla-reg tbody tr.fila-reg.editando > td { background: color-mix(in srgb, var(--accent) 14%, var(--panel)) !important; }
+        .tabla-reg tbody tr.sobre > td { box-shadow: inset 0 3px 0 0 var(--accent); }
+        .tabla-reg tbody tr.arrastrada { opacity: .45; }
         .tabla-reg thead th { text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
       `}</style>
       <datalist id="lista-modelos-ig">{modelos.map((m) => <option key={m} value={m} />)}</datalist>
@@ -235,7 +253,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
             )}
             <div className="w-56">
               <Select value={ordenK} onChange={(e) => { setOrdenK(e.target.value); setOrdenDir('asc') }} aria-label="Ordenar por">
-                <option value="orden">Ordenar: como en el Excel</option>
+                <option value="orden">Orden manual (arrastrar filas)</option>
                 {colsTabla.filter((c) => c.tipo !== 'secreto').map((c) => <option key={c.k} value={c.k}>Ordenar: {c.n}</option>)}
               </Select>
             </div>
@@ -273,8 +291,21 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], pers
                   const inicio = agrupar && idx > 0 && !continua
                   return (
                   <Fragment key={f.id}>
-                    <tr className={`fila-reg${editId === f.id ? ' editando' : ''}`} style={{ borderBottom: editId === f.id ? 'none' : '1px solid var(--border)', borderTop: inicio ? '2px solid color-mix(in srgb, var(--accent) 45%, var(--border))' : undefined, height: 54 }}>
-                      {colsTabla.map((c, i) => <td key={c.k} className={`px-4 align-middle${i === 0 ? ' font-medium' : ''}`} style={tdStyle(c, i)}>{celda(f, c, continua && cfg.agrupar.includes(c.k))}</td>)}
+                    <tr className={`fila-reg${editId === f.id ? ' editando' : ''}${sobre === f.id && arrastrando && arrastrando !== f.id ? ' sobre' : ''}${arrastrando === f.id ? ' arrastrada' : ''}`}
+                      onDragOver={puedeArrastrar && arrastrando ? (e) => { e.preventDefault(); if (sobre !== f.id) setSobre(f.id) } : undefined}
+                      onDrop={puedeArrastrar && arrastrando ? (e) => { e.preventDefault(); soltar(f.id) } : undefined}
+                      style={{ borderBottom: editId === f.id ? 'none' : '1px solid var(--border)', borderTop: inicio ? '2px solid color-mix(in srgb, var(--accent) 45%, var(--border))' : undefined, height: 54 }}>
+                      {colsTabla.map((c, i) => (
+                        <td key={c.k} className={`px-4 align-middle${i === 0 ? ' font-medium' : ''}`} style={tdStyle(c, i)}>
+                          {i === 0 && puedeArrastrar ? (
+                            <div className="flex items-center gap-2">
+                              <span draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', f.id); const tr = e.currentTarget.closest('tr'); if (tr) e.dataTransfer.setDragImage(tr, 24, 20); setArrastrando(f.id) }} onDragEnd={() => { setArrastrando(null); setSobre(null) }}
+                                className="cursor-grab select-none" style={{ color: 'var(--text-muted)', fontSize: 16, lineHeight: 1 }} title="Arrastra para cambiar el orden" aria-label="Arrastrar para ordenar">⠿</span>
+                              {celda(f, c, continua && cfg.agrupar?.includes(c.k))}
+                            </div>
+                          ) : celda(f, c, continua && cfg.agrupar?.includes(c.k))}
+                        </td>
+                      ))}
                       <td className="px-4 align-middle" style={{ position: 'sticky', right: 0, zIndex: 5, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
                         <div className="flex gap-3 whitespace-nowrap">
                           {canEdit && cfg.rehabilitar && onRehabilitar && <button onClick={() => onRehabilitar(f)} className="text-xs hover:underline" style={{ color: 'var(--success)' }} title="Devolver la cuenta al cuadro General">Rehabilitar</button>}

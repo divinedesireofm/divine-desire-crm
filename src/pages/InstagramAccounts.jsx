@@ -12,6 +12,7 @@ import IGProfileMetrics from './IGProfileMetrics'
 import TablaRegistros from '../components/TablaRegistros'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
+import { moverFila, guardarOrden } from '../lib/ordenManual'
 
 // Columnas: k = clave de orden, n = cabecera. Todo se ve completo salvo 2FA, Observaciones y Restricciones, que se abrevian (con «ver más») si son largas: `w` es su ancho máximo.
 const COLS = [
@@ -29,7 +30,7 @@ function FotoIG({ url, nombre, size = 36 }) {
   return <span aria-hidden="true" style={{ ...base, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, fontSize: 14 }}>{(nombre || '?').charAt(0).toUpperCase()}</span>
 }
 
-const ORDENABLES = COLS.filter((c) => c.k !== 'acc')
+const ORDENABLES = [{ k: 'manual', n: 'Orden manual (arrastrar)' }, ...COLS.filter((c) => c.k !== 'acc')]
 const vacio = (v) => v === null || v === undefined || v === ''
 
 const STATUS_OPTIONS = ['calentando', 'activa', 'en_pausa', 'en_revision', 'suspendida', 'baneada']
@@ -77,12 +78,14 @@ export default function InstagramAccounts() {
   const [error, setError] = useState(null)
   const [seguidores, setSeguidores] = useState({}) // account_id -> última lectura de seguidores
   const [fotos, setFotos] = useState({}) // account_id -> foto de perfil de Instagram
-  const [ordenK, setOrdenK] = useState('modelo')   // por defecto: por modelo
+  const [ordenK, setOrdenK] = useState('manual')   // por defecto: el orden manual que pones tú arrastrando
   const [ordenDir, setOrdenDir] = useState('asc')
   const [fModelo, setFModelo] = useState('todos')
   const [fEstado, setFEstado] = useState('todos')
   const [fResp, setFResp] = useState('todos')
   const [busca, setBusca] = useState('')
+  const [arrastrando, setArrastrando] = useState(null)
+  const [sobre, setSobre] = useState(null)
   const [bajaDe, setBajaDe] = useState(null)         // cuenta que se va a dar de baja (eliminada/suspendida)
   const [rehabDe, setRehabDe] = useState(null)        // fila de Eliminadas que se va a rehabilitar
   const [modalErr, setModalErr] = useState(null)
@@ -95,6 +98,7 @@ export default function InstagramAccounts() {
   // Valor de cada columna para ordenar
   function valorDe(a, k) {
     switch (k) {
+      case 'manual': return a.orden != null ? Number(a.orden) : null
       case 'cuenta': return (a.username || '').toLowerCase()
       case 'modelo': return a.models?.stage_name ? a.models.stage_name.toLowerCase() : null
       case 'estado': return STATUS_OPTIONS.indexOf(a.status)
@@ -122,6 +126,7 @@ export default function InstagramAccounts() {
       if (q && ![a.username, a.original_username, a.email, a.models?.stage_name, a.profiles?.full_name, a.observations, a.restrictions].some((v) => String(v || '').toLowerCase().includes(q))) return false
       return true
     })
+    if (ordenK === 'manual') return lista.sort((p, q2) => (Number(p.orden ?? 1e15) - Number(q2.orden ?? 1e15)) || cmp(valorDe(p, 'cuenta'), valorDe(q2, 'cuenta')))
     const dir = ordenDir === 'asc' ? 1 : -1
     return lista.sort((p, q2) => {
       const vp = valorDe(p, ordenK), vq = valorDe(q2, ordenK)
@@ -136,6 +141,18 @@ export default function InstagramAccounts() {
     })
   }, [accounts, seguidores, ordenK, ordenDir, fModelo, fEstado, fResp, busca]) // eslint-disable-line
   const hayFiltros = fModelo !== 'todos' || fEstado !== 'todos' || fResp !== 'todos' || busca.trim() !== ''
+  // Arrastrar filas: solo con el orden manual y sin filtros (así lo que ves es la lista completa)
+  const puedeArrastrar = canDelete && ordenK === 'manual' && !busca.trim() && fModelo === 'todos' && fEstado === 'todos' && fResp === 'todos' && !editingId
+  async function soltar(haciaId) {
+    const desde = arrastrando
+    setArrastrando(null); setSobre(null)
+    if (!desde || desde === haciaId) return
+    const { lista, cambios } = moverFila(visibles, desde, haciaId)
+    if (!cambios.length) return
+    setAccounts((prev) => prev.map((r) => lista.find((x) => x.id === r.id) ? { ...r, orden: lista.find((x) => x.id === r.id).orden } : r))
+    const err = await guardarOrden('instagram_accounts', cambios)
+    if (err) { setError('No se pudo guardar el orden: ' + err.message); load() }
+  }
   function ordenarPor(k) { if (k === ordenK) setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc')); else { setOrdenK(k); setOrdenDir('asc') } }
 
   // «Creador»: asistentes de Instagram, extrabajadores de Instagram y modelos
@@ -412,6 +429,8 @@ export default function InstagramAccounts() {
         .tabla-ig tbody tr.fila-ig { transition: background-color .2s ease; }
         .tabla-ig tbody tr.fila-ig:hover > td { background: var(--panel-alt) !important; }
         .tabla-ig tbody tr.fila-ig.editando > td { background: color-mix(in srgb, var(--accent) 14%, var(--panel)) !important; }
+        .tabla-ig tbody tr.sobre > td { box-shadow: inset 0 3px 0 0 var(--accent); }
+        .tabla-ig tbody tr.arrastrada { opacity: .45; }
         .tabla-ig thead th { text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
       `}</style>
       <PageHeader
@@ -466,19 +485,19 @@ export default function InstagramAccounts() {
               </Select>
             </div>
             <div className="flex gap-1.5">
-              <div className="w-44">
+              <div className="w-56">
                 <Select value={ordenK} onChange={(e) => { setOrdenK(e.target.value); setOrdenDir('asc') }} aria-label="Ordenar por">
                   {ORDENABLES.map((c) => <option key={c.k} value={c.k}>Ordenar: {c.n}</option>)}
                 </Select>
               </div>
-              <button type="button" onClick={() => setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc'))} title={ordenDir === 'asc' ? 'Ascendente (A→Z, menor a mayor)' : 'Descendente (Z→A, mayor a menor)'}
-                className="px-3 rounded-md text-sm whitespace-nowrap" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>{ordenDir === 'asc' ? '▲ A→Z' : '▼ Z→A'}</button>
+              {ordenK !== 'manual' && <button type="button" onClick={() => setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc'))} title={ordenDir === 'asc' ? 'Ascendente (A→Z, menor a mayor)' : 'Descendente (Z→A, mayor a menor)'}
+                className="px-3 rounded-md text-sm whitespace-nowrap" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>{ordenDir === 'asc' ? '▲ A→Z' : '▼ Z→A'}</button>}
             </div>
           </div>
           <div className="flex items-center gap-3 mt-2 text-xs flex-wrap" style={{ color: 'var(--text-muted)' }}>
-            <span>{visibles.length} de {accounts.length} cuentas · orden: {ORDENABLES.find((c) => c.k === ordenK)?.n} ({ordenDir === 'asc' ? 'ascendente' : 'descendente'})</span>
-            {(hayFiltros || ordenK !== 'modelo' || ordenDir !== 'asc') && (
-              <button type="button" className="underline" onClick={() => { setFModelo('todos'); setFEstado('todos'); setFResp('todos'); setBusca(''); setOrdenK('modelo'); setOrdenDir('asc') }}>Restablecer (orden por modelo)</button>
+            <span>{visibles.length} de {accounts.length} cuentas · orden: {ORDENABLES.find((c) => c.k === ordenK)?.n}{ordenK !== 'manual' ? ` (${ordenDir === 'asc' ? 'ascendente' : 'descendente'})` : ''}{puedeArrastrar ? ' · arrastra ⠿ para mover una cuenta' : ordenK === 'manual' && canDelete ? ' · quita los filtros para poder arrastrar' : ''}</span>
+            {(hayFiltros || ordenK !== 'manual' || ordenDir !== 'asc') && (
+              <button type="button" className="underline" onClick={() => { setFModelo('todos'); setFEstado('todos'); setFResp('todos'); setBusca(''); setOrdenK('manual'); setOrdenDir('asc') }}>Restablecer (orden manual)</button>
             )}
           </div>
         </div>
@@ -505,16 +524,28 @@ export default function InstagramAccounts() {
               <tbody>
                 {visibles.length === 0 ? (
                   <tr><td colSpan={COLS.length} className="px-4 py-10 text-center" style={{ color: 'var(--text-muted)' }}>{accounts.length ? 'Ninguna cuenta coincide con los filtros.' : 'Todavía no hay cuentas.'}</td></tr>
-                ) : visibles.map((a) => (
+                ) : visibles.map((a, idx) => {
+                  // línea gruesa entre cuentas de distinta modelo (con el orden manual o por modelo)
+                  const cambiaModelo = idx > 0 && (ordenK === 'manual' || ordenK === 'modelo') && (a.model_id || null) !== (visibles[idx - 1].model_id || null)
+                  return (
                   <Fragment key={a.id}>
-                    <tr className={`fila-ig${editingId === a.id ? ' editando' : ''}`} style={{ borderBottom: editingId === a.id ? 'none' : '1px solid var(--border)', height: 62 }}>
+                    <tr className={`fila-ig${editingId === a.id ? ' editando' : ''}${sobre === a.id && arrastrando && arrastrando !== a.id ? ' sobre' : ''}${arrastrando === a.id ? ' arrastrada' : ''}`}
+                      onDragOver={puedeArrastrar && arrastrando ? (e) => { e.preventDefault(); if (sobre !== a.id) setSobre(a.id) } : undefined}
+                      onDrop={puedeArrastrar && arrastrando ? (e) => { e.preventDefault(); soltar(a.id) } : undefined}
+                      style={{ borderBottom: editingId === a.id ? 'none' : '1px solid var(--border)', borderTop: cambiaModelo ? '4px solid color-mix(in srgb, var(--accent) 55%, var(--border))' : undefined, height: 62 }}>
                       <td className="px-4 align-middle" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)', ...fila }}>
+                        <div className="flex items-center">
+                        {puedeArrastrar && (
+                          <span draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', a.id); const tr = e.currentTarget.closest('tr'); if (tr) e.dataTransfer.setDragImage(tr, 24, 20); setArrastrando(a.id) }} onDragEnd={() => { setArrastrando(null); setSobre(null) }}
+                            className="cursor-grab select-none mr-2 align-middle" style={{ color: 'var(--text-muted)', fontSize: 18, lineHeight: 1 }} title="Arrastra para cambiar el orden" aria-label="Arrastrar para ordenar">⠿</span>
+                        )}
                         <CeldaCopia completo titulo="Cuenta actual" texto={`@${a.username}`}>
                           <span className="inline-flex items-center gap-2.5 align-middle font-medium">
                             <FotoIG url={fotos[a.id]} nombre={a.username} size={38} />
                             {a.profile_link ? <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a> : `@${a.username}`}
                           </span>
                         </CeldaCopia>
+                        </div>
                       </td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Modelo" texto={a.models?.stage_name} /></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Estado" texto={String(a.status || '').replace(/_/g, ' ')}><StatusBadge status={a.status} /></CeldaCopia></td>
@@ -563,7 +594,8 @@ export default function InstagramAccounts() {
                       </tr>
                     )}
                   </Fragment>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </ScrollSuperior>
