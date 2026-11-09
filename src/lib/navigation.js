@@ -29,7 +29,7 @@ export const SECTIONS = [
       { to: '/contenido', label: 'Contenido pedido', icon: 'package', roles: ['admin', 'manager'] },
       { to: '/solicitudes-modelos', label: 'Solicitudes de modelos', icon: 'sparkle', roles: ['admin', 'manager'] },
       { to: '/metricas-chatters', label: 'Métricas de chatters', icon: 'chart', roles: ['admin', 'manager'] },
-      { to: '/informes-manager', label: 'Informes del manager', icon: 'file', roles: ['admin', 'manager'] },
+      { to: '/informes-manager', label: 'Informes del manager', icon: 'file', roles: ['admin', 'manager'], soloRoles: ['admin', 'manager'] },
       { to: '/rendimiento-360', label: 'Rendimiento 360', icon: 'chart', roles: ['admin', 'manager'] },
       { to: '/masivos', label: 'Masivos PPV', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/chatters', label: 'Chatters', icon: 'users', roles: ['admin', 'manager'] },
@@ -50,7 +50,7 @@ export const SECTIONS = [
     items: [
       { to: '/instagram', label: 'Cuentas de Instagram', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
-      { to: '/informes-manager-ig', label: 'Informes del manager', icon: 'file', roles: ['admin', 'ig_manager'] },
+      { to: '/informes-manager-ig', label: 'Informes del manager', icon: 'file', roles: ['admin', 'ig_manager'], soloRoles: ['admin', 'ig_manager'] },
       { to: '/planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['admin', 'ig_manager', 'ig_assistant', 'planner'] },
       { to: '/enlaces', label: 'Enlaces', icon: 'target', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/lo-que-funciona', label: 'Lo que funciona', icon: 'chart', roles: ['admin', 'ig_manager', 'ig_assistant'] },

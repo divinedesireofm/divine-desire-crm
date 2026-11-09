@@ -88,7 +88,7 @@ export default function Layout() {
   }, [])
 
   const visibleSections = aplicarOrden(SECTIONS, ordenCfg)
-    .map((s) => ({ ...s, items: s.items.filter((item) => (!item.soloModelo || soloModeloCuenta) && (!item.soloCuenta || cuentaAcotada) && !(cuentaAcotada && item.to === '/') && puedeVer(item.to, item.roles)) }))
+    .map((s) => ({ ...s, items: s.items.filter((item) => (!item.soloModelo || soloModeloCuenta) && (!item.soloCuenta || cuentaAcotada) && (!item.soloRoles || item.soloRoles.some((r) => roles.includes(r))) && !(cuentaAcotada && item.to === '/') && puedeVer(item.to, item.roles)) }))
     .filter((s) => s.items.length > 0)
 
   // ---- Ordenar el menú (solo admin): se guarda para todo el equipo ----
@@ -122,7 +122,7 @@ export default function Layout() {
   const mitad = (ev) => { const r = ev.currentTarget.getBoundingClientRect(); return ev.clientY > r.top + r.height / 2 ? 1 : 0 }
 
   const itemActual = buscarItem(location.pathname)
-  const sinAcceso = itemActual && !puedeVer(itemActual.to, itemActual.roles)
+  const sinAcceso = itemActual && (!puedeVer(itemActual.to, itemActual.roles) || (itemActual.soloRoles && !itemActual.soloRoles.some((r) => roles.includes(r)) && !esAdmin))
 
   const seccionesFijas = new Set(roles.map((r) => SECCION_FIJA_POR_ROL[r]).filter(Boolean))
   const etiquetaRoles = roles.map((r) => ROLE_LABELS[r] || r).join(' · ')
