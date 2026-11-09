@@ -5,7 +5,7 @@ import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import ModelName from '../components/ModelAvatar'
-import { TURNOS, turnoDe, colorChatter, horaPorDefecto, calcularEnviarEn, horaDoble, subirImagenMasivo, urlImagenMasivo, borrarImagenMasivo } from '../lib/masivos'
+import { TURNOS, turnoDe, colorFormato, horaPorDefecto, calcularEnviarEn, horaDoble, subirImagenMasivo, urlImagenMasivo, borrarImagenMasivo } from '../lib/masivos'
 import { horarioTurno, fechaHoraDoble } from '../lib/horasTurno'
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
@@ -67,6 +67,7 @@ function MasivosCal() {
   const [nombres, setNombres] = useState({})
   const [add, setAdd] = useState(null)
   const [ver, setVer] = useState(null)
+  const [dia, setDia] = useState(null)
   const [errCarga, setErrCarga] = useState('')
 
   const y = ref.getFullYear(), mo = ref.getMonth()
@@ -112,7 +113,7 @@ function MasivosCal() {
     return g
   }, [rows])
 
-  const trabajadores = useMemo(() => Array.from(new Set(rows.map((r) => r.chatter_id))).filter(Boolean), [rows])
+  const formatosEnMes = useMemo(() => Array.from(new Set(rows.map((r) => r.formato || 'Masivo'))), [rows])
   const startPad = (first.getDay() + 6) % 7
   const cells = []
   for (let i = 0; i < startPad; i++) cells.push(null)
@@ -132,42 +133,46 @@ function MasivosCal() {
           {esMgr && <Button onClick={() => nuevo(hoy)}>+ Asignar masivo</Button>}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-          <span>Turno (franja de color a la izquierda, de arriba abajo):</span>
-          {TURNOS.map((t) => <span key={t.id} className="inline-flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 2, background: t.color, display: 'inline-block' }} />{t.label}</span>)}
-          {trabajadores.length > 0 && <span>· Color del recuadro = trabajador:</span>}
-          {trabajadores.map((id) => <span key={id} className="inline-flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 999, background: colorChatter(id), display: 'inline-block' }} />{(nombres['p' + id] || '—').split(' ')[0]}</span>)}
+          <span>Cada día tiene 3 franjas fijas: Noche (arriba), Mañana (en medio) y Tarde (abajo).</span>
+          {formatosEnMes.length > 0 && <span>· Color = formato:</span>}
+          {formatosEnMes.map((f) => <span key={f} className="inline-flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 2, background: colorFormato(f), display: 'inline-block' }} />{f}</span>)}
         </div>
         {errCarga && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{errCarga}</p>}
         <div style={{ overflowX: 'auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(165px, 1fr))', gap: 4, minWidth: 7 * 165 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(140px, 1fr))', gap: 4, minWidth: 7 * 140 }}>
             {DIAS.map((d) => <div key={d} className="text-xs text-center py-1" style={{ color: 'var(--text-muted)' }}>{d.slice(0, 3)}</div>)}
             {cells.map((d, i) => {
               if (d === null) return <div key={'e' + i} />
               const iso = isoDate(new Date(y, mo, d))
               const evs = byDay[iso] || []
-              const bloques = [...TURNOS.map((t) => ({ t, items: evs.filter((e) => e.turno === t.id) })), { t: null, items: evs.filter((e) => !turnoDe(e.turno)) }].filter((b) => b.items.length)
               return (
-                <div key={iso} className="rounded-md p-1.5 min-h-[90px]" style={{ background: iso === hoy ? 'var(--accent-soft)' : 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-                  <div className="flex justify-between text-xs mb-1">
+                <div key={iso} className="rounded-md p-1.5 flex flex-col" style={{ height: 204, background: iso === hoy ? 'var(--accent-soft)' : 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                  <div className="flex justify-between text-xs mb-1" style={{ height: 18 }}>
                     <span>{d}</span>
                     {esMgr && <span onClick={() => nuevo(iso)} className="cursor-pointer leading-none select-none hover:opacity-80" style={{ color: 'var(--text-muted)', fontSize: 18, fontWeight: 300, padding: '0 4px' }} title="Añadir masivo">+</span>}
                   </div>
-                  {bloques.map(({ t, items }) => (
-                    <div key={t ? t.id : 'sin'} className="mb-1.5">
-                      <p className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: t ? t.color : 'var(--text-muted)' }}>{t ? t.label : 'Sin turno'}</p>
-                      {items.map((ev) => {
-                        const c = colorChatter(ev.chatter_id)
-                        return (
-                          <div key={ev.id} onClick={() => setVer(ev)} data-masivo={ev.id} className="rounded px-1.5 py-1 mb-1 cursor-pointer text-xs"
-                            style={{ background: c + '24', border: `1px solid ${c}`, borderLeft: `5px solid ${t ? t.color : 'var(--border)'}`, opacity: ev.enviado_at ? 0.6 : 1 }}>
-                            <p className="font-medium truncate">{ev.formato || 'Masivo'}{ev.enviado_at ? ' ✓' : ''}</p>
-                            <p className="truncate"><ModelName name={nombres['m' + ev.modelo_id]} size={10} /></p>
-                            <p className="truncate" style={{ color: 'var(--text-muted)' }}>{(nombres['p' + ev.chatter_id] || '—').split(' ')[0]}{ev.enviar_en ? ' · ' + new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ev.enviar_en)) : ''}</p>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
+                  {TURNOS.map((t) => {
+                    const items = evs.filter((e) => e.turno === t.id)
+                    const sin = t.id === 'tarde' ? evs.filter((e) => !turnoDe(e.turno)) : []
+                    const todos = items.concat(sin)
+                    const visibles = todos.length > 2 ? todos.slice(0, 1) : todos
+                    return (
+                      <div key={t.id} data-franja={t.id} className="flex-1 min-h-0 rounded mb-0.5 px-1 py-0.5 overflow-hidden" style={{ borderLeft: `3px solid ${t.color}`, background: 'rgba(128,128,128,0.07)' }}>
+                        <p className="text-[9px] uppercase leading-none mb-0.5" style={{ color: t.color }}>{t.label}</p>
+                        {visibles.map((ev) => {
+                          const c = colorFormato(ev.formato)
+                          return (
+                            <div key={ev.id} onClick={() => setVer(ev)} data-masivo={ev.id} title={`${ev.formato || 'Masivo'} · ${nombres['m' + ev.modelo_id] || ''}`}
+                              className="rounded px-1 text-[11px] leading-[15px] cursor-pointer truncate mb-px"
+                              style={{ background: c, color: '#fff', opacity: ev.enviado_at ? 0.55 : 1 }}>
+                              {(nombres['p' + ev.chatter_id] || '—').split(' ')[0]}{ev.enviado_at ? ' ✓' : ''}
+                            </div>
+                          )
+                        })}
+                        {todos.length > 2 && <div onClick={() => setDia({ iso, t })} className="text-[10px] leading-[13px] cursor-pointer" style={{ color: 'var(--accent)' }}>+{todos.length - 1} más (ver todos)</div>}
+                      </div>
+                    )
+                  })}
                 </div>
               )
             })}
@@ -179,6 +184,18 @@ function MasivosCal() {
         <Capa onClose={() => setAdd(null)}>
           <MasivoModal add={add} modelos={modelos} chatters={chatters} formatos={formatos} profile={profile}
             onClose={() => setAdd(null)} onSaved={() => { setAdd(null); load() }} />
+        </Capa>
+      )}
+      {dia && (
+        <Capa onClose={() => setDia(null)}>
+          <Panel className="p-5">
+            <div className="flex justify-between mb-3"><p className="font-medium">{dia.iso.split('-').reverse().join('/')} · {dia.t.label}</p><button onClick={() => setDia(null)} style={{ color: 'var(--text-muted)' }}>✕</button></div>
+            {(byDay[dia.iso] || []).filter((e) => e.turno === dia.t.id || (dia.t.id === 'tarde' && !turnoDe(e.turno))).map((ev) => (
+              <div key={ev.id} onClick={() => { setDia(null); setVer(ev) }} className="rounded px-2 py-1.5 mb-1.5 text-sm cursor-pointer" style={{ background: colorFormato(ev.formato), color: '#fff', opacity: ev.enviado_at ? 0.6 : 1 }}>
+                <b>{(nombres['p' + ev.chatter_id] || '—')}</b> · {ev.formato || 'Masivo'} · {nombres['m' + ev.modelo_id] || ''}{ev.enviar_en ? ' · ' + horaDoble(ev.enviar_en) : ''}{ev.enviado_at ? ' ✓' : ''}
+              </div>
+            ))}
+          </Panel>
         </Capa>
       )}
       {ver && (

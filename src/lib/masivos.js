@@ -76,3 +76,11 @@ export async function urlImagenMasivo(path, segundos = 3600) {
 export async function borrarImagenMasivo(path) {
   await supabase.storage.from(BUCKET_MASIVOS).remove([path])
 }
+
+// Color estable por formato de masivo (el mismo formato siempre sale del mismo color)
+export function colorFormato(nombre) {
+  const s = String(nombre || 'Masivo').trim().toLowerCase()
+  let h = 7
+  for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0
+  return PALETA[h % PALETA.length]
+}
