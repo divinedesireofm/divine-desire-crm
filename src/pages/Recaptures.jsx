@@ -464,7 +464,7 @@ export default function Recaptures() {
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <p className="font-medium">Fans asignados · semana del {fmtF(semana)}</p>
           <div className="flex items-center gap-2">
-            {esMgr && <Button variant="danger" onClick={borrarSemana} disabled={genBusy}>🗑 Borrar reparto de esta semana</Button>}
+            {esMgr && !cargando && asign.some((x) => !x.desaparecido) && <Button variant="danger" onClick={borrarSemana} disabled={genBusy}>🗑 Borrar reparto de esta semana</Button>}
             <Button variant="ghost" onClick={() => setSemana(sumarDias(semana, -7))}>←</Button>
             <Button variant="ghost" onClick={() => setSemana(lunesDe(hoy()))} disabled={esSemanaActual}>Esta semana</Button>
             <Button variant="ghost" onClick={() => setSemana(sumarDias(semana, 7))}>→</Button>
