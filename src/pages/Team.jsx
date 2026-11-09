@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, Fragment } from 'react'
+import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { readFunctionError } from '../lib/functions'
@@ -75,6 +75,9 @@ export default function Team() {
   const [nuevo, setNuevo] = useState(null)
   const [editar, setEditar] = useState(null)
   const [resetU, setResetU] = useState(null)
+  const panelRef = useRef(null)
+  // Al abrir «Nuevo usuario», «Editar» o «Contraseña», el formulario sale ARRIBA y se sube la pantalla hasta él
+  useEffect(() => { if (nuevo || editar || resetU) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [!!nuevo, editar?.id, resetU?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     setLoading(true)
@@ -162,6 +165,22 @@ export default function Team() {
           ))}
         </div>
       )}
+
+      <div ref={panelRef}>
+      {nuevo && (
+        <NuevoUsuarioModal
+          form={nuevo} setForm={setNuevo} asignables={asignables}
+          onClose={() => setNuevo(null)} onSaved={() => { setNuevo(null); load() }}
+        />
+      )}
+      {editar && (
+        <EditarRolesModal
+          usuario={editar} asignables={asignables}
+          onClose={() => setEditar(null)} onSaved={() => { setEditar(null); load() }}
+        />
+      )}
+      {resetU && <ResetModal u={resetU} onClose={() => setResetU(null)} />}
+      </div>
 
       {vista === 'extrabajadores' ? (
         <Panel>
@@ -269,19 +288,6 @@ export default function Team() {
         )}
       </Panel>
 
-      {nuevo && (
-        <NuevoUsuarioModal
-          form={nuevo} setForm={setNuevo} asignables={asignables}
-          onClose={() => setNuevo(null)} onSaved={() => { setNuevo(null); load() }}
-        />
-      )}
-      {editar && (
-        <EditarRolesModal
-          usuario={editar} asignables={asignables}
-          onClose={() => setEditar(null)} onSaved={() => { setEditar(null); load() }}
-        />
-      )}
-      {resetU && <ResetModal u={resetU} onClose={() => setResetU(null)} />}
       </>)}
     </div>
   )
@@ -340,7 +346,7 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
   }
 
   return (
-    <Panel className="p-5 mt-4">
+    <Panel className="p-5 mb-4">
       <p className="text-sm font-medium mb-3">Nuevo usuario</p>
       {resultado ? (
         <div>
@@ -436,7 +442,7 @@ function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
   }
 
   return (
-    <Panel className="p-5 mt-4">
+    <Panel className="p-5 mb-4">
       <p className="text-sm font-medium mb-3">Editar · {usuario.full_name}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-1">
         <Input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
@@ -481,7 +487,7 @@ function ResetModal({ u, onClose }) {
   }
 
   return (
-    <Panel className="p-5 mt-4">
+    <Panel className="p-5 mb-4">
       <p className="text-sm font-medium mb-3">Resetear contraseña · {u.full_name}</p>
       {ok ? (
         <div>
