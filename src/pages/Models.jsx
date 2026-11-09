@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
 import Desplegable from '../components/Desplegable'
 import FichaModelo from '../components/FichaModelo'
+import ProcesoModelo, { PlantillaProcesos } from '../components/ProcesoModelo'
 import { progresoFicha } from '../lib/fichaModelo'
 import { ModelAvatar } from '../components/ModelAvatar'
 import { reducirImagen, refrescarFotosModelos } from '../lib/modelPhotos'
@@ -27,6 +28,10 @@ export default function Models() {
   const [fichas, setFichas] = useState({})     // { model_id: datos } — ficha general, la ve todo el equipo
   const [fichaAbierta, setFichaAbierta] = useState(null)
   const [fichaCerrando, setFichaCerrando] = useState(false)
+  const [procAbierto, setProcAbierto] = useState(null)   // modelo cuyo proceso está desplegado
+  const [procCerrando, setProcCerrando] = useState(false)
+  const [progreso, setProgreso] = useState({})            // { model_id: { total, hechos } }
+  const [verPlantilla, setVerPlantilla] = useState(false)
   const [accesoDe, setAccesoDe] = useState(null)   // modelo a la que se le está dando acceso
   const [accEmail, setAccEmail] = useState('')
   const [accPass, setAccPass] = useState('')
@@ -113,6 +118,12 @@ export default function Models() {
       const { data: pf } = await supabase.from('profiles').select('id, active')
       setActivos(Object.fromEntries((pf || []).map((x) => [x.id, x.active !== false])))
     }
+    if (canEdit) {
+      const { data: mp } = await supabase.from('model_procesos').select('model_id, hecho_at')
+      const pg = {}
+      ;(mp || []).forEach((x) => { const o = pg[x.model_id] || (pg[x.model_id] = { total: 0, hechos: 0 }); o.total++; if (x.hecho_at) o.hechos++ })
+      setProgreso(pg)
+    }
     const { data: fg } = await supabase.from('model_general').select('model_id, datos')
     setFichas(Object.fromEntries((fg || []).map((r) => [r.model_id, r.datos || {}])))
     setLoading(false)
@@ -126,6 +137,8 @@ export default function Models() {
     setFichas((f) => ({ ...f, [modeloId]: datos }))
     return {}
   }
+  const alternarProceso = (m) => { if (procAbierto?.id === m.id && !procCerrando) { setProcCerrando(true) } else { setProcCerrando(false); setProcAbierto(m) } }
+  const actualizarProgreso = (id, lista) => setProgreso((p) => ({ ...p, [id]: { total: lista.length, hechos: lista.filter((x) => x.hecho_at).length } }))
   const alternarFicha = (id) => { if (fichaAbierta === id && !fichaCerrando) { setFichaCerrando(true) } else { setFichaCerrando(false); setFichaAbierta(id) } }
 
   async function subirFoto(m, file) {
@@ -214,11 +227,16 @@ export default function Models() {
         title="Modelos"
         subtitle="Ficha de creadoras activas, en negociación o de baja."
         action={canEdit && !editingId && (
-          <Button onClick={showForm ? () => setShowForm(false) : startCreate}>
-            {showForm ? 'Cancelar' : 'Añadir modelo'}
-          </Button>
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="ghost" onClick={() => setVerPlantilla((v) => !v)}>🧩 Pasos para todas las modelos</Button>
+            <Button onClick={showForm ? () => setShowForm(false) : startCreate}>
+              {showForm ? 'Cancelar' : 'Añadir modelo'}
+            </Button>
+          </div>
         )}
       />
+
+      {verPlantilla && canEdit && <PlantillaProcesos onCerrar={() => setVerPlantilla(false)} onCambio={() => { load(); setProcAbierto(null) }} />}
 
       {showForm && (
         <Panel className="p-5 mb-6">
@@ -351,14 +369,14 @@ export default function Models() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {(canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono', 'Notas', 'Información privada', 'Ficha general', 'Acceso', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', 'Ficha general', '']).map((col, i) => (
+                  {(canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono', 'Notas', 'Información privada', 'Ficha general', 'Proceso', 'Acceso', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', 'Ficha general', '']).map((col, i) => (
                     <th key={col + i} className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-muted)' }}>{col}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {models.length === 0 ? (
-                  <tr><td colSpan={canEdit ? 10 : 6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay datos aquí.</td></tr>
+                  <tr><td colSpan={canEdit ? 11 : 6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay datos aquí.</td></tr>
                 ) : models.map((m) => {
                   const pr = progresoFicha(fichas[m.id])
                   const abierta = fichaAbierta === m.id
@@ -396,6 +414,14 @@ export default function Models() {
                 </Td>
                 {canEdit && (
                   <Td>
+                    {(() => { const pg = progreso[m.id]; const ab = procAbierto?.id === m.id && !procCerrando; return (
+                      <button onClick={() => alternarProceso(m)} className="text-xs px-3 py-1.5 rounded-md whitespace-nowrap" style={{ background: ab ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${ab ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--accent)' }}>
+                        {ab ? '▲ Ocultar proceso' : '▼ Ver proceso'}{pg?.total ? ` · ${pg.hechos}/${pg.total}` : ' · vacío'}
+                      </button>) })()}
+                  </Td>
+                )}
+                {canEdit && (
+                  <Td>
                     {m.user_id
                       ? <div className="flex items-center gap-2 whitespace-nowrap">
                           {activos[m.user_id] === false
@@ -416,9 +442,18 @@ export default function Models() {
                       </tr>
                       {abierta && (
                         <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td colSpan={canEdit ? 10 : 6} style={{ padding: 0 }}>
+                          <td colSpan={canEdit ? 11 : 6} style={{ padding: 0 }}>
                             <Desplegable abierto={!fichaCerrando} onCerrado={() => { setFichaAbierta(null); setFichaCerrando(false) }}>
                               <FichaModelo modelo={m} datos={fichas[m.id]} canEdit={canEdit} onGuardar={(d) => guardarFicha(m.id, d)} onCerrar={() => setFichaCerrando(true)} />
+                            </Desplegable>
+                          </td>
+                        </tr>
+                      )}
+                      {canEdit && procAbierto?.id === m.id && (
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td colSpan={11} style={{ padding: 0 }}>
+                            <Desplegable abierto={!procCerrando} onCerrado={() => { setProcAbierto(null); setProcCerrando(false) }}>
+                              <ProcesoModelo modelo={m} onCambio={actualizarProgreso} />
                             </Desplegable>
                           </td>
                         </tr>
