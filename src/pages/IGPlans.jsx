@@ -105,7 +105,7 @@ export default function IGPlans() {
     const [{ data: c }, { data: p }, eq] = await Promise.all([
       supabase.from('instagram_accounts').select('id, username, model_id, models(stage_name)').order('username'),
       supabase.from('ig_plans').select('*').order('created_at', { ascending: false }).limit(300),
-      getProfilesByRoles(['admin', 'ig_manager', 'ig_assistant']),
+      getProfilesByRoles(['admin', 'ig_manager', 'ig_assistant', 'planner']),
     ])
     setEquipo(eq || [])
     supabase.from('profiles').select('id, full_name').then(({ data: ps }) => setTodosNombres(Object.fromEntries((ps || []).map((x) => [x.id, x.full_name]))))

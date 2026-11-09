@@ -14,7 +14,7 @@ export const SECTIONS = [
       { to: '/normas', label: 'Normas y reglas', icon: 'alert', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/novedades', label: 'Novedades', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] }
       ,{ to: '/mis-planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['modelo'], soloModelo: true },
-      { to: '/mi-perfil', label: 'Mi perfil', icon: 'diamond', roles: ['modelo'], soloModelo: true },
+      { to: '/mi-perfil', label: 'Mi perfil', icon: 'diamond', roles: ['modelo', 'planner'], soloCuenta: true },
     ],
   },
   {
@@ -51,7 +51,7 @@ export const SECTIONS = [
       { to: '/instagram', label: 'Cuentas de Instagram', icon: 'camera', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/reels', label: 'Envío de reels', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/informes-manager-ig', label: 'Informes del manager', icon: 'file', roles: ['admin', 'ig_manager'] },
-      { to: '/planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['admin', 'ig_manager', 'ig_assistant'] },
+      { to: '/planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['admin', 'ig_manager', 'ig_assistant', 'planner'] },
       { to: '/enlaces', label: 'Enlaces', icon: 'target', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/lo-que-funciona', label: 'Lo que funciona', icon: 'chart', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: '/reels-referencia', label: 'Reels de referencia', icon: 'sparkle', roles: ['admin', 'ig_manager', 'ig_assistant'] },
@@ -105,7 +105,7 @@ export const ROLES_EDITABLES = [
   { id: 'ig_assistant', label: 'Asistente IG' },
   { id: 'reddit_manager', label: 'Manager de Reddit' },
   { id: 'reddit_assistant', label: 'Asistente de Reddit' },
-  { id: 'modelo', label: 'Modelo' },
+  { id: 'planner', label: 'Planner' },
 ]
 
 // Aplica el orden que el admin ha guardado desde el propio menú.

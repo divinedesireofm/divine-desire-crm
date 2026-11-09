@@ -24,6 +24,7 @@ const ROLE_LABELS = {
   ig_assistant: 'Asistente de Instagram',
   reddit_manager: 'Manager de Reddit',
   reddit_assistant: 'Asistente de Reddit',
+  planner: 'Planner',
   modelo: 'Modelo',
 }
 
@@ -36,6 +37,7 @@ const SECCION_FIJA_POR_ROL = {
   ig_assistant: 'instagram',
   reddit_manager: 'reddit',
   reddit_assistant: 'reddit',
+  planner: 'instagram',
 }
 
 // Color de iconos y nombres por departamento. Chatting no tiene (se queda con el dorado y el texto de siempre).
@@ -51,6 +53,8 @@ export default function Layout() {
   const { profile, roles, puedeVer, signOut, hasRole } = useAuth()
   const esAdmin = hasRole('admin')
   const soloModeloCuenta = roles.length > 0 && roles.every((r) => r === 'modelo')
+  const soloPlannerCuenta = roles.length > 0 && roles.every((r) => r === 'planner')
+  const cuentaAcotada = soloModeloCuenta || soloPlannerCuenta   // cuentas que solo ven lo suyo (sin Panel general)
   const [collapsed, setCollapsed] = useState({})
   const [mobileOpen, setMobileOpen] = useState(false)
   const [ordenCfg, setOrdenCfg] = useState(null)      // orden del menú guardado por el admin
@@ -84,7 +88,7 @@ export default function Layout() {
   }, [])
 
   const visibleSections = aplicarOrden(SECTIONS, ordenCfg)
-    .map((s) => ({ ...s, items: s.items.filter((item) => (!item.soloModelo || soloModeloCuenta) && !(soloModeloCuenta && item.to === '/') && puedeVer(item.to, item.roles)) }))
+    .map((s) => ({ ...s, items: s.items.filter((item) => (!item.soloModelo || soloModeloCuenta) && (!item.soloCuenta || cuentaAcotada) && !(cuentaAcotada && item.to === '/') && puedeVer(item.to, item.roles)) }))
     .filter((s) => s.items.length > 0)
 
   // ---- Ordenar el menú (solo admin): se guarda para todo el equipo ----

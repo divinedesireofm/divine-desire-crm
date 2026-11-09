@@ -8,6 +8,7 @@ const ROLES_REDDIT = ['reddit_manager', 'reddit_assistant']
 export default function Home() {
   const { roles, profile } = useAuth()
   const soloModelo = roles.length > 0 && roles.every((r) => r === 'modelo')
+  const soloPlanner = roles.length > 0 && roles.every((r) => r === 'planner')
   // Los asistentes de Reddit solo trabaja en su departamento: su inicio son sus dos apartados
   const soloReddit = roles.length > 0 && roles.every((r) => ROLES_REDDIT.includes(r))
   if (soloReddit) {
@@ -22,5 +23,6 @@ export default function Home() {
     )
   }
   // La modelo (cuenta solo-modelo) entra directamente a sus planificaciones
+  if (soloPlanner) return <Navigate to="/planificaciones" replace />
   return soloModelo ? <Navigate to="/mis-planificaciones" replace /> : <Dashboard />
 }

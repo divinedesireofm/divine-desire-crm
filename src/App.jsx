@@ -52,11 +52,10 @@ import SltLinks from './pages/SltLinks'
 import RedditAccounts from './pages/RedditAccounts'
 import RedditReports from './pages/RedditReports'
 import ManagerReports from './pages/ManagerReports'
-import WeeklyManagerReports from './pages/WeeklyManagerReports'
 import Massives from './pages/Massives'
 import SetPassword from './pages/SetPassword'
 import ReelsModelo from './pages/ReelsModelo'
-import MiPerfilModelo from './pages/MiPerfilModelo'
+import MiPerfil from './pages/MiPerfil'
 
 function Protected({ children }) {
   const { session, loading } = useAuth()
@@ -149,11 +148,11 @@ function AppRoutes() {
         <Route path="recaptaciones" element={<Recaptures />} />
         <Route path="planificaciones" element={<IGPlans />} />
         <Route path="mis-planificaciones" element={<ReelsModelo />} />
-        <Route path="mi-perfil" element={<MiPerfilModelo />} />
+        <Route path="mi-perfil" element={<MiPerfil />} />
         <Route path="enlaces" element={<SltLinks />} />
         <Route path="reddit/cuentas" element={<RedditAccounts />} />
         <Route path="reddit/reportes" element={<RedditReports />} />
-        <Route path="informes-manager" element={<WeeklyManagerReports area="chatting" />} />
+        <Route path="informes-manager" element={<ManagerReports area="chatting" />} />
         <Route path="informes-manager-ig" element={<ManagerReports area="instagram" />} />
         <Route path="masivos" element={<Massives />} />
       </Route>
