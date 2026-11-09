@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import logo from '../assets/logo.png'
 import Icon from './Icon'
 import AnnouncementGate from './AnnouncementGate'
+import MasivoGate from './MasivoGate'
 import PildoraGate from './PildoraGate'
 import ShiftTimer from './ShiftTimer'
 import { useReportePendiente } from '../lib/reportePendiente'
@@ -25,6 +26,7 @@ const ROLE_LABELS = {
   reddit_manager: 'Manager de Reddit',
   reddit_assistant: 'Asistente de Reddit',
   planner: 'Planner',
+  masivos: 'Equipo de Masivos',
   modelo: 'Modelo',
 }
 
@@ -38,6 +40,7 @@ const SECCION_FIJA_POR_ROL = {
   reddit_manager: 'reddit',
   reddit_assistant: 'reddit',
   planner: 'instagram',
+  masivos: 'chatting',
 }
 
 // Color de iconos y nombres por departamento. Chatting no tiene (se queda con el dorado y el texto de siempre).
@@ -54,7 +57,8 @@ export default function Layout() {
   const esAdmin = hasRole('admin')
   const soloModeloCuenta = roles.length > 0 && roles.every((r) => r === 'modelo')
   const soloPlannerCuenta = roles.length > 0 && roles.every((r) => r === 'planner')
-  const cuentaAcotada = soloModeloCuenta || soloPlannerCuenta   // cuentas que solo ven lo suyo (sin Panel general)
+  const soloMasivosCuenta = roles.length > 0 && roles.every((r) => r === 'masivos')
+  const cuentaAcotada = soloModeloCuenta || soloPlannerCuenta || soloMasivosCuenta   // cuentas que solo ven lo suyo (sin Panel general)
   const [collapsed, setCollapsed] = useState({})
   const [mobileOpen, setMobileOpen] = useState(false)
   const [ordenCfg, setOrdenCfg] = useState(null)      // orden del menú guardado por el admin
@@ -323,6 +327,7 @@ export default function Layout() {
       </main>
       </div>
       <NotificationPopup />
+      <MasivoGate />
     </div>
     </NotificationsProvider>
   )

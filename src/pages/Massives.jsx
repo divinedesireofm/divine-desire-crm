@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import ModelName from '../components/ModelAvatar'
+import { TURNOS, turnoDe, colorChatter, horaPorDefecto, calcularEnviarEn, horaDoble, subirImagenMasivo, urlImagenMasivo, borrarImagenMasivo } from '../lib/masivos'
+import { horarioTurno, fechaHoraDoble } from '../lib/horasTurno'
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -16,7 +18,7 @@ export default function Massives() {
   const [tab, setTab] = useState('cal')
   return (
     <div>
-      <PageHeader title="Masivos PPV" subtitle="Calendario de quién envía qué modelo cada día, y los formatos de los masivos." />
+      <PageHeader title="Calendario de masivos" subtitle="Todos los masivos (PPV y demás): qué se envía, a qué modelo, en qué turno y quién lo manda. Y los formatos disponibles." />
       <div className="flex gap-2 mb-5">
         {[['cal', 'Calendario'], ['fmt', 'Formatos']].map(([id, label]) => (
           <button
@@ -38,157 +40,300 @@ export default function Massives() {
   )
 }
 
+function Foto({ path, alto = 160 }) {
+  const [url, setUrl] = useState('')
+  useEffect(() => { let vivo = true; urlImagenMasivo(path).then((u) => { if (vivo) setUrl(u) }); return () => { vivo = false } }, [path])
+  if (!url) return <div style={{ height: 60 }} className="text-xs" >Cargando foto…</div>
+  return <a href={url} target="_blank" rel="noopener noreferrer"><img src={url} alt="Contenido del masivo" style={{ maxHeight: alto, maxWidth: '100%', borderRadius: 8, border: '1px solid var(--border)' }} /></a>
+}
+
+function Capa({ children, onClose }) {
+  return (
+    <div className="fixed inset-0 flex items-start justify-center p-4 overflow-y-auto" style={{ zIndex: 900, background: 'rgba(0,0,0,0.6)' }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="w-full max-w-2xl my-4">{children}</div>
+    </div>
+  )
+}
+
 function MasivosCal() {
   const { profile, hasAnyRole } = useAuth()
-  const esMgr = hasAnyRole(['admin', 'manager'])
+  const esMgr = hasAnyRole(['admin', 'manager', 'masivos'])
   const [ref, setRef] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [rows, setRows] = useState([])
   const [modelos, setModelos] = useState([])
   const [chatters, setChatters] = useState([])
+  const [formatos, setFormatos] = useState([])
+  const [nombres, setNombres] = useState({})
   const [add, setAdd] = useState(null)
+  const [ver, setVer] = useState(null)
+  const [errCarga, setErrCarga] = useState('')
 
   const y = ref.getFullYear(), mo = ref.getMonth()
   const first = new Date(y, mo, 1), last = new Date(y, mo + 1, 0)
 
   async function load() {
     const desde = isoDate(first), hasta = isoDate(last)
-    const [{ data: r }, { data: m }, u, ex] = await Promise.all([
-      supabase.from('massive_calendar').select('*, profiles(full_name), models(stage_name)').gte('fecha', desde).lte('fecha', hasta),
+    const [r, { data: m }, u, ex, { data: f }] = await Promise.all([
+      supabase.from('massive_calendar').select('*').gte('fecha', desde).lte('fecha', hasta),
       supabase.from('models').select('id, stage_name').eq('status', 'activa').order('stage_name'),
       getProfilesByRoles(['manager', 'chatter']),
       getExtrabajadorIds(),
+      supabase.from('massive_formats').select('id, titulo, contenido').order('created_at'),
     ])
-    setRows((r || []).filter((x) => !ex.has(x.chatter_id))); setModelos(m || []); setChatters(u)
+    if (r.error) { setErrCarga('No se pudo cargar el calendario: ' + r.error.message); setRows([]) } else setErrCarga('')
+    const filas = (r.data || []).filter((x) => !ex.has(x.chatter_id))
+    // nombres sueltos (sin depender de relaciones entre tablas)
+    const mapa = {}
+    u.forEach((p) => { mapa['p' + p.id] = p.full_name })
+    const modIds = Array.from(new Set(filas.map((x) => x.modelo_id).filter(Boolean)))
+    const { data: ms } = modIds.length ? await supabase.from('models').select('id, stage_name').in('id', modIds) : { data: [] }
+    ;(ms || []).forEach((x) => { mapa['m' + x.id] = x.stage_name })
+    ;(m || []).forEach((x) => { mapa['m' + x.id] = x.stage_name })
+    setNombres(mapa); setRows(filas); setModelos(m || []); setChatters(u); setFormatos(f || [])
   }
   useEffect(() => { load() }, [y, mo])
 
   async function borrar(ev) {
-    if (!confirm(`¿Eliminar ${ev.profiles?.full_name} → ${ev.models?.stage_name}?`)) return
-    await supabase.from('massive_calendar').delete().eq('id', ev.id)
-    setRows((rs) => rs.filter((x) => x.id !== ev.id))
+    if (!confirm(`¿Eliminar el masivo de ${nombres['m' + ev.modelo_id] || 'la modelo'}?`)) return
+    const { error } = await supabase.from('massive_calendar').delete().eq('id', ev.id)
+    if (error) { alert('No se pudo eliminar: ' + error.message); return }
+    if (ev.imagen_path) {
+      const { count } = await supabase.from('massive_calendar').select('id', { count: 'exact', head: true }).eq('imagen_path', ev.imagen_path)
+      if (!count) await borrarImagenMasivo(ev.imagen_path)
+    }
+    setRows((rs) => rs.filter((x) => x.id !== ev.id)); setVer(null)
   }
 
   const byDay = useMemo(() => {
     const g = {}
     for (const r of rows) { (g[r.fecha] = g[r.fecha] || []).push(r) }
+    Object.values(g).forEach((l) => l.sort((a, b) => String(a.enviar_en || '').localeCompare(String(b.enviar_en || ''))))
     return g
   }, [rows])
 
+  const trabajadores = useMemo(() => Array.from(new Set(rows.map((r) => r.chatter_id))).filter(Boolean), [rows])
   const startPad = (first.getDay() + 6) % 7
   const cells = []
   for (let i = 0; i < startPad; i++) cells.push(null)
   for (let d = 1; d <= last.getDate(); d++) cells.push(d)
   const hoy = fechaHoyISO()
+  const nuevo = (fecha) => setAdd({ fecha, turno: 'mañana', chatter_id: chatters[0]?.id || '', modelos: [] })
 
   return (
     <div>
       <Panel className="p-4 mb-4">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <button onClick={() => setRef(new Date(y, mo - 1, 1))} className="px-2 py-1 rounded" style={{ border: '1px solid var(--border)' }}>‹</button>
             <strong className="min-w-[150px] text-center">{MESES[mo]} {y}</strong>
             <button onClick={() => setRef(new Date(y, mo + 1, 1))} className="px-2 py-1 rounded" style={{ border: '1px solid var(--border)' }}>›</button>
           </div>
-          {esMgr && (
-            <Button onClick={() => setAdd({ fecha: hoy, chatter_id: chatters[0]?.id || '', modelos: [], nota: '' })}>+ Asignar masivo</Button>
-          )}
+          {esMgr && <Button onClick={() => nuevo(hoy)}>+ Asignar masivo</Button>}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(120px, 1fr))', gap: 4 }}>
-          {DIAS.map((d) => <div key={d} className="text-xs text-center py-1" style={{ color: 'var(--text-muted)' }}>{d.slice(0, 3)}</div>)}
-          {cells.map((d, i) => {
-            if (d === null) return <div key={'e' + i} />
-            const iso = isoDate(new Date(y, mo, d))
-            const evs = byDay[iso] || []
-            const porChatter = {}
-            evs.forEach((ev) => { const k = ev.profiles?.full_name || '—'; (porChatter[k] = porChatter[k] || []).push(ev) })
-            return (
-              <div key={iso} className="rounded-md p-1.5 min-h-[80px]" style={{ background: iso === hoy ? 'var(--accent-soft)' : 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-                <div className="flex justify-between text-xs mb-1">
-                  <span>{d}</span>
-                  {esMgr && <span onClick={() => setAdd({ fecha: iso, chatter_id: chatters[0]?.id || '', modelos: [], nota: '' })} className="cursor-pointer leading-none select-none hover:opacity-80" style={{ color: 'var(--text-muted)', fontSize: 18, fontWeight: 300, padding: '0 4px' }} title="Añadir">+</span>}
-                </div>
-                {Object.entries(porChatter).map(([nombre, items]) => (
-                  <div key={nombre} className="mb-1">
-                    <p className="text-xs font-medium truncate">{nombre}</p>
-                    <div className="flex flex-wrap gap-1">
-                      {items.map((ev) => (
-                        <span
-                          key={ev.id}
-                          onClick={() => esMgr && borrar(ev)}
-                          title={ev.nota ? `${ev.nota} · clic para eliminar` : 'Clic para eliminar'}
-                          className="text-xs px-1.5 py-0.5 rounded cursor-pointer"
-                          style={{ background: 'var(--panel)', color: 'var(--accent)' }}
-                        >
-                          <ModelName name={ev.models?.stage_name} size={10} />
-                        </span>
-                      ))}
-                    </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <span>Turno (franja de color a la izquierda, de arriba abajo):</span>
+          {TURNOS.map((t) => <span key={t.id} className="inline-flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 2, background: t.color, display: 'inline-block' }} />{t.label}</span>)}
+          {trabajadores.length > 0 && <span>· Color del recuadro = trabajador:</span>}
+          {trabajadores.map((id) => <span key={id} className="inline-flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 999, background: colorChatter(id), display: 'inline-block' }} />{(nombres['p' + id] || '—').split(' ')[0]}</span>)}
+        </div>
+        {errCarga && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{errCarga}</p>}
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(165px, 1fr))', gap: 4, minWidth: 7 * 165 }}>
+            {DIAS.map((d) => <div key={d} className="text-xs text-center py-1" style={{ color: 'var(--text-muted)' }}>{d.slice(0, 3)}</div>)}
+            {cells.map((d, i) => {
+              if (d === null) return <div key={'e' + i} />
+              const iso = isoDate(new Date(y, mo, d))
+              const evs = byDay[iso] || []
+              const bloques = [...TURNOS.map((t) => ({ t, items: evs.filter((e) => e.turno === t.id) })), { t: null, items: evs.filter((e) => !turnoDe(e.turno)) }].filter((b) => b.items.length)
+              return (
+                <div key={iso} className="rounded-md p-1.5 min-h-[90px]" style={{ background: iso === hoy ? 'var(--accent-soft)' : 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span>{d}</span>
+                    {esMgr && <span onClick={() => nuevo(iso)} className="cursor-pointer leading-none select-none hover:opacity-80" style={{ color: 'var(--text-muted)', fontSize: 18, fontWeight: 300, padding: '0 4px' }} title="Añadir masivo">+</span>}
                   </div>
-                ))}
-              </div>
-            )
-          })}
+                  {bloques.map(({ t, items }) => (
+                    <div key={t ? t.id : 'sin'} className="mb-1.5">
+                      <p className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: t ? t.color : 'var(--text-muted)' }}>{t ? t.label : 'Sin turno'}</p>
+                      {items.map((ev) => {
+                        const c = colorChatter(ev.chatter_id)
+                        return (
+                          <div key={ev.id} onClick={() => setVer(ev)} data-masivo={ev.id} className="rounded px-1.5 py-1 mb-1 cursor-pointer text-xs"
+                            style={{ background: c + '24', border: `1px solid ${c}`, borderLeft: `5px solid ${t ? t.color : 'var(--border)'}`, opacity: ev.enviado_at ? 0.6 : 1 }}>
+                            <p className="font-medium truncate">{ev.formato || 'Masivo'}{ev.enviado_at ? ' ✓' : ''}</p>
+                            <p className="truncate"><ModelName name={nombres['m' + ev.modelo_id]} size={10} /></p>
+                            <p className="truncate" style={{ color: 'var(--text-muted)' }}>{(nombres['p' + ev.chatter_id] || '—').split(' ')[0]}{ev.enviar_en ? ' · ' + new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ev.enviar_en)) : ''}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </Panel>
 
       {add && (
-        <MasivoModal add={add} modelos={modelos} chatters={chatters} profile={profile}
-          onClose={() => setAdd(null)} onSaved={() => { setAdd(null); load() }} />
+        <Capa onClose={() => setAdd(null)}>
+          <MasivoModal add={add} modelos={modelos} chatters={chatters} formatos={formatos} profile={profile}
+            onClose={() => setAdd(null)} onSaved={() => { setAdd(null); load() }} />
+        </Capa>
+      )}
+      {ver && (
+        <Capa onClose={() => setVer(null)}>
+          <Detalle ev={ver} nombres={nombres} esMgr={esMgr} onClose={() => setVer(null)} onBorrar={() => borrar(ver)}
+            onEditar={() => { setAdd({ id: ver.id, fecha: ver.fecha, turno: ver.turno || 'mañana', chatter_id: ver.chatter_id, modelos: [ver.modelo_id], formato_id: ver.formato_id || '', formato: ver.formato || '', mensaje: ver.mensaje || ver.nota || '', imagen_path: ver.imagen_path || '', enviar_en: ver.enviar_en }); setVer(null) }} />
+        </Capa>
       )}
     </div>
   )
 }
 
-function MasivoModal({ add, modelos, chatters, profile, onClose, onSaved }) {
+function Detalle({ ev, nombres, esMgr, onClose, onBorrar, onEditar }) {
+  const t = turnoDe(ev.turno)
+  return (
+    <Panel className="p-5" style={{ borderTop: `4px solid ${t?.color || 'var(--border)'}` }}>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <p className="font-medium text-lg">{ev.formato || 'Masivo'}</p>
+        <button onClick={onClose} className="text-sm" style={{ color: 'var(--text-muted)' }}>✕</button>
+      </div>
+      <p className="text-sm mb-1"><ModelName name={nombres['m' + ev.modelo_id]} size={18} /> · {nombres['p' + ev.chatter_id] || '—'}</p>
+      <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+        {ev.fecha.split('-').reverse().join('/')}{t ? ` · turno de ${t.label.toLowerCase()}` : ''}{ev.enviar_en ? ` · ${horaDoble(ev.enviar_en)}` : ''}
+      </p>
+      <p className="text-sm mb-3" style={{ color: ev.enviado_at ? 'var(--success, #30a46c)' : 'var(--text-muted)' }}>
+        {ev.enviado_at ? `✓ Enviado el ${fechaHoraDoble(ev.enviado_at)}` : 'Pendiente de enviar'}
+      </p>
+      {ev.imagen_path && <div className="mb-3"><Foto path={ev.imagen_path} /></div>}
+      <div className="rounded-md p-3 mb-3 text-sm whitespace-pre-wrap" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>{ev.mensaje || ev.nota || '(sin mensaje)'}</div>
+      <div className="flex flex-wrap gap-2">
+        <CopyButton text={ev.mensaje || ev.nota || ''} />
+        {esMgr && <Button variant="ghost" onClick={onEditar}>Editar</Button>}
+        {esMgr && <Button variant="ghost" onClick={onBorrar} style={{ color: 'var(--danger)' }}>Eliminar</Button>}
+        <Button variant="ghost" onClick={onClose}>Cerrar</Button>
+      </div>
+    </Panel>
+  )
+}
+
+function MasivoModal({ add, modelos, chatters, formatos, profile, onClose, onSaved }) {
+  const editando = !!add.id
+  const [formatoId, setFormatoId] = useState(add.formato_id || (add.formato ? '__otro' : ''))
+  const [formatoTxt, setFormatoTxt] = useState(add.formato_id ? '' : (add.formato || ''))
+  const [mensaje, setMensaje] = useState(add.mensaje || '')
+  const [imagen, setImagen] = useState(add.imagen_path || '')
+  const [subiendo, setSubiendo] = useState(false)
   const [fecha, setFecha] = useState(add.fecha)
+  const [turno, setTurno] = useState(add.turno)
+  const [hora, setHora] = useState(() => (add.enviar_en ? new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(add.enviar_en)) : horaPorDefecto(add.fecha, add.turno)))
   const [chatterId, setChatterId] = useState(add.chatter_id)
-  const [nota, setNota] = useState('')
-  const [mods, setMods] = useState([])
+  const [mods, setMods] = useState(add.modelos || [])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const fileRef = useRef(null)
 
-  function toggle(id) { setMods((ms) => ms.includes(id) ? ms.filter((x) => x !== id) : ms.concat([id])) }
+  function elegirFormato(id) {
+    setFormatoId(id)
+    const f = formatos.find((x) => x.id === id)
+    if (f && !mensaje.trim()) setMensaje(f.contenido || '')
+    else if (f && confirm('¿Reemplazar el mensaje por el texto de este formato?')) setMensaje(f.contenido || '')
+  }
+  function cambiarTurno(t) { setTurno(t); setHora(horaPorDefecto(fecha, t)) }
+  function toggle(id) { setMods((ms) => editando ? [id] : (ms.includes(id) ? ms.filter((x) => x !== id) : ms.concat([id]))) }
+  async function foto(e) {
+    const file = e.target.files?.[0]; e.target.value = ''
+    if (!file) return
+    setSubiendo(true); setError('')
+    try { const nueva = await subirImagenMasivo({ userId: profile.id, file }); if (imagen && imagen !== add.imagen_path) borrarImagenMasivo(imagen); setImagen(nueva) } catch (ex) { setError(ex.message) }
+    setSubiendo(false)
+  }
 
   async function guardar() {
+    const f = formatos.find((x) => x.id === formatoId)
+    const nombreFormato = f ? f.titulo : formatoTxt.trim()
+    if (!nombreFormato) { setError('Elige el formato del masivo (o escribe cuál es).'); return }
+    if (!mensaje.trim()) { setError('Escribe el mensaje del masivo.'); return }
     if (!chatterId) { setError('Selecciona el chatter.'); return }
     if (!mods.length) { setError('Selecciona al menos una modelo.'); return }
-    setBusy(true)
-    const filas = mods.map((modelo_id) => ({ fecha, chatter_id: chatterId, modelo_id, nota, creado_por: profile.id }))
-    const { error } = await supabase.from('massive_calendar').insert(filas)
+    if (!/^\d{2}:\d{2}$/.test(hora)) { setError('Indica la hora de envío.'); return }
+    setBusy(true); setError('')
+    const enviar_en = calcularEnviarEn(fecha, turno, hora).toISOString()
+    const comun = { fecha, chatter_id: chatterId, turno, enviar_en, formato_id: f ? f.id : null, formato: nombreFormato, mensaje: mensaje.trim(), imagen_path: imagen || null }
+    let error
+    if (editando) {
+      ;({ error } = await supabase.from('massive_calendar').update({ ...comun, modelo_id: mods[0], enviado_at: null, enviado_por: null }).eq('id', add.id))
+    } else {
+      ;({ error } = await supabase.from('massive_calendar').insert(mods.map((modelo_id) => ({ ...comun, modelo_id, creado_por: profile.id }))))
+    }
     setBusy(false)
-    if (error) { setError('No se pudo guardar.'); return }
+    if (error) { setError('No se pudo guardar: ' + error.message); return }
     onSaved()
   }
 
   return (
-    <Panel className="p-5 mt-4">
-      <p className="text-sm font-medium mb-3">Asignar masivo</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
-        <Select value={chatterId} onChange={(e) => setChatterId(e.target.value)}>
-          {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-        </Select>
+    <Panel className="p-5">
+      <p className="text-sm font-medium mb-3">{editando ? 'Editar masivo' : 'Asignar masivo'}</p>
+      <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Formato del masivo</label>
+      <Select value={formatoId} onChange={(e) => elegirFormato(e.target.value)} style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', marginBottom: 8 }} aria-label="Formato del masivo">
+        <option value="">— Elige el formato —</option>
+        {formatos.map((f) => <option key={f.id} value={f.id}>{f.titulo}</option>)}
+        <option value="__otro">Otro (escribirlo)</option>
+      </Select>
+      {formatoId === '__otro' && <Input placeholder="¿Qué tipo de masivo es?" value={formatoTxt} onChange={(e) => setFormatoTxt(e.target.value)} className="mb-2" />}
+      <label className="text-xs mb-1 mt-2 block" style={{ color: 'var(--text-muted)' }}>Mensaje del masivo</label>
+      <textarea value={mensaje} onChange={(e) => setMensaje(e.target.value)} rows={6} placeholder="El texto que tiene que copiar y pegar el chatter"
+        className="w-full px-3 py-2 rounded-md text-sm outline-none resize-y mb-2"
+        style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+      <div className="mb-3">
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={foto} />
+        {imagen && <div className="mb-2"><Foto path={imagen} alto={110} /></div>}
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={subiendo} className="text-xs underline" style={{ color: 'var(--accent)' }}>
+          {subiendo ? 'Subiendo…' : imagen ? '📎 Cambiar foto del contenido' : '📎 Adjuntar foto del contenido que se vende (opcional)'}
+        </button>
+        {imagen && <button type="button" onClick={() => { if (imagen !== add.imagen_path) borrarImagenMasivo(imagen); setImagen('') }} className="text-xs ml-3" style={{ color: 'var(--danger)' }}>Quitar foto</button>}
       </div>
-      <label className="text-xs mb-2 block" style={{ color: 'var(--text-muted)' }}>Modelos (toca para seleccionar varias)</label>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Fecha</label>
+          <Input type="date" value={fecha} onChange={(e) => { setFecha(e.target.value); setHora(horaPorDefecto(e.target.value, turno)) }} />
+        </div>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Turno</label>
+          <Select value={turno} onChange={(e) => cambiarTurno(e.target.value)} aria-label="Turno">
+            {TURNOS.map((t) => <option key={t.id} value={t.id}>{t.label} · {horarioTurno(t.id, new Date(fecha + 'T12:00:00'))}</option>)}
+          </Select>
+        </div>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Hora de envío (hora de España)</label>
+          <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Chatter</label>
+          <Select value={chatterId} onChange={(e) => setChatterId(e.target.value)} aria-label="Chatter">
+            {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+          </Select>
+        </div>
+      </div>
+      <label className="text-xs mb-2 block" style={{ color: 'var(--text-muted)' }}>{editando ? 'Modelo' : 'Modelos (toca para seleccionar varias; se crea un masivo por cada una)'}</label>
       <div className="flex flex-wrap gap-2 mb-3">
         {modelos.map((m) => {
           const on = mods.includes(m.id)
           return (
-            <button
-              key={m.id}
-              onClick={() => toggle(m.id)}
-              className="px-3 py-1.5 rounded-full text-sm"
-              style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}
-            >
+            <button key={m.id} type="button" onClick={() => toggle(m.id)} className="px-3 py-1.5 rounded-full text-sm"
+              style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}>
               <ModelName name={m.stage_name} size={18} />
             </button>
           )
         })}
       </div>
-      <Input placeholder="Nota (opcional, aplica a todas las seleccionadas)" value={nota} onChange={(e) => setNota(e.target.value)} className="mb-3" />
+      <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+        Al chatter le llegará un aviso al asignárselo y, 5 minutos antes de la hora de envío, le saldrá en mitad de la pantalla con el mensaje listo para copiar hasta que lo marque como enviado.
+      </p>
       {error && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{error}</p>}
       <div className="flex gap-2">
-        <Button onClick={guardar} disabled={busy}>{busy ? 'Guardando…' : `Guardar${mods.length > 1 ? ` (${mods.length})` : ''}`}</Button>
+        <Button onClick={guardar} disabled={busy || subiendo}>{busy ? 'Guardando…' : editando ? 'Guardar cambios' : `Guardar${mods.length > 1 ? ` (${mods.length})` : ''}`}</Button>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
       </div>
     </Panel>
@@ -197,7 +342,7 @@ function MasivoModal({ add, modelos, chatters, profile, onClose, onSaved }) {
 
 function Formatos() {
   const { profile, hasAnyRole } = useAuth()
-  const esMgr = hasAnyRole(['admin', 'manager'])
+  const esMgr = hasAnyRole(['admin', 'manager', 'masivos'])
   const [rows, setRows] = useState([])
   const [edit, setEdit] = useState(null)
 

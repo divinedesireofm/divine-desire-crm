@@ -14,7 +14,7 @@ export const SECTIONS = [
       { to: '/normas', label: 'Normas y reglas', icon: 'alert', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/novedades', label: 'Novedades', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] }
       ,{ to: '/mis-planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['modelo'], soloModelo: true },
-      { to: '/mi-perfil', label: 'Mi perfil', icon: 'diamond', roles: ['modelo', 'planner'], soloCuenta: true },
+      { to: '/mi-perfil', label: 'Mi perfil', icon: 'diamond', roles: ['modelo', 'planner', 'masivos'], soloCuenta: true },
     ],
   },
   {
@@ -31,7 +31,7 @@ export const SECTIONS = [
       { to: '/metricas-chatters', label: 'Métricas de chatters', icon: 'chart', roles: ['admin', 'manager'] },
       { to: '/informes-manager', label: 'Informes del manager', icon: 'file', roles: ['admin', 'manager'], soloRoles: ['admin', 'manager'] },
       { to: '/rendimiento-360', label: 'Rendimiento 360', icon: 'chart', roles: ['admin', 'manager'] },
-      { to: '/masivos', label: 'Masivos PPV', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/masivos', label: 'Calendario de masivos', icon: 'calendar', roles: ['admin', 'manager', 'chatter', 'masivos'] },
       { to: '/chatters', label: 'Chatters', icon: 'users', roles: ['admin', 'manager'] },
       { to: '/horarios', label: 'Horarios', icon: 'calendar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/pagos', label: 'Pagos', icon: 'dollar', roles: ['admin', 'manager', 'chatter'] },
@@ -106,6 +106,7 @@ export const ROLES_EDITABLES = [
   { id: 'reddit_manager', label: 'Manager de Reddit' },
   { id: 'reddit_assistant', label: 'Asistente de Reddit' },
   { id: 'planner', label: 'Planner' },
+  { id: 'masivos', label: 'Equipo de Masivos' },
 ]
 
 // Aplica el orden que el admin ha guardado desde el propio menú.

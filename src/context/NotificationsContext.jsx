@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 import { reproducirAviso, instalarDesbloqueo } from '../lib/sonido'
 import { avisosDeFechas, iso } from '../lib/fechasEventos'
+import { horaDoble } from '../lib/masivos'
 
 const DIAS_ALERTA_CONTENIDO = 14
 const Ctx = createContext(null)
@@ -72,6 +73,23 @@ export function NotificationsProvider({ children }) {
         }))
       } catch { /* sin planificaciones */ }
     }
+
+    // Masivos asignados a esta persona: aviso al asignarlo y otro cuando llega la hora (10 min antes)
+    try {
+      const { data: ms } = await supabase.from('massive_calendar').select('id, formato, modelo_id, enviar_en, created_at')
+        .eq('chatter_id', profile.id).is('enviado_at', null).not('enviar_en', 'is', null)
+      if ((ms || []).length) {
+        const ids = Array.from(new Set(ms.map((x) => x.modelo_id).filter(Boolean)))
+        const { data: mods } = ids.length ? await supabase.from('models').select('id, stage_name').in('id', ids) : { data: [] }
+        const nom = Object.fromEntries((mods || []).map((x) => [x.id, x.stage_name]))
+        ms.forEach((x) => {
+          const que = `${x.formato || 'masivo'} para ${nom[x.modelo_id] || 'una modelo'} (${horaDoble(x.enviar_en)})`
+          const t = new Date(x.enviar_en).getTime()
+          if (Date.now() >= t - 10 * 60000) lista.push({ key: 'masivo-hora:' + x.id, tipo: 'masivo', prioridad: 'alta', texto: `Es hora de enviar el masivo: ${que}`, ruta: '/masivos', fecha: new Date(t - 10 * 60000).toISOString() })
+          if (Date.now() - new Date(x.created_at).getTime() < 7 * 86400000) lista.push({ key: 'masivo-nuevo:' + x.id, tipo: 'masivo', prioridad: 'alta', texto: `Te han asignado un masivo: ${que}`, ruta: '/masivos', fecha: x.created_at })
+        })
+      }
+    } catch { /* sin masivos */ }
 
     try {
       const f = await datosFechas()

@@ -23,6 +23,7 @@ export default function Home() {
     )
   }
   // La modelo (cuenta solo-modelo) entra directamente a sus planificaciones
+  if (roles.length > 0 && roles.every((r) => r === 'masivos')) return <Navigate to="/masivos" replace />
   if (soloPlanner) return <Navigate to="/planificaciones" replace />
   return soloModelo ? <Navigate to="/mis-planificaciones" replace /> : <Dashboard />
 }

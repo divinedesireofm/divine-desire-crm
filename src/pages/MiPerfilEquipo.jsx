@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, PageHeader } from '../components/ui'
 
-const ROLE_LABELS = { admin: 'Administrador', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente de Instagram', reddit_manager: 'Manager de Reddit', reddit_assistant: 'Asistente de Reddit', planner: 'Planner', modelo: 'Modelo' }
+const ROLE_LABELS = { admin: 'Administrador', manager: 'Manager de Chatting', chatter: 'Chatter', ig_manager: 'Manager de Instagram', ig_assistant: 'Asistente de Instagram', reddit_manager: 'Manager de Reddit', reddit_assistant: 'Asistente de Reddit', planner: 'Planner', masivos: 'Equipo de Masivos', modelo: 'Modelo' }
 
 // Perfil principal de una persona del equipo con acceso acotado (Planner): sus datos y el cambio de contraseña
 export default function MiPerfilEquipo() {
