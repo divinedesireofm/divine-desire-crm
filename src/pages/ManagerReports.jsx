@@ -5,6 +5,7 @@ import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import AdjuntosInforme from '../components/AdjuntosInforme'
+import { borrarImagenInforme } from '../lib/imagenesInforme'
 import { lunesDe, fmtF } from '../lib/excelImport'
 
 const hoy = () => new Date().toISOString().slice(0, 10)
@@ -109,6 +110,7 @@ export default function ManagerReports({ area = 'chatting' }) {
           {visibles.map((r) => (
             <Informe key={r.id} informe={r} editable={r.manager_id === profile?.id && puedeEscribir} mostrarManager={esAdmin}
               nombreManager={nombres[r.manager_id] || '—'} equipo={equipo} todos={todos} nombres={nombres} quienes={cfg.quienes} recaptacion={!!cfg.recaptacion} setErr={setErr}
+              puedeBorrar={esAdmin || r.manager_id === profile?.id} onBorrado={(id) => setInformes((l) => l.filter((x) => x.id !== id))}
               onGuardado={(nuevo) => setInformes((l) => l.map((x) => (x.id === nuevo.id ? { ...x, ...nuevo } : x)))} />
           ))}
         </>
@@ -117,7 +119,7 @@ export default function ManagerReports({ area = 'chatting' }) {
   )
 }
 
-function Informe({ informe, editable, mostrarManager, nombreManager, equipo, todos, nombres, quienes, recaptacion, setErr, onGuardado }) {
+function Informe({ informe, editable, mostrarManager, nombreManager, equipo, todos, nombres, quienes, recaptacion, setErr, onGuardado, puedeBorrar, onBorrado }) {
   const [sup, setSup] = useState(informe.supervision || {})
   const [general, setGeneral] = useState(informe.general || '')
   const [recap, setRecap] = useState(informe.recaptacion || '')
@@ -174,6 +176,20 @@ function Informe({ informe, editable, mostrarManager, nombreManager, equipo, tod
   )
   const nImg = (clave) => (informe.imagenes?.[clave] || []).length
 
+  // Cancelar (borrador) o borrar (enviado): se elimina el informe y las imágenes que tuviera adjuntas
+  const hayContenido = Object.values(sup).some((v) => (v || '').trim()) || general.trim() || recap.trim() || recOk || Object.values(imagenes).some((l) => (l || []).length)
+  async function eliminar(esCancelar) {
+    const txt = esCancelar
+      ? (hayContenido ? '¿Cancelar este informe? Se descartará todo lo que has escrito y las imágenes adjuntas.' : null)
+      : `¿Borrar el informe de la semana del ${fmtF(informe.week_start)}${mostrarManager && !editable ? ' de ' + nombreManager : ''}?\n\nSe borrarán también sus imágenes adjuntas. No se puede deshacer.`
+    if (txt && !confirm(txt)) return
+    const paths = Object.values({ ...(informe.imagenes || {}), ...imagenes }).flat().map((x) => x?.path).filter(Boolean)
+    const { error } = await supabase.from('manager_weekly_reports').delete().eq('id', informe.id)
+    if (error) { setErr(error.message); return }
+    await Promise.all([...new Set(paths)].map((pa) => borrarImagenInforme(pa).catch(() => {})))
+    setErr(''); onBorrado(informe.id)
+  }
+
   const texto = useMemo(() => {
     const L = [`INFORME SEMANAL${mostrarManager ? ' · ' + nombreManager : ''} · semana del ${fmtF(informe.week_start)}`, '', 'SUPERVISIÓN POR TRABAJADOR']
     ids.forEach((id) => { if ((informe.supervision?.[id] || '').trim()) L.push('', nombreDe(id).toUpperCase() + (nImg(id) ? ` (${nImg(id)} imágenes adjuntas)` : ''), informe.supervision[id].trim()) })
@@ -197,6 +213,9 @@ function Informe({ informe, editable, mostrarManager, nombreManager, equipo, tod
           <CopyButton text={texto} label="Copiar informe" />
           {editable && enviado && <Button variant="ghost" onClick={() => (completo ? guardar() : setIntento(true))} disabled={!cambiado || estado === 'guardando'}>Guardar cambios</Button>}
           {editable && !enviado && <Button onClick={enviar}>Enviar informe</Button>}
+          {puedeBorrar && (enviado || !editable
+            ? <Button variant="danger" onClick={() => eliminar(false)}>🗑 Borrar informe</Button>
+            : <Button variant="ghost" onClick={() => eliminar(true)}>Cancelar informe</Button>)}
         </div>
       </div>
 
