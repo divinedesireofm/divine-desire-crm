@@ -155,21 +155,33 @@ function MasivosCal() {
                     const items = evs.filter((e) => e.turno === t.id)
                     const sin = t.id === 'tarde' ? evs.filter((e) => !turnoDe(e.turno)) : []
                     const todos = items.concat(sin)
-                    const visibles = todos.length > 2 ? todos.slice(0, 1) : todos
+                    // Un recuadro por chatter (con cuántos masivos lleva en este turno), para ver de un vistazo quién tiene masivos
+                    const porChatter = []
+                    todos.forEach((ev) => { let g = porChatter.find((x) => x.id === ev.chatter_id); if (!g) { g = { id: ev.chatter_id, evs: [] }; porChatter.push(g) } g.evs.push(ev) })
+                    const MAX = 6
+                    const visibles = porChatter.length > MAX ? porChatter.slice(0, MAX - 1) : porChatter
                     return (
                       <div key={t.id} data-franja={t.id} className="flex-1 min-h-0 rounded mb-0.5 px-1 py-0.5 overflow-hidden" style={{ borderLeft: `3px solid ${t.color}`, background: 'rgba(128,128,128,0.07)' }}>
                         <p className="text-[9px] uppercase leading-none mb-0.5" style={{ color: t.color }}>{t.label}</p>
-                        {visibles.map((ev) => {
-                          const c = colorFormato(ev.formato)
-                          return (
-                            <div key={ev.id} onClick={() => setVer(ev)} data-masivo={ev.id} title={`${ev.formato || 'Masivo'} · ${nombres['m' + ev.modelo_id] || ''}`}
-                              className="rounded px-1 text-[11px] leading-[15px] cursor-pointer truncate mb-px"
-                              style={{ background: c, color: '#fff', opacity: ev.enviado_at ? 0.55 : 1 }}>
-                              {(nombres['p' + ev.chatter_id] || '—').split(' ')[0]}{ev.enviado_at ? ' ✓' : ''}
-                            </div>
-                          )
-                        })}
-                        {todos.length > 2 && <div onClick={() => setDia({ iso, t })} className="text-[10px] leading-[13px] cursor-pointer" style={{ color: 'var(--accent)' }}>+{todos.length - 1} más (ver todos)</div>}
+                        <div className="flex flex-wrap gap-0.5">
+                          {visibles.map((g) => {
+                            const cols = Array.from(new Set(g.evs.map((e) => colorFormato(e.formato))))
+                            const fondo = cols.length === 1 ? cols[0] : `linear-gradient(90deg, ${cols.map((c, k) => `${c} ${(k * 100) / cols.length}% ${((k + 1) * 100) / cols.length}%`).join(', ')})`
+                            const hechos = g.evs.every((e) => e.enviado_at)
+                            const nombre = (nombres['p' + g.id] || '—').split(' ')[0]
+                            return (
+                              <div key={g.id} data-masivo={g.evs[0].id} data-chatter={g.id}
+                                onClick={() => (g.evs.length === 1 ? setVer(g.evs[0]) : setDia({ iso, t, chatter: g.id }))}
+                                title={g.evs.map((e) => `${e.formato || 'Masivo'} · ${nombres['m' + e.modelo_id] || ''}`).join('\n')}
+                                className="rounded px-1 text-[11px] leading-[15px] cursor-pointer truncate" style={{ background: fondo, color: '#fff', opacity: hechos ? 0.55 : 1, maxWidth: '100%', textShadow: '0 0 2px rgba(0,0,0,.6)' }}>
+                                {nombre}{g.evs.length > 1 ? ` ×${g.evs.length}` : ''}{hechos ? ' ✓' : ''}
+                              </div>
+                            )
+                          })}
+                          {porChatter.length > MAX && (
+                            <div onClick={() => setDia({ iso, t })} className="text-[11px] leading-[15px] cursor-pointer px-1" style={{ color: 'var(--accent)' }}>+{porChatter.length - (MAX - 1)} más</div>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
@@ -190,7 +202,7 @@ function MasivosCal() {
         <Capa onClose={() => setDia(null)}>
           <Panel className="p-5">
             <div className="flex justify-between mb-3"><p className="font-medium">{dia.iso.split('-').reverse().join('/')} · {dia.t.label}</p><button onClick={() => setDia(null)} style={{ color: 'var(--text-muted)' }}>✕</button></div>
-            {(byDay[dia.iso] || []).filter((e) => e.turno === dia.t.id || (dia.t.id === 'tarde' && !turnoDe(e.turno))).map((ev) => (
+            {(byDay[dia.iso] || []).filter((e) => (e.turno === dia.t.id || (dia.t.id === 'tarde' && !turnoDe(e.turno))) && (!dia.chatter || e.chatter_id === dia.chatter)).map((ev) => (
               <div key={ev.id} onClick={() => { setDia(null); setVer(ev) }} className="rounded px-2 py-1.5 mb-1.5 text-sm cursor-pointer" style={{ background: colorFormato(ev.formato), color: '#fff', opacity: ev.enviado_at ? 0.6 : 1 }}>
                 <b>{(nombres['p' + ev.chatter_id] || '—')}</b> · {ev.formato || 'Masivo'} · {nombres['m' + ev.modelo_id] || ''}{ev.enviar_en ? ' · ' + horaDoble(ev.enviar_en) : ''}{ev.enviado_at ? ' ✓' : ''}
               </div>
