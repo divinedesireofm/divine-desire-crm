@@ -1,12 +1,29 @@
 import { supabase } from './supabase'
+import { reducirAdjunto } from './imagenesInforme'
 
 // Videos de los reels de referencia de las planificaciones de Instagram (copia propia por si tumban el reel original).
 // Se guardan en el bucket privado «ig-plan-videos» y en cada reel queda { path, nombre, size }.
 export const BUCKET = 'ig-plan-videos'
 export const MAX_MB = 50
 
-export const videosDe = (dias) => (dias || []).flatMap((d) => d.reels || []).map((r) => r.video).filter((v) => v && v.path)
-export const quitarVideos = (dias) => (dias || []).map((d) => ({ ...d, reels: (d.reels || []).map((r) => { if (!r.video) return r; const { video: _v, ...resto } = r; return resto }) }))
+// Archivos de los reels que ocupan espacio en el almacén: el video de cada reel y sus imágenes de aclaración
+export const videosDe = (dias) => (dias || []).flatMap((d) => d.reels || []).flatMap((r) => [r.video, ...(Array.isArray(r.imagenes) ? r.imagenes : [])]).filter((v) => v && v.path)
+export const quitarVideos = (dias) => (dias || []).map((d) => ({ ...d, reels: (d.reels || []).map((r) => { if (!r.video && !r.imagenes) return r; const { video: _v, imagenes: _i, ...resto } = r; return resto }) }))
+
+export const MAX_IMG_MB = 10
+// Imagen de aclaración de un reel: se reduce y se guarda como JPG en el mismo almacén
+export async function subirImagenReel(file, cuentaId) {
+  if (!file) return { error: 'No hay archivo.' }
+  if (!/^image\//.test(file.type || '')) return { error: 'Ese archivo no es una imagen (usa JPG, PNG o WEBP).' }
+  if (file.size > MAX_IMG_MB * 1024 * 1024) return { error: `La imagen pesa más de ${MAX_IMG_MB} MB.` }
+  try {
+    const blob = await reducirAdjunto(file)
+    const path = `${cuentaId || 'general'}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`
+    const { error } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+    if (error) return { error: 'No se pudo subir la imagen: ' + error.message }
+    return { imagen: { path, nombre: file.name || 'imagen.jpg', size: blob.size } }
+  } catch (ex) { return { error: ex.message } }
+}
 
 export async function subirVideo(file, cuentaId) {
   if (!file) return { error: 'No hay archivo.' }

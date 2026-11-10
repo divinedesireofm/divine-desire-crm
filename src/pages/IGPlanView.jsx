@@ -5,6 +5,7 @@ import CopyButton from '../components/CopyButton'
 import { textoPlan, textoDia, textoPeriodo } from './IGPlans'
 import VideoReel from '../components/VideoReel'
 import TextoConLinks from '../components/TextoConLinks'
+import ImagenesReel from '../components/ImagenesReel'
 
 const nOrigen = (id) => (id === 'ganador' ? 'Ganador' : 'Nuevo')
 const nTipo = (id) => (id === 'marca_personal' ? 'Marca personal' : 'Sugerente')
@@ -64,7 +65,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                 <div key={ri} className="rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: `1px solid ${hechos[di + ':' + ri] ? 'var(--success, #30a46c)' : 'var(--border)'}` }}>
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
                     <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gold, var(--accent))' }}>
-                      {nOrigen(r.origen)} · {nTipo(r.tipo)}{r.prueba ? ' · 🧪 Prueba' : ''}
+                      {nOrigen(r.origen)} · {nTipo(r.tipo)}{r.fuente === 'original' ? ' · 💡 Idea original' : ''}{r.prueba ? ' · 🧪 Prueba' : ''}
                     </p>
                     {paraModelo ? (
                       <button type="button" onClick={() => marcar(di, ri)} data-hecho={di + ':' + ri} className="text-xs px-2.5 py-1 rounded-full"
@@ -76,7 +77,13 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                     ) : null}
                   </div>
                   {r.tematica?.trim() && <p className="mb-1">🎯 <strong>Temática:</strong> <TextoConLinks texto={r.tematica} /></p>}
-                  {r.link?.trim() && (
+                  {r.fuente === 'original' && r.idea?.trim() && (
+                    <div className="rounded-md p-3 mb-2 whitespace-pre-wrap" style={{ border: '1px solid var(--gold, var(--accent))', background: 'var(--accent-soft)' }} data-idea-vista>
+                      <p className="text-xs font-semibold mb-1" style={{ color: 'var(--gold, var(--accent))' }}>💡 Idea original</p>
+                      <TextoConLinks texto={r.idea} />
+                    </div>
+                  )}
+                  {r.fuente !== 'original' && r.link?.trim() && (
                     <p className="mb-1 flex items-center gap-2 flex-wrap">
                       <span>🔗</span>
                       {esUrl(r.link)
@@ -86,10 +93,11 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                     </p>
                   )}
                   {r.video?.path && <VideoReel video={r.video} soloLectura />}
+                  <ImagenesReel imagenes={r.imagenes || []} />
                   {r.gancho?.trim() && <p className="mb-1 mt-1 whitespace-pre-wrap">🎣 <TextoConLinks texto={r.gancho} /></p>}
                   {r.texto?.trim() && <p className="whitespace-pre-wrap">📝 <TextoConLinks texto={r.texto} /></p>}
                   {r.edicion?.trim() && <p className="whitespace-pre-wrap mt-1">📹 <strong>Edición:</strong> <TextoConLinks texto={r.edicion} /></p>}
-                  {!r.tematica?.trim() && !r.link?.trim() && !r.gancho?.trim() && !r.texto?.trim() && !r.edicion?.trim() && !r.video?.path && <p style={lbl}>Sin contenido todavía.</p>}
+                  {!r.tematica?.trim() && !r.link?.trim() && !r.idea?.trim() && !(r.imagenes || []).length && !r.gancho?.trim() && !r.texto?.trim() && !r.edicion?.trim() && !r.video?.path && <p style={lbl}>Sin contenido todavía.</p>}
                 </div>
               ))}
             </div>
