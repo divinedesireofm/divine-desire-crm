@@ -14,7 +14,7 @@ export const SECTIONS = [
       { to: '/normas', label: 'Normas y reglas', icon: 'alert', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] },
       { to: '/novedades', label: 'Novedades', icon: 'bell', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant'] }
       ,{ to: '/mis-planificaciones', label: 'Planificaciones', icon: 'calendar', roles: ['modelo'], soloModelo: true },
-      { to: '/mi-perfil', label: 'Mi perfil', icon: 'diamond', roles: ['modelo', 'planner', 'masivos'], soloCuenta: true },
+      { to: '/mi-perfil', label: 'Mi perfil', icon: 'diamond', roles: ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant', 'planner', 'masivos', 'modelo'] },
     ],
   },
   {

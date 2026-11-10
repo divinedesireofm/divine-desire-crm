@@ -292,10 +292,15 @@ export default function Layout() {
               {errMenu && <p className="text-[10px] mt-1" style={{ color: 'var(--danger)' }}>{errMenu}</p>}
             </div>
           )}
-          <p className="px-2 text-sm font-medium">{profile?.full_name}</p>
-          <p className="px-2 text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
-            {etiquetaRoles}
-          </p>
+          <div className="flex items-center gap-2 px-2 mb-3">
+            {profile?.foto_url
+              ? <img src={profile.foto_url} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} />
+              : <span aria-hidden="true" style={{ width: 34, height: 34, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600 }}>{(profile?.full_name || '?').trim().charAt(0).toUpperCase()}</span>}
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">{profile?.full_name}</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{etiquetaRoles}</p>
+            </div>
+          </div>
           <button
             onClick={signOut}
             disabled={!!reportePend}

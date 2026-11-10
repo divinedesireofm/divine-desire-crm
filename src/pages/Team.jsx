@@ -75,6 +75,7 @@ export default function Team() {
   const [nuevo, setNuevo] = useState(null)
   const [editar, setEditar] = useState(null)
   const [resetU, setResetU] = useState(null)
+  const [ficha, setFicha] = useState(null)
   const panelRef = useRef(null)
   // Al abrir «Nuevo usuario», «Editar» o «Contraseña», el formulario sale ARRIBA y se sube la pantalla hasta él
   useEffect(() => { if (nuevo || editar || resetU) panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [!!nuevo, editar?.id, resetU?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -247,7 +248,9 @@ export default function Team() {
                 const puede = puedeGestionar(roles, rs)
                 return (
                   <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td className="px-4 py-3"><strong>{u.full_name}</strong></td>
+                    <td className="px-4 py-3"><span className="inline-flex items-center gap-2">
+                      {u.foto_url ? <img src={u.foto_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} /> : <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: 12, fontWeight: 600 }}>{(u.full_name || '?').trim().charAt(0).toUpperCase()}</span>}
+                      <strong>{u.full_name}</strong></span></td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {rs.map((r) => (
@@ -261,6 +264,7 @@ export default function Team() {
                       <StatusBadge status={!u.password_set ? 'pendiente' : (u.active ? 'activa' : 'baja')} />
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {esAdmin && <button onClick={() => setFicha(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Ficha</button>}
                       <button onClick={() => setResetU(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Contraseña manual</button>
                       <button onClick={() => enviarEmailReset(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Enviar email de reset</button>
                       {puede && (
@@ -289,6 +293,39 @@ export default function Team() {
       </Panel>
 
       </>)}
+      {ficha && <FichaPersona u={ficha} rs={rolesPorUsuario[ficha.id] || [ficha.role]} onClose={() => setFicha(null)} />}
+    </div>
+  )
+}
+
+// Ficha de una persona del equipo (solo la ve el admin): foto, contacto e información útil que ella misma ha puesto
+function FichaPersona({ u, rs, onClose }) {
+  const [d, setD] = useState(null)
+  const [cargando, setCargando] = useState(true)
+  useEffect(() => { supabase.from('team_private').select('email, phone, notas').eq('user_id', u.id).maybeSingle().then(({ data }) => { setD(data || {}); setCargando(false) }) }, [u.id])
+  const lbl = { color: 'var(--text-muted)' }
+  return (
+    <div className="fixed inset-0 flex items-start justify-center p-4 overflow-y-auto" style={{ zIndex: 900, background: 'rgba(0,0,0,0.6)' }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <Panel className="p-5 w-full max-w-lg my-8">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            {u.foto_url ? <img src={u.foto_url} alt="" style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} /> : <span aria-hidden="true" style={{ width: 72, height: 72, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: 28, fontWeight: 600 }}>{(u.full_name || '?').trim().charAt(0).toUpperCase()}</span>}
+            <div>
+              <p className="text-lg font-medium">{u.full_name}</p>
+              <p className="text-xs" style={lbl}>{rs.map((r) => ROLE_LABEL[r] || r).join(' · ')}</p>
+            </div>
+          </div>
+          <button onClick={onClose} style={lbl}>✕</button>
+        </div>
+        {cargando ? <p className="text-sm" style={lbl}>Cargando…</p> : (
+          <div className="space-y-3 text-sm">
+            <div><p className="text-xs" style={lbl}>Email de contacto</p><p>{d?.email || <span style={lbl}>— sin rellenar</span>}</p></div>
+            <div><p className="text-xs" style={lbl}>Teléfono</p><p>{d?.phone || <span style={lbl}>— sin rellenar</span>}</p></div>
+            <div><p className="text-xs" style={lbl}>Información útil</p><p className="whitespace-pre-wrap">{d?.notas || <span style={lbl}>— sin rellenar</span>}</p></div>
+          </div>
+        )}
+        <div className="mt-5"><Button variant="ghost" onClick={onClose}>Cerrar</Button></div>
+      </Panel>
     </div>
   )
 }
