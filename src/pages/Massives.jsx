@@ -5,7 +5,7 @@ import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import ModelName from '../components/ModelAvatar'
-import { TURNOS, turnoDe, colorFormato, horaPorDefecto, calcularEnviarEn, horaDoble, subirImagenMasivo, urlImagenMasivo, borrarImagenMasivo } from '../lib/masivos'
+import { TURNOS, turnoDe, colorFormato, setColoresFormato, PALETA, horaPorDefecto, calcularEnviarEn, horaDoble, subirImagenMasivo, urlImagenMasivo, borrarImagenMasivo } from '../lib/masivos'
 import { horarioTurno, fechaHoraDoble } from '../lib/horasTurno'
 
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
@@ -80,7 +80,7 @@ function MasivosCal() {
       supabase.from('models').select('id, stage_name').eq('status', 'activa').order('stage_name'),
       getProfilesByRoles(['manager', 'chatter']),
       getExtrabajadorIds(),
-      supabase.from('massive_formats').select('id, titulo, contenido').order('created_at'),
+      supabase.from('massive_formats').select('*').order('created_at'),
     ])
     if (r.error) { setErrCarga('No se pudo cargar el calendario: ' + r.error.message); setRows([]) } else setErrCarga('')
     const filas = (r.data || []).filter((x) => !ex.has(x.chatter_id))
@@ -91,6 +91,7 @@ function MasivosCal() {
     const { data: ms } = modIds.length ? await supabase.from('models').select('id, stage_name').in('id', modIds) : { data: [] }
     ;(ms || []).forEach((x) => { mapa['m' + x.id] = x.stage_name })
     ;(m || []).forEach((x) => { mapa['m' + x.id] = x.stage_name })
+    setColoresFormato(f || [])
     setNombres(mapa); setRows(filas); setModelos(m || []); setChatters(u); setFormatos(f || [])
   }
   useEffect(() => { load() }, [y, mo])
@@ -377,6 +378,7 @@ function Formatos() {
 
   async function load() {
     const { data } = await supabase.from('massive_formats').select('*, profiles(full_name)').order('created_at')
+    setColoresFormato(data || [])
     setRows(data || [])
   }
   useEffect(() => { load() }, [])
@@ -389,7 +391,7 @@ function Formatos() {
       ) : rows.map((f) => (
         <Panel key={f.id} className="p-4 mb-4">
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-            <p className="font-medium">{f.titulo}</p>
+            <p className="font-medium inline-flex items-center gap-2"><span title={f.color ? 'Color asignado' : 'Color automático'} style={{ width: 12, height: 12, borderRadius: 3, display: 'inline-block', background: f.color || colorFormato(f.titulo) }} />{f.titulo}</p>
             <div className="flex items-center gap-2">
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{f.profiles?.full_name ? `editado por ${f.profiles.full_name}` : ''}</span>
               <CopyButton text={f.contenido} />
@@ -403,6 +405,17 @@ function Formatos() {
         <Panel className="p-5">
           <p className="text-sm font-medium mb-3">{edit.id ? 'Editar formato' : 'Nuevo formato'}</p>
           <Input placeholder="Título" value={edit.titulo} onChange={(e) => setEdit({ ...edit, titulo: e.target.value })} className="mb-3" />
+          <div className="mb-3" data-colores>
+            <p className="text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Color en el calendario</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {PALETA.map((c) => (
+                <button key={c} type="button" onClick={() => setEdit({ ...edit, color: c })} aria-label={'Color ' + c} data-color={c}
+                  style={{ width: 26, height: 26, borderRadius: 6, background: c, border: edit.color === c ? '3px solid var(--text)' : '1px solid var(--border)' }} />
+              ))}
+              <input type="color" value={edit.color || '#3e63dd'} onChange={(e) => setEdit({ ...edit, color: e.target.value })} title="Otro color" style={{ width: 34, height: 28, background: 'none', border: 'none', cursor: 'pointer' }} />
+              <button type="button" onClick={() => setEdit({ ...edit, color: null })} className="text-xs underline" style={{ color: 'var(--text-muted)' }}>{edit.color ? 'Quitar (automático)' : 'Automático'}</button>
+            </div>
+          </div>
           <textarea
             value={edit.contenido}
             onChange={(e) => setEdit({ ...edit, contenido: e.target.value })}
@@ -414,9 +427,9 @@ function Formatos() {
             <Button
               onClick={async () => {
                 if (!edit.titulo.trim()) return
-                const payload = { titulo: edit.titulo, contenido: edit.contenido, actualizado_por: profile.id, updated_at: new Date().toISOString() }
-                if (edit.id) await supabase.from('massive_formats').update(payload).eq('id', edit.id)
-                else await supabase.from('massive_formats').insert([payload])
+                const payload = { titulo: edit.titulo, contenido: edit.contenido, color: edit.color || null, actualizado_por: profile.id, updated_at: new Date().toISOString() }
+                const { error } = edit.id ? await supabase.from('massive_formats').update(payload).eq('id', edit.id) : await supabase.from('massive_formats').insert([payload])
+                if (error) { alert('No se pudo guardar el formato: ' + error.message + (/color/i.test(error.message) ? '\n\nFalta ejecutar la migración 110 en Supabase.' : '')); return }
                 setEdit(null); load()
               }}
             >

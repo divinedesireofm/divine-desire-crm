@@ -12,7 +12,7 @@ export const TURNOS = [
 ]
 export const turnoDe = (id) => TURNOS.find((t) => t.id === id) || null
 
-const PALETA = ['#e5484d', '#30a46c', '#0091ff', '#f76b15', '#8e4ec6', '#12a594', '#d6409f', '#978365', '#3e63dd', '#ab6400']
+export const PALETA = ['#e5484d', '#30a46c', '#0091ff', '#f76b15', '#8e4ec6', '#12a594', '#d6409f', '#978365', '#3e63dd', '#ab6400']
 // Color estable por trabajador (siempre el mismo para la misma persona)
 export function colorChatter(id) {
   let h = 0
@@ -78,8 +78,14 @@ export async function borrarImagenMasivo(path) {
 }
 
 // Color estable por formato de masivo (el mismo formato siempre sale del mismo color)
+let asignados = {} // color elegido a mano para cada formato (por nombre)
+export function setColoresFormato(lista) {
+  asignados = {}
+  ;(lista || []).forEach((f) => { if (f?.color && f.titulo) asignados[String(f.titulo).trim().toLowerCase()] = f.color })
+}
 export function colorFormato(nombre) {
   const s = String(nombre || 'Masivo').trim().toLowerCase()
+  if (asignados[s]) return asignados[s]
   let h = 7
   for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) >>> 0
   return PALETA[h % PALETA.length]
