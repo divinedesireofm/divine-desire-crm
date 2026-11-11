@@ -1,3 +1,4 @@
+import ReportesFaltantes from '../components/ReportesFaltantes'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -191,6 +192,7 @@ export default function Dashboard() {
       />
 
       {esChatTeam && <BarraTurno enTurno={enTurno} />}
+      <ReportesFaltantes enlace />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Kpi icon="diamond" label="Modelos activas" value={stats?.modelsCount ?? '—'} />
