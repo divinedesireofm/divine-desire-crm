@@ -40,9 +40,9 @@ function puedeGestionar(rolesGestor, rolesObjetivo) {
 }
 
 const TURNOS = [
-  { id: 'noche', n: 'Noche' },
-  { id: 'mañana', n: 'Mañana' },
-  { id: 'tarde', n: 'Tarde' },
+  { id: 'noche', n: 'Mañana' },
+  { id: 'mañana', n: 'Tarde' },
+  { id: 'tarde', n: 'Noche' },
 ]
 function TurnoSelector({ value, onChange }) {
   const sel = (value || '').split(',').map((x) => x.trim()).filter(Boolean).map((x) => (x === 'madrugada' ? 'noche' : x))

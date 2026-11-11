@@ -6,9 +6,9 @@ export const AVISO_MINUTOS = 5 // el aviso bloqueante sale 5 minutos antes de la
 
 // Orden de arriba abajo dentro de cada día. Las horas son de Venezuela (así se definieron los turnos).
 export const TURNOS = [
-  { id: 'noche', label: 'Noche', ini: 4, color: '#6b8cff' },
-  { id: 'mañana', label: 'Mañana', ini: 12, color: '#f5a524' },
-  { id: 'tarde', label: 'Tarde', ini: 20, color: '#c264ff' },
+  { id: 'noche', label: 'Mañana', ini: 4, color: '#6b8cff' },
+  { id: 'mañana', label: 'Tarde', ini: 12, color: '#f5a524' },
+  { id: 'tarde', label: 'Noche', ini: 20, color: '#c264ff' },
 ]
 export const turnoDe = (id) => TURNOS.find((t) => t.id === id) || null
 

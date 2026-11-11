@@ -1,6 +1,8 @@
 // Horas de los turnos: se definen en hora de Venezuela y se muestran también en hora de España (cambia sola con el horario de verano/invierno)
 const TZ_VE = 'America/Caracas'
 const TZ_ES = 'Europe/Madrid'
+// OJO: los ids guardados en la base de datos son antiguos y NO cambian (noche = 4–12 h VE, mañana = 12–20, tarde = 20–4).
+// Los nombres que se muestran ahora son: Mañana (4–12 VE), Tarde (12–20 VE) y Noche (20–4 VE).
 const INICIOS = { noche: 4, 'mañana': 12, tarde: 20 }
 
 function horaEnZona(ts, tz) {

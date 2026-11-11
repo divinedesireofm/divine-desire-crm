@@ -120,7 +120,7 @@ function MasivosCal() {
   for (let i = 0; i < startPad; i++) cells.push(null)
   for (let d = 1; d <= last.getDate(); d++) cells.push(d)
   const hoy = fechaHoyISO()
-  const nuevo = (fecha) => setAdd({ fecha, turno: 'mañana', chatter_id: chatters[0]?.id || '', modelos: [] })
+  const nuevo = (fecha) => setAdd({ fecha, turno: 'noche', chatter_id: chatters[0]?.id || '', modelos: [] })
 
   return (
     <div>
@@ -134,7 +134,7 @@ function MasivosCal() {
           {esMgr && <Button onClick={() => nuevo(hoy)}>+ Asignar masivo</Button>}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-          <span>Cada día tiene 3 franjas fijas: Noche (arriba), Mañana (en medio) y Tarde (abajo).</span>
+          <span>Cada día tiene 3 franjas fijas: Mañana (arriba), Tarde (en medio) y Noche (abajo).</span>
           {formatosEnMes.length > 0 && <span>· Color = formato:</span>}
           {formatosEnMes.map((f) => <span key={f} className="inline-flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: 2, background: colorFormato(f), display: 'inline-block' }} />{f}</span>)}
         </div>

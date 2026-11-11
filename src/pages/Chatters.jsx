@@ -6,9 +6,9 @@ import { Panel, Button, Table, Td, PageHeader } from '../components/ui'
 import { ModelAvatar } from '../components/ModelAvatar'
 
 const TURNOS = [
-  { id: 'noche', n: 'Noche' },
-  { id: 'mañana', n: 'Mañana' },
-  { id: 'tarde', n: 'Tarde' },
+  { id: 'noche', n: 'Mañana' },
+  { id: 'mañana', n: 'Tarde' },
+  { id: 'tarde', n: 'Noche' },
 ]
 
 function TurnoChips({ selected, onChange }) {

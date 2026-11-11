@@ -27,7 +27,7 @@ export default function UnifiedReportsInbox() {
       persona: r.profiles?.full_name,
       fecha: r.fecha,
       created_at: r.created_at,
-      resumen: `Turno ${r.turno} · ${r.shift_report_details?.length || 0} modelo(s)`,
+      resumen: `Turno ${({ noche: 'Mañana', madrugada: 'Mañana', 'mañana': 'Tarde', tarde: 'Noche' })[r.turno] || r.turno} · ${r.shift_report_details?.length || 0} modelo(s)`,
       detalle: r.shift_report_details,
       tipo: 'chat',
     }))

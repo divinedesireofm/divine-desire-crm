@@ -11,9 +11,9 @@ import InstruccionesIA from '../components/InstruccionesIA'
 import { horarioTurno, fechaHoraDoble } from '../lib/horasTurno'
 
 const TURNOS = [
-  { id: 'noche', n: 'Noche', h: horarioTurno('noche') },
-  { id: 'mañana', n: 'Mañana', h: horarioTurno('mañana') },
-  { id: 'tarde', n: 'Tarde', h: horarioTurno('tarde') },
+  { id: 'noche', n: 'Mañana', h: horarioTurno('noche') },
+  { id: 'mañana', n: 'Tarde', h: horarioTurno('mañana') },
+  { id: 'tarde', n: 'Noche', h: horarioTurno('tarde') },
 ]
 const T_NAME = (id) => TURNOS.find((t) => t.id === (id === 'madrugada' ? 'noche' : id))?.n || id
 const TRAFICO = [

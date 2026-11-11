@@ -115,7 +115,7 @@ export default function Attendance() {
     <div>
       <PageHeader
         title="Entradas y salidas"
-        subtitle={`Marca tu jornada y tus breaks. Turnos: Noche ${horarioTurno('noche')} · Mañana ${horarioTurno('mañana')} · Tarde ${horarioTurno('tarde')}`}
+        subtitle={`Marca tu jornada y tus breaks. Turnos: Mañana ${horarioTurno('noche')} · Tarde ${horarioTurno('mañana')} · Noche ${horarioTurno('tarde')}`}
       />
 
       {mostrarRecordatorioReporte && (

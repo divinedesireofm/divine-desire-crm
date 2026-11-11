@@ -7,9 +7,9 @@ import { ModelAvatar } from '../components/ModelAvatar'
 import { horarioTurno } from '../lib/horasTurno'
 
 const TURNOS = [
-  { id: 'noche', n: 'Noche', h: horarioTurno('noche') },
-  { id: 'mañana', n: 'Mañana', h: horarioTurno('mañana') },
-  { id: 'tarde', n: 'Tarde', h: horarioTurno('tarde') },
+  { id: 'noche', n: 'Mañana', h: horarioTurno('noche') },
+  { id: 'mañana', n: 'Tarde', h: horarioTurno('mañana') },
+  { id: 'tarde', n: 'Noche', h: horarioTurno('tarde') },
 ]
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 

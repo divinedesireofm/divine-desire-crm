@@ -8,7 +8,8 @@ import { Panel, PageHeader } from '../components/ui'
 import Icon from '../components/Icon'
 import ModelName from '../components/ModelAvatar'
 
-const TURNOS = { noche: 'Noche', madrugada: 'Noche', 'mañana': 'Mañana', tarde: 'Tarde' }
+// Los ids guardados no cambian (noche = 4–12 h VE, mañana = 12–20, tarde = 20–4); lo que se muestra es el nombre actual de cada turno
+const TURNOS = { noche: 'Mañana', madrugada: 'Mañana', 'mañana': 'Tarde', tarde: 'Noche' }
 const TRAFICO = { bajo: { n: 'Bajo', c: 'var(--danger)' }, medio: { n: 'Medio', c: 'var(--gold)' }, alto: { n: 'Alto', c: 'var(--success)' } }
 const TIPOS_ESTADO = { entrada: 'trabajando', fin_break: 'trabajando', break: 'en break', salida: 'fuera' }
 const POR_PAGINA = 3
