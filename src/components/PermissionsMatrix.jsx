@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { SECTIONS, ROLES_EDITABLES } from '../lib/navigation'
+import { SECTIONS, ROLES_EDITABLES, PERMISOS_EXTRA } from '../lib/navigation'
 import { Panel, Button } from './ui'
 
 // Tabla de permisos: cada fila es un apartado del CRM y cada columna un rol.
@@ -52,6 +52,10 @@ export default function PermissionsMatrix() {
         </p>
       </Panel>
 
+      <Panel className="p-4 mb-4">
+        <p className="text-sm"><strong>Permisos adicionales</strong> (al final de la tabla): <em>Ver contraseñas en Cuentas de Instagram</em>. Quien no lo tenga verá un candado 🔒 con «No tienes permiso» en lugar de las contraseñas. Solo afecta a quien pueda entrar a esas pestañas (admin y Manager de Instagram); el admin siempre las ve.</p>
+      </Panel>
+
       <Panel>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -64,7 +68,7 @@ export default function PermissionsMatrix() {
               </tr>
             </thead>
             <tbody>
-              {SECTIONS.map((sec) => (
+              {[...SECTIONS, ...PERMISOS_EXTRA].map((sec) => (
                 <SeccionFilas key={sec.id} sec={sec} efectivo={efectivo} personalizado={personalizado} cambiar={cambiar} />
               ))}
             </tbody>

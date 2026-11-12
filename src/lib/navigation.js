@@ -98,6 +98,15 @@ export const SECTIONS = [
   },
 ]
 
+// Permisos adicionales (no son apartados del menú): se guardan en la misma tabla de permisos con la clave `ruta`.
+export const PERMISO_IG_CONTRASENAS = 'permiso:ig_contrasenas'
+export const PERMISOS_EXTRA = [
+  {
+    id: 'extra', label: 'Permisos adicionales',
+    items: [{ to: PERMISO_IG_CONTRASENAS, label: 'Ver contraseñas en Cuentas de Instagram', roles: ['admin', 'ig_manager'] }],
+  },
+]
+
 export const ROLES_EDITABLES = [
   { id: 'manager', label: 'Manager de Chatting' },
   { id: 'chatter', label: 'Chatter' },

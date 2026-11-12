@@ -6,6 +6,8 @@ import QrCelda from './QrCelda'
 import ScrollSuperior from './ScrollSuperior'
 import Desplegable from './Desplegable'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
+import { useAuth } from '../context/AuthContext'
+import { PERMISO_IG_CONTRASENAS } from '../lib/navigation'
 
 const vacio = (v) => v === null || v === undefined || v === ''
 const cmp = (x, y) => (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true }))
@@ -24,6 +26,11 @@ function Etiqueta({ estado }) {
 }
 
 // Contraseñas: ocultas por defecto, con ojo para verlas y botón de copiar
+// Candado en lugar de la contraseña para quien no tiene el permiso «Ver contraseñas»
+function Candado() {
+  return <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }} data-candado title="El admin no te ha dado permiso para ver las contraseñas">🔒 No tienes permiso</span>
+}
+
 function CeldaSecreto({ valor }) {
   const [ver, setVer] = useState(false)
   const [ok, setOk] = useState(false)
@@ -46,6 +53,8 @@ function CeldaSecreto({ valor }) {
 }
 
 export default function TablaRegistros({ cfg, canEdit = true, modelos = [], modelosLista = [], personas = [], onRehabilitar, onGuardado, version = 0 }) {
+  const { puedeVer } = useAuth()
+  const verPass = puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])   // permiso adicional «Ver contraseñas»
   const [filas, setFilas] = useState([])
   const [cargando, setCargando] = useState(true)
   const [busca, setBusca] = useState('')
@@ -186,6 +195,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
       control = <Select value={val} onChange={(e) => set(e.target.value)}><option value="">Sin modelo asignada</option>{modelosLista.slice().sort((x, y) => String(x.stage_name).localeCompare(String(y.stage_name), 'es')).map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}</Select>
     } else if (c.tipo === 'modelo') control = <Input list="lista-modelos-ig" value={val} onChange={(e) => set(e.target.value)} placeholder="Modelo" />
     else if (c.tipo === 'largo') control = <textarea rows={2} value={val} onChange={(e) => set(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm outline-none" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', resize: 'vertical' }} />
+    else if (c.tipo === 'secreto' && !verPass) control = <div className="px-3 py-2 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}><Candado /></div>
     else control = <Input value={val} onChange={(e) => set(e.target.value)} style={c.tipo === 'secreto' || c.mono ? { fontFamily: 'ui-monospace, monospace' } : undefined} />
     return (
       <div key={c.k} className={c.tipo === 'largo' || c.ancho === 2 ? 'sm:col-span-2' : ''}>
@@ -214,7 +224,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
     }
     let cuerpo
     if (c.tipo === 'modeloSel') cuerpo = <CeldaCopia completo titulo={c.n} texto={nombreModelo(v)} />
-    else if (c.tipo === 'secreto') cuerpo = <CeldaSecreto valor={v} />
+    else if (c.tipo === 'secreto') cuerpo = verPass ? <CeldaSecreto valor={v} /> : <Candado />
     else if (c.tipo === 'estado') cuerpo = vacio(v) ? <span style={{ color: 'var(--text-muted)' }}>—</span> : <Etiqueta estado={v} />
     else if (c.tipo === 'enlace') cuerpo = <CeldaCopia completo titulo={c.n} texto={v} muted>{v ? <a href={v} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{String(v).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</a> : null}</CeldaCopia>
     else if (c.tipo === 'fecha') cuerpo = <CeldaCopia completo titulo={c.n} texto={v ? String(v).split('-').reverse().join('/') : ''} />
