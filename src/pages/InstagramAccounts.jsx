@@ -13,6 +13,7 @@ import TablaRegistros from '../components/TablaRegistros'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
 import QrCelda from '../components/QrCelda'
+import { PERMISO_IG_2FA } from '../lib/navigation'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
 
 // Columnas: k = clave de orden, n = cabecera. Todo se ve completo salvo 2FA, Observaciones y Restricciones, que se abrevian (con «ver más») si son largas: `w` es su ancho máximo.
@@ -59,7 +60,8 @@ function diasTranscurridos(fecha) {
 }
 
 export default function InstagramAccounts() {
-  const { hasAnyRole } = useAuth()
+  const { hasAnyRole, puedeVer } = useAuth()
+  const ver2fa = puedeVer(PERMISO_IG_2FA, ['admin', 'ig_manager', 'ig_assistant'])
   const canEdit = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
   const canDelete = hasAnyRole(['admin', 'ig_manager'])
   const canEditSecciones = canDelete
@@ -107,7 +109,7 @@ export default function InstagramAccounts() {
       case 'seguidores': return seguidores[a.id] != null ? Number(seguidores[a.id]) : null
       case 'original': return a.original_username ? a.original_username.toLowerCase() : null
       case 'correo': return a.email ? a.email.toLowerCase() : null
-      case 'dosfa': return a.two_fa_code || null
+      case 'dosfa': return ver2fa ? (a.two_fa_code || null) : null
       case 'publico': return (a.target_audience || []).join(', ').toLowerCase() || null
       case 'asignacion': return a.assigned_at || null
       case 'dias': return a.assigned_at ? Number(diasTranscurridos(a.assigned_at)) : null
@@ -451,7 +453,7 @@ export default function InstagramAccounts() {
         </Select>) })}
       {C({ t: 'Instagram original (si la cuenta fue comprada)', children: <Input placeholder="Instagram original" value={form.original_username} onChange={(e) => setForm({ ...form, original_username: e.target.value })} /> })}
       {C({ t: 'Correo de la cuenta', children: <Input placeholder="Correo de la cuenta" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /> })}
-      {C({ t: 'Código 2FA y foto del QR', children: <div className="flex items-center gap-3"><div style={{ flex: 1 }}><Input placeholder="Código 2FA" value={form.two_fa_code} onChange={(e) => setForm({ ...form, two_fa_code: e.target.value })} /></div><QrCelda usuario={form.username} canEdit={canEdit} /></div> })}
+      {C({ t: 'Código 2FA y foto del QR', children: !ver2fa ? <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-muted)' }} data-candado title="El admin no te ha dado permiso para ver el 2FA">🔒 No tienes permiso</span> : <div className="flex items-center gap-3"><div style={{ flex: 1 }}><Input placeholder="Código 2FA" value={form.two_fa_code} onChange={(e) => setForm({ ...form, two_fa_code: e.target.value })} /></div><QrCelda usuario={form.username} canEdit={canEdit} /></div> })}
       {C({ t: 'Link de Instagram', children: <Input placeholder="Link de Instagram" value={form.profile_link} onChange={(e) => setForm({ ...form, profile_link: e.target.value })} /> })}
       {C({ t: 'Link bio', children: <Input placeholder="Link bio" value={form.bio_link} onChange={(e) => setForm({ ...form, bio_link: e.target.value })} /> })}
       {C({ t: 'Público objetivo (separado por comas)', children: <Input placeholder="Ej: Español, USA" value={form.target_audience} onChange={(e) => setForm({ ...form, target_audience: e.target.value })} /> })}
@@ -598,7 +600,7 @@ export default function InstagramAccounts() {
                       <td className="px-4 align-middle tabular-nums" style={fila}><CeldaCopia completo titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="IG original" texto={a.original_username} /></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Correo" texto={a.email} muted /></td>
-                      <td className="px-4 align-middle" style={corta(COLS[7])}><div className="flex items-center gap-2" style={{ minWidth: 0 }}><div style={{ minWidth: 0, flex: '1 1 auto' }}><CeldaCopia titulo="2FA" texto={a.two_fa_code} muted><span className="font-mono tracking-wide">{a.two_fa_code}</span></CeldaCopia></div><QrCelda usuario={a.username} canEdit={canEdit} /></div></td>
+                      <td className="px-4 align-middle" style={corta(COLS[7])}>{!ver2fa ? <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }} data-candado title="El admin no te ha dado permiso para ver el 2FA">🔒 No tienes permiso</span> : <div className="flex items-center gap-2" style={{ minWidth: 0 }}><div style={{ minWidth: 0, flex: '1 1 auto' }}><CeldaCopia titulo="2FA" texto={a.two_fa_code} muted><span className="font-mono tracking-wide">{a.two_fa_code}</span></CeldaCopia></div><QrCelda usuario={a.username} canEdit={canEdit} /></div>}</td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Público" texto={(a.target_audience || []).join(', ')} /></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Asignación" texto={a.assigned_at} /></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Días" texto={a.assigned_at ? String(diasTranscurridos(a.assigned_at)) : ''} /></td>

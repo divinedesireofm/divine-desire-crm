@@ -7,7 +7,7 @@ import ScrollSuperior from './ScrollSuperior'
 import Desplegable from './Desplegable'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
 import { useAuth } from '../context/AuthContext'
-import { PERMISO_IG_CONTRASENAS } from '../lib/navigation'
+import { PERMISO_IG_CONTRASENAS, PERMISO_IG_2FA } from '../lib/navigation'
 
 const vacio = (v) => v === null || v === undefined || v === ''
 const cmp = (x, y) => (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true }))
@@ -27,8 +27,8 @@ function Etiqueta({ estado }) {
 
 // Contraseñas: ocultas por defecto, con ojo para verlas y botón de copiar
 // Candado en lugar de la contraseña para quien no tiene el permiso «Ver contraseñas»
-function Candado() {
-  return <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }} data-candado title="El admin no te ha dado permiso para ver las contraseñas">🔒 No tienes permiso</span>
+function Candado({ que = 'las contraseñas' }) {
+  return <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }} data-candado title={`El admin no te ha dado permiso para ver ${que}`}>🔒 No tienes permiso</span>
 }
 
 function CeldaSecreto({ valor }) {
@@ -55,6 +55,8 @@ function CeldaSecreto({ valor }) {
 export default function TablaRegistros({ cfg, canEdit = true, modelos = [], modelosLista = [], personas = [], onRehabilitar, onGuardado, version = 0 }) {
   const { puedeVer } = useAuth()
   const verPass = puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])   // permiso adicional «Ver contraseñas»
+  const ver2fa = puedeVer(PERMISO_IG_2FA, ['admin', 'ig_manager', 'ig_assistant'])   // permiso adicional «Ver 2FA»
+  const es2faBloq = (c) => c.k === 'dos_fa' && !ver2fa
   const [filas, setFilas] = useState([])
   const [cargando, setCargando] = useState(true)
   const [busca, setBusca] = useState('')
@@ -110,7 +112,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
     const q = busca.trim().toLowerCase()
     const lista = filas.filter((f) => {
       if (fEstado !== 'todos' && (f[colEstado] || 'SIN ESTADO') !== fEstado) return false
-      if (q && !colsTabla.some((c) => c.tipo !== 'secreto' && String(valorDe(f, c.k) ?? '').toLowerCase().includes(q))) return false
+      if (q && !colsTabla.some((c) => c.tipo !== 'secreto' && !es2faBloq(c) && String(valorDe(f, c.k) ?? '').toLowerCase().includes(q))) return false
       return true
     })
     const dir = ordenDir === 'asc' ? 1 : -1
@@ -195,6 +197,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
       control = <Select value={val} onChange={(e) => set(e.target.value)}><option value="">Sin modelo asignada</option>{modelosLista.slice().sort((x, y) => String(x.stage_name).localeCompare(String(y.stage_name), 'es')).map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}</Select>
     } else if (c.tipo === 'modelo') control = <Input list="lista-modelos-ig" value={val} onChange={(e) => set(e.target.value)} placeholder="Modelo" />
     else if (c.tipo === 'largo') control = <textarea rows={2} value={val} onChange={(e) => set(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm outline-none" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', resize: 'vertical' }} />
+    else if (es2faBloq(c)) control = <div className="px-3 py-2 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}><Candado que="el 2FA" /></div>
     else if (c.tipo === 'secreto' && !verPass) control = <div className="px-3 py-2 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}><Candado /></div>
     else control = <Input value={val} onChange={(e) => set(e.target.value)} style={c.tipo === 'secreto' || c.mono ? { fontFamily: 'ui-monospace, monospace' } : undefined} />
     return (
@@ -229,7 +232,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
     else if (c.tipo === 'enlace') cuerpo = <CeldaCopia completo titulo={c.n} texto={v} muted>{v ? <a href={v} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{String(v).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</a> : null}</CeldaCopia>
     else if (c.tipo === 'fecha') cuerpo = <CeldaCopia completo titulo={c.n} texto={v ? String(v).split('-').reverse().join('/') : ''} />
     else cuerpo = <CeldaCopia completo={!c.w} titulo={c.n} texto={v} muted={c.tipo === 'largo' || c.w} >{c.mono && v ? <span className="font-mono tracking-wide">{v}</span> : null}</CeldaCopia>
-    if (c.qrDe) cuerpo = <div className="flex items-center gap-2" style={{ minWidth: 0 }}><div style={{ minWidth: 0, flex: '1 1 auto' }}>{cuerpo}</div><QrCelda usuario={f[c.qrDe]} canEdit={canEdit} /></div>
+    if (es2faBloq(c)) cuerpo = <Candado que="el 2FA" />
+    else if (c.qrDe) cuerpo = <div className="flex items-center gap-2" style={{ minWidth: 0 }}><div style={{ minWidth: 0, flex: '1 1 auto' }}>{cuerpo}</div><QrCelda usuario={f[c.qrDe]} canEdit={canEdit} /></div>
     return cuerpo
   }
   const tdStyle = (c, i) => ({
@@ -275,7 +279,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
             <div className="w-56">
               <Select value={ordenK} onChange={(e) => { setOrdenK(e.target.value); setOrdenDir('asc') }} aria-label="Ordenar por">
                 <option value="orden">Orden manual (arrastrar filas)</option>
-                {colsTabla.filter((c) => c.tipo !== 'secreto').map((c) => <option key={c.k} value={c.k}>Ordenar: {c.n}</option>)}
+                {colsTabla.filter((c) => c.tipo !== 'secreto' && !es2faBloq(c)).map((c) => <option key={c.k} value={c.k}>Ordenar: {c.n}</option>)}
               </Select>
             </div>
             <button type="button" onClick={() => setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc'))} className="px-3 py-2 rounded-md text-sm whitespace-nowrap" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>{ordenDir === 'asc' ? '▲ A→Z' : '▼ Z→A'}</button>
@@ -299,7 +303,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
                 <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
                   {colsTabla.map((c, i) => (
                     <th key={c.k} className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: ordenK === c.k ? 'var(--accent)' : 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}) }}>
-                      {c.tipo === 'secreto' ? c.n : <button type="button" onClick={() => ordenarPor(c.k)} className="hover:underline uppercase" title="Ordenar por esta columna">{c.n}{ordenK === c.k ? (ordenDir === 'asc' ? ' ▲' : ' ▼') : ''}</button>}
+                      {c.tipo === 'secreto' || es2faBloq(c) ? c.n : <button type="button" onClick={() => ordenarPor(c.k)} className="hover:underline uppercase" title="Ordenar por esta columna">{c.n}{ordenK === c.k ? (ordenDir === 'asc' ? ' ▲' : ' ▼') : ''}</button>}
                     </th>
                   ))}
                   <th style={{ position: 'sticky', right: 0, zIndex: 6, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }} />
