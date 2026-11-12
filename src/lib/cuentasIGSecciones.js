@@ -10,7 +10,7 @@ export const SECCIONES = {
     subtitulo: 'Cuentas suspendidas de forma permanente o eliminadas voluntariamente, con la fecha y el motivo.',
     singular: 'cuenta eliminada', vacio: 'Todavía no hay cuentas eliminadas. Se añaden desde «General» con el botón «Dar de baja» de cada cuenta.',
     sinAnadir: true, rehabilitar: true,
-    estados: ESTADOS_CUENTA, nuevo: { estado: 'ELIMINADA' },
+    estados: ESTADOS_CUENTA.filter((e) => e !== 'ACTIVA'), prohibidos: ['ACTIVA'], nuevo: { estado: 'ELIMINADA' }, // una cuenta eliminada nunca está «activa»
     cols: [
       { k: 'instagram_nuevo', n: 'Instagram nuevo', tipo: 'texto', principal: true },
       { k: 'estado', n: 'Estado', tipo: 'estado' },
@@ -25,7 +25,7 @@ export const SECCIONES = {
       { k: 'asistente', n: 'Asistente', tipo: 'texto' },
       { k: 'proxy', n: 'Proxy', tipo: 'texto' },
       { k: 'pais_proxy', n: 'País proxy', tipo: 'texto' },
-      { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 150, mono: true },
+      { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 200, mono: true, qrDe: 'instagram_nuevo' },
       { k: 'fecha_asignacion', n: 'Fecha asignación/creación', tipo: 'fecha' },
       { k: 'observaciones', n: 'Observaciones', tipo: 'largo', w: 260 },
     ],
@@ -65,7 +65,7 @@ export const SECCIONES = {
       { k: 'contrasena_email', n: 'Contraseña email', tipo: 'secreto' },
       { k: 'fecha_creacion', n: 'Fecha de creación', tipo: 'fecha' },
       { k: 'creador', n: 'Creador', tipo: 'persona' },
-      { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 150, mono: true },
+      { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 200, mono: true, qrDe: 'usuario' },
       { k: 'estado', n: 'Estado', tipo: 'estado' },
     ],
   },

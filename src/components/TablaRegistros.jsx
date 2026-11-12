@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { Panel, Button, Input, Select } from './ui'
 import CeldaCopia from './CeldaCopia'
+import QrCelda from './QrCelda'
 import ScrollSuperior from './ScrollSuperior'
 import Desplegable from './Desplegable'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
@@ -170,7 +171,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
     let control
     if (c.tipo === 'fecha') control = <Input type="date" value={val} onChange={(e) => set(e.target.value)} />
     else if (c.tipo === 'estado') {
-      const ops = cfg.estados.includes(val) || !val ? cfg.estados : [...cfg.estados, val]
+      const ops = cfg.estados.includes(val) || !val || (cfg.prohibidos || []).includes(String(val).toUpperCase()) ? cfg.estados : [...cfg.estados, val]
       control = <Select value={val} onChange={(e) => set(e.target.value)}><option value="">Sin estado</option>{ops.map((o) => <option key={o} value={o}>{o}</option>)}</Select>
     } else if (c.tipo === 'persona') {
       const todos = personas.flatMap((g) => g.items)
@@ -218,6 +219,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
     else if (c.tipo === 'enlace') cuerpo = <CeldaCopia completo titulo={c.n} texto={v} muted>{v ? <a href={v} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{String(v).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</a> : null}</CeldaCopia>
     else if (c.tipo === 'fecha') cuerpo = <CeldaCopia completo titulo={c.n} texto={v ? String(v).split('-').reverse().join('/') : ''} />
     else cuerpo = <CeldaCopia completo={!c.w} titulo={c.n} texto={v} muted={c.tipo === 'largo' || c.w} >{c.mono && v ? <span className="font-mono tracking-wide">{v}</span> : null}</CeldaCopia>
+    if (c.qrDe) cuerpo = <div className="flex items-center gap-2" style={{ minWidth: 0 }}><div style={{ minWidth: 0, flex: '1 1 auto' }}>{cuerpo}</div><QrCelda usuario={f[c.qrDe]} canEdit={canEdit} /></div>
     return cuerpo
   }
   const tdStyle = (c, i) => ({

@@ -12,13 +12,14 @@ import IGProfileMetrics from './IGProfileMetrics'
 import TablaRegistros from '../components/TablaRegistros'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
+import QrCelda from '../components/QrCelda'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
 
 // Columnas: k = clave de orden, n = cabecera. Todo se ve completo salvo 2FA, Observaciones y Restricciones, que se abrevian (con «ver más») si son largas: `w` es su ancho máximo.
 const COLS = [
   { k: 'cuenta', n: 'Cuenta actual' }, { k: 'modelo', n: 'Modelo' }, { k: 'estado', n: 'Estado' },
   { k: 'responsable', n: 'Responsable' }, { k: 'seguidores', n: 'Seguidores' }, { k: 'original', n: 'IG original' },
-  { k: 'correo', n: 'Correo' }, { k: 'dosfa', n: '2FA', w: 150 }, { k: 'publico', n: 'Público' },
+  { k: 'correo', n: 'Correo' }, { k: 'dosfa', n: '2FA', w: 200 }, { k: 'publico', n: 'Público' },
   { k: 'asignacion', n: 'Asignación' }, { k: 'dias', n: 'Días' }, { k: 'obs', n: 'Observaciones', w: 260 },
   { k: 'restr', n: 'Restricciones', w: 260 }, { k: 'acc', n: '' },
 ]
@@ -450,7 +451,7 @@ export default function InstagramAccounts() {
         </Select>) })}
       {C({ t: 'Instagram original (si la cuenta fue comprada)', children: <Input placeholder="Instagram original" value={form.original_username} onChange={(e) => setForm({ ...form, original_username: e.target.value })} /> })}
       {C({ t: 'Correo de la cuenta', children: <Input placeholder="Correo de la cuenta" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /> })}
-      {C({ t: 'Código 2FA', children: <Input placeholder="Código 2FA" value={form.two_fa_code} onChange={(e) => setForm({ ...form, two_fa_code: e.target.value })} /> })}
+      {C({ t: 'Código 2FA y foto del QR', children: <div className="flex items-center gap-3"><div style={{ flex: 1 }}><Input placeholder="Código 2FA" value={form.two_fa_code} onChange={(e) => setForm({ ...form, two_fa_code: e.target.value })} /></div><QrCelda usuario={form.username} canEdit={canEdit} /></div> })}
       {C({ t: 'Link de Instagram', children: <Input placeholder="Link de Instagram" value={form.profile_link} onChange={(e) => setForm({ ...form, profile_link: e.target.value })} /> })}
       {C({ t: 'Link bio', children: <Input placeholder="Link bio" value={form.bio_link} onChange={(e) => setForm({ ...form, bio_link: e.target.value })} /> })}
       {C({ t: 'Público objetivo (separado por comas)', children: <Input placeholder="Ej: Español, USA" value={form.target_audience} onChange={(e) => setForm({ ...form, target_audience: e.target.value })} /> })}
@@ -597,7 +598,7 @@ export default function InstagramAccounts() {
                       <td className="px-4 align-middle tabular-nums" style={fila}><CeldaCopia completo titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="IG original" texto={a.original_username} /></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Correo" texto={a.email} muted /></td>
-                      <td className="px-4 align-middle" style={corta(COLS[7])}><CeldaCopia titulo="2FA" texto={a.two_fa_code} muted><span className="font-mono tracking-wide">{a.two_fa_code}</span></CeldaCopia></td>
+                      <td className="px-4 align-middle" style={corta(COLS[7])}><div className="flex items-center gap-2" style={{ minWidth: 0 }}><div style={{ minWidth: 0, flex: '1 1 auto' }}><CeldaCopia titulo="2FA" texto={a.two_fa_code} muted><span className="font-mono tracking-wide">{a.two_fa_code}</span></CeldaCopia></div><QrCelda usuario={a.username} canEdit={canEdit} /></div></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Público" texto={(a.target_audience || []).join(', ')} /></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Asignación" texto={a.assigned_at} /></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Días" texto={a.assigned_at ? String(diasTranscurridos(a.assigned_at)) : ''} /></td>
