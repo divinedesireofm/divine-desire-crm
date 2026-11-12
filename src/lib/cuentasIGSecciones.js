@@ -12,14 +12,13 @@ export const SECCIONES = {
     sinAnadir: true, rehabilitar: true,
     estados: ESTADOS_CUENTA.filter((e) => e !== 'ACTIVA'), prohibidos: ['ACTIVA'], nuevo: { estado: 'ELIMINADA' }, // una cuenta eliminada nunca está «activa»
     cols: [
-      { k: 'instagram_nuevo', n: 'Instagram nuevo', tipo: 'texto', principal: true },
+      { k: 'instagram_nuevo', n: 'Instagram nuevo', tipo: 'texto', principal: true, usuarioIG: true },
       { k: 'estado', n: 'Estado', tipo: 'estado' },
       { k: 'motivo', n: 'Motivo eliminación / suspensión', tipo: 'texto', ancho: 2 },
       { k: 'fecha_eliminacion', n: 'Fecha eliminación', tipo: 'fecha' },
       { k: 'modelo', n: 'Modelo', tipo: 'modelo' },
-      { k: 'instagram_original', n: 'Instagram original', tipo: 'texto' },
+      { k: 'instagram_original', n: 'Instagram original', tipo: 'texto', usuarioIG: true },
       { k: 'correo', n: 'Correo', tipo: 'texto' },
-      { k: 'link', n: 'Link', tipo: 'enlace' },
       { k: 'idioma', n: 'Idioma', tipo: 'texto' },
       { k: 'link_bio', n: 'Link bio', tipo: 'enlace' },
       { k: 'asistente', n: 'Asistente', tipo: 'texto' },
@@ -44,7 +43,7 @@ export const SECCIONES = {
       { k: 'contrasena', n: 'Contraseña', tipo: 'secreto' },
       { k: 'email_recuperacion', n: 'Email recuperación', tipo: 'texto' },
       { k: 'estado', n: 'Estado', tipo: 'estado' },
-      { k: 'instagram', n: 'Instagram', tipo: 'texto' },
+      { k: 'instagram', n: 'Instagram', tipo: 'texto', usuarioIG: true },
       { k: 'bloque', n: 'Origen', tipo: 'texto' },
       { k: 'observaciones', n: 'Observaciones', tipo: 'largo', w: 260 },
     ],
@@ -52,13 +51,12 @@ export const SECCIONES = {
   propias: {
     id: 'propias', pestana: 'Cuentas propias', tabla: 'ig_cuentas_propias',
     titulo: 'Cuentas propias',
-    subtitulo: 'Cuentas de Instagram que creamos nosotros, con sus credenciales, creador y estado.',
+    subtitulo: 'Cuentas de Instagram que creamos nosotros, con sus credenciales, creador y estado. Todo lo que cambies aquí se refleja en el resto de apartados.',
     singular: 'cuenta propia', vacio: 'Todavía no hay cuentas propias.',
     sincroniza: true, // al asignar una modelo, la cuenta se añade (o se actualiza) en el cuadro General
     estados: ESTADOS_CUENTA, nuevo: { estado: 'ACTIVA' },
     cols: [
-      { k: 'usuario', n: 'Usuario', tipo: 'texto', principal: true, enlaceDe: 'enlace' },
-      { k: 'enlace', n: 'Enlace de la cuenta (al pulsar el usuario te lleva aquí)', tipo: 'enlace', soloForm: true, ancho: 2 },
+      { k: 'usuario', n: 'Usuario', tipo: 'texto', principal: true, usuarioIG: true },
       { k: 'modelo_id', n: 'Modelo', tipo: 'modeloSel' },
       { k: 'contrasena', n: 'Contraseña', tipo: 'secreto' },
       { k: 'email', n: 'Email', tipo: 'texto' },
@@ -67,6 +65,25 @@ export const SECCIONES = {
       { k: 'creador', n: 'Creador', tipo: 'persona' },
       { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 200, mono: true, qrDe: 'usuario' },
       { k: 'estado', n: 'Estado', tipo: 'estado' },
+    ],
+  },
+  modelos: {
+    id: 'modelos', pestana: 'Cuentas de modelos', tabla: 'ig_cuentas_modelos',
+    titulo: 'Cuentas de modelos',
+    subtitulo: 'Cuentas de Instagram que las modelos traen consigo y son suyas: las trabajamos nosotros. Todo lo que cambies aquí se refleja en el resto de apartados.',
+    singular: 'cuenta de modelo', vacio: 'Todavía no hay cuentas de modelos.',
+    sincroniza: true, // al asignar una modelo, la cuenta se añade (o se actualiza) en el cuadro General
+    estados: ESTADOS_CUENTA, nuevo: { estado: 'ACTIVA' },
+    cols: [
+      { k: 'usuario', n: 'Usuario', tipo: 'texto', principal: true, usuarioIG: true },
+      { k: 'modelo_id', n: 'Modelo (dueña de la cuenta)', tipo: 'modeloSel' },
+      { k: 'contrasena', n: 'Contraseña', tipo: 'secreto' },
+      { k: 'email', n: 'Email', tipo: 'texto' },
+      { k: 'contrasena_email', n: 'Contraseña email', tipo: 'secreto' },
+      { k: 'fecha_creacion', n: 'Fecha de incorporación', tipo: 'fecha' },
+      { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 200, mono: true, qrDe: 'usuario' },
+      { k: 'estado', n: 'Estado', tipo: 'estado' },
+      { k: 'observaciones', n: 'Observaciones', tipo: 'largo', w: 260 },
     ],
   },
   stock_ig: {
@@ -81,8 +98,8 @@ export const SECCIONES = {
       { k: 'proveedor', n: 'Proveedor', tipo: 'texto' },
       { k: 'correo', n: 'Correo', tipo: 'texto' },
       { k: 'contrasena', n: 'Contraseña correo', tipo: 'secreto' },
-      { k: 'instagram_original', n: 'Instagram original', tipo: 'texto' },
-      { k: 'instagram_actual', n: 'Instagram actual', tipo: 'texto', principal: true },
+      { k: 'instagram_original', n: 'Instagram original', tipo: 'texto', usuarioIG: true },
+      { k: 'instagram_actual', n: 'Instagram actual', tipo: 'texto', principal: true, usuarioIG: true },
       { k: 'contrasena_ig', n: 'Contraseña Instagram', tipo: 'secreto' },
       { k: 'estado', n: 'Estado', tipo: 'estado' },
       { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 150, mono: true },
@@ -90,4 +107,4 @@ export const SECCIONES = {
     ],
   },
 }
-export const ORDEN_SECCIONES = ['eliminadas', 'stock_mails', 'propias', 'stock_ig']
+export const ORDEN_SECCIONES = ['eliminadas', 'stock_mails', 'propias', 'modelos', 'stock_ig']

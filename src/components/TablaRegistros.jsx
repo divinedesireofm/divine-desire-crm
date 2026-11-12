@@ -8,6 +8,7 @@ import Desplegable from './Desplegable'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
 import { useAuth } from '../context/AuthContext'
 import { PERMISO_IG_CONTRASENAS, PERMISO_IG_2FA } from '../lib/navigation'
+import { urlInstagram, usuarioIG } from '../lib/instagramLink'
 
 const vacio = (v) => v === null || v === undefined || v === ''
 const cmp = (x, y) => (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true }))
@@ -221,6 +222,11 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
   const celda = (f, c, ocultar) => {
     const v = f[c.k]
     if (ocultar) return null
+    if (c.usuarioIG && v) {
+      const url = urlInstagram(v)
+      const cuerpoIG = <CeldaCopia completo titulo={c.n} texto={usuarioIG(v)}>{url ? <a href={url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta de Instagram">{v}</a> : null}</CeldaCopia>
+      return cuerpoIG
+    }
     if (c.enlaceDe && v) {
       const url = f[c.enlaceDe]
       return <CeldaCopia completo titulo={c.n} texto={v}>{url ? <a href={/^https?:\/\//i.test(url) ? url : `https://${url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta">{v}</a> : null}</CeldaCopia>

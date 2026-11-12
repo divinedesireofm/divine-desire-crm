@@ -14,6 +14,7 @@ import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
 import QrCelda from '../components/QrCelda'
 import { PERMISO_IG_2FA } from '../lib/navigation'
+import { urlInstagram, usuarioIG } from '../lib/instagramLink'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
 
 // Columnas: k = clave de orden, n = cabecera. Todo se ve completo salvo 2FA, Observaciones y Restricciones, que se abrevian (con «ver más») si son largas: `w` es su ancho máximo.
@@ -158,7 +159,7 @@ export default function InstagramAccounts() {
   }
   function ordenarPor(k) { if (k === ordenK) setOrdenDir((d) => (d === 'asc' ? 'desc' : 'asc')); else { setOrdenK(k); setOrdenDir('asc') } }
 
-  // «Creador»: asistentes de Instagram, extrabajadores de Instagram y modelos
+  // «Creador» (Cuentas propias): asistentes y extrabajadores de Instagram. Las cuentas de las modelos van en «Cuentas de modelos».
   async function cargarCreadores(profs, mods) {
     const limpia = (n) => String(n || '').replace(/\s*\(extrabajador\)\s*$/i, '').trim()
     let ex = []
@@ -174,7 +175,6 @@ export default function InstagramAccounts() {
     setCreadores([
       { grupo: 'Asistentes de Instagram', items: uniq(profs.map((x) => limpia(x.full_name)).filter(Boolean)) },
       { grupo: 'Extrabajadores de Instagram', items: uniq(ex) },
-      { grupo: 'Modelos', items: uniq(mods.map((m) => m.stage_name).filter(Boolean).map((n) => `${n} (modelo)`)) },
     ])
   }
 
@@ -198,6 +198,9 @@ export default function InstagramAccounts() {
   }
 
   useEffect(() => { load() }, [])
+  // Al volver al cuadro General se recargan los datos, así se ve lo que se haya cambiado en los otros apartados
+  const primeraVez = useRef(true)
+  useEffect(() => { if (primeraVez.current) { primeraVez.current = false; return } if (tab === 'cuentas') load() }, [tab]) // eslint-disable-line
   // La ventana de edición se ajusta al ancho visible de la tabla (aunque la tabla sea más ancha y tenga scroll)
   useEffect(() => {
     const el = panelRef.current
@@ -242,8 +245,8 @@ export default function InstagramAccounts() {
     const payload = {
       original_username: form.original_username || null,
       email: form.email || null,
-      profile_link: form.profile_link || null,
-      username: form.username,
+      profile_link: urlInstagram(form.username) || null,   // el enlace se crea solo a partir del usuario
+      username: usuarioIG(form.username) || form.username,
       model_id: form.model_id || null,
       target_audience: form.target_audience
         ? form.target_audience.split(',').map((s) => s.trim()).filter(Boolean)
@@ -278,7 +281,7 @@ export default function InstagramAccounts() {
     const obs = [a.observations, a.restrictions ? `Restricciones: ${a.restrictions}` : null].filter(Boolean).join(' · ') || null
     const ficha = {
       cuenta_id: a.id, estado: tipo, motivo, fecha_eliminacion: fecha,
-      instagram_nuevo: a.username, instagram_original: a.original_username || null, correo: a.email || null, link: a.profile_link || null,
+      instagram_nuevo: a.username, instagram_original: a.original_username || null, correo: a.email || null, link: urlInstagram(a.username) || null,
       modelo: a.models?.stage_name || null, idioma: (a.target_audience || []).join(', ') || null, link_bio: a.bio_link || null,
       asistente: a.profiles?.full_name || null, dos_fa: a.two_fa_code || null, fecha_asignacion: a.assigned_at || null, observaciones: obs,
     }
@@ -313,7 +316,7 @@ export default function InstagramAccounts() {
       const mod = models.find((m) => String(m.stage_name || '').trim().toLowerCase() === String(f.modelo || '').trim().toLowerCase())
       const asis = assistants.find((x) => String(x.full_name || '').trim().toLowerCase() === String(f.asistente || '').trim().toLowerCase())
       const { error: e } = await supabase.from('instagram_accounts').insert([{
-        username: usuario, original_username: f.instagram_original || null, email: f.correo || null, profile_link: f.link || null,
+        username: usuario, original_username: f.instagram_original || null, email: f.correo || null, profile_link: urlInstagram(usuario) || null,
         model_id: mod?.id || null, assigned_to: asis?.id || null, target_audience: f.idioma ? f.idioma.split(',').map((x) => x.trim()).filter(Boolean) : null,
         bio_link: f.link_bio || null, status: 'activa', two_fa_code: f.dos_fa || null, assigned_at: f.fecha_asignacion || null,
         observations: sumar(f.observaciones), archivada: false,
@@ -327,16 +330,16 @@ export default function InstagramAccounts() {
   }
 
   // Cuentas propias → General: al asignar una modelo, la cuenta aparece en el cuadro General (o se actualiza si ya estaba)
-  async function sincronizarPropia(f) {
+  async function sincronizarPropia(f, esModelos = false) {
     if (!f.modelo_id) return null
     const est = String(f.estado || '').toUpperCase()
     if (est.startsWith('ELIMIN')) return { tipo: 'ok', texto: 'Guardada. No se añade al General porque está marcada como ELIMINADA.' }
-    const usuario = String(f.usuario || '').trim().replace(/^@/, '')
+    const usuario = usuarioIG(f.usuario)
     if (!usuario) return { tipo: 'error', texto: 'Para añadirla al General hace falta el usuario de Instagram.' }
     const mod = models.find((m) => m.id === f.modelo_id)
     const status = est.startsWith('ACTIV') ? 'activa' : est.startsWith('SUSP') || est.startsWith('BLOQ') ? 'suspendida' : est.startsWith('RESTR') ? 'en_revision' : est.includes('REPOSO') ? 'en_pausa' : 'activa'
     const creador = String(f.creador || '').trim().toLowerCase()
-    const asis = assistants.find((x) => String(x.full_name || '').trim().toLowerCase() === creador)
+    const asis = esModelos ? null : assistants.find((x) => String(x.full_name || '').trim().toLowerCase() === creador)
 
     let cuenta = null
     if (f.cuenta_id) { const { data } = await supabase.from('instagram_accounts').select('*').eq('id', f.cuenta_id).maybeSingle(); cuenta = data }
@@ -350,7 +353,7 @@ export default function InstagramAccounts() {
     if (cuenta) {
       const cambios = { model_id: f.modelo_id }
       if (!cuenta.email && f.email) cambios.email = f.email
-      if (!cuenta.profile_link && f.enlace) cambios.profile_link = f.enlace
+      if (!cuenta.profile_link) cambios.profile_link = urlInstagram(usuario)
       if (!cuenta.two_fa_code && f.dos_fa) cambios.two_fa_code = f.dos_fa
       if (!cuenta.assigned_at && f.fecha_creacion) cambios.assigned_at = f.fecha_creacion
       const { error } = await supabase.from('instagram_accounts').update(cambios).eq('id', cuenta.id)
@@ -358,7 +361,7 @@ export default function InstagramAccounts() {
       texto = `@${usuario} ya estaba en el General: se ha asignado a ${mod?.stage_name || 'la modelo'}.`
     } else {
       const { data: nueva, error } = await supabase.from('instagram_accounts').insert([{
-        username: usuario, model_id: f.modelo_id, status, email: f.email || null, profile_link: f.enlace || null, two_fa_code: f.dos_fa || null,
+        username: usuario, model_id: f.modelo_id, status, email: f.email || null, profile_link: urlInstagram(usuario) || null, two_fa_code: f.dos_fa || null,
         assigned_at: f.fecha_creacion || null, assigned_to: asis?.id || null, archivada: false,
       }]).select('id').single()
       if (error) throw error
@@ -402,7 +405,7 @@ export default function InstagramAccounts() {
       <div>
         <PageHeader title="Cuentas de Instagram" subtitle={SECCIONES[tab].subtitulo} />
         {pestanas}
-        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} modelosLista={models} onGuardado={SECCIONES[tab].sincroniza ? sincronizarPropia : undefined} version={versionElim} onRehabilitar={(f) => { setModalErr(null); setRehabDe(f) }} />
+        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} modelosLista={models} onGuardado={SECCIONES[tab].sincroniza ? (f) => sincronizarPropia(f, tab === 'modelos') : undefined} version={versionElim} onRehabilitar={(f) => { setModalErr(null); setRehabDe(f) }} />
         {rehabDe && (
           <ModalMotivo titulo={`Rehabilitar @${rehabDe.instagram_nuevo || rehabDe.instagram_original || ''}`} descripcion="La cuenta volverá al cuadro General como activa. Queda anotado el motivo de la baja y el de la rehabilitación en sus observaciones." etiquetaMotivo="Motivo de la rehabilitación" etiquetaFecha="Fecha de rehabilitación" textoBoton="Rehabilitar cuenta" error={modalErr} trabajando={trabajando} onConfirmar={rehabilitar} onCancelar={() => setRehabDe(null)} />
         )}
@@ -454,7 +457,6 @@ export default function InstagramAccounts() {
       {C({ t: 'Instagram original (si la cuenta fue comprada)', children: <Input placeholder="Instagram original" value={form.original_username} onChange={(e) => setForm({ ...form, original_username: e.target.value })} /> })}
       {C({ t: 'Correo de la cuenta', children: <Input placeholder="Correo de la cuenta" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /> })}
       {C({ t: 'Código 2FA y foto del QR', children: !ver2fa ? <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-muted)' }} data-candado title="El admin no te ha dado permiso para ver el 2FA">🔒 No tienes permiso</span> : <div className="flex items-center gap-3"><div style={{ flex: 1 }}><Input placeholder="Código 2FA" value={form.two_fa_code} onChange={(e) => setForm({ ...form, two_fa_code: e.target.value })} /></div><QrCelda usuario={form.username} canEdit={canEdit} /></div> })}
-      {C({ t: 'Link de Instagram', children: <Input placeholder="Link de Instagram" value={form.profile_link} onChange={(e) => setForm({ ...form, profile_link: e.target.value })} /> })}
       {C({ t: 'Link bio', children: <Input placeholder="Link bio" value={form.bio_link} onChange={(e) => setForm({ ...form, bio_link: e.target.value })} /> })}
       {C({ t: 'Público objetivo (separado por comas)', children: <Input placeholder="Ej: Español, USA" value={form.target_audience} onChange={(e) => setForm({ ...form, target_audience: e.target.value })} /> })}
       {C({ t: 'Fecha de creación/asignación', children: <Input type="date" value={form.assigned_at} onChange={(e) => setForm({ ...form, assigned_at: e.target.value })} /> })}
@@ -482,12 +484,7 @@ export default function InstagramAccounts() {
       `}</style>
       <PageHeader
         title="Cuentas de Instagram"
-        subtitle="Ficha completa de cada cuenta: origen, credenciales, responsable y estado."
-        action={canEdit && !editingId && (
-          <Button onClick={showForm ? () => setShowForm(false) : startCreate}>
-            {showForm ? 'Cancelar' : 'Añadir cuenta'}
-          </Button>
-        )}
+        subtitle="Ficha completa de cada cuenta: origen, credenciales, responsable y estado. Las cuentas se añaden desde Cuentas propias, Cuentas de modelos o Stock Instagram y aparecen aquí solas."
       />
 
       {pestanas}
@@ -589,7 +586,7 @@ export default function InstagramAccounts() {
                         <CeldaCopia completo titulo="Cuenta actual" texto={`@${a.username}`}>
                           <span className="inline-flex items-center gap-2.5 align-middle font-medium">
                             <FotoIG url={fotos[a.id]} nombre={a.username} size={38} />
-                            {a.profile_link ? <a href={a.profile_link} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>@{a.username}</a> : `@${a.username}`}
+                            <a href={urlInstagram(a.username)} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta de Instagram">@{a.username}</a>
                           </span>
                         </CeldaCopia>
                         </div>
