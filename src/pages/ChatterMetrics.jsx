@@ -384,7 +384,7 @@ export default function ChatterMetrics() {
           </div>
         )}
       />
-      <InstruccionesIA claves={['metricas', 'informes']} />
+      <InstruccionesIA claves={['metricas', 'turno', 'informes']} />
 
       {panel === 'inflow' && (
         <Panel className="p-5 mb-6">

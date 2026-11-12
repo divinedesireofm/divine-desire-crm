@@ -7,7 +7,6 @@ import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import ModelName from '../components/ModelAvatar'
 import { reducirImagen, leerVentasDeCapturas } from '../lib/leerCapturas'
-import InstruccionesIA from '../components/InstruccionesIA'
 import { horarioTurno, fechaHoraDoble } from '../lib/horasTurno'
 
 const TURNOS = [
@@ -566,7 +565,6 @@ export default function ShiftReports() {
   return (
     <div>
       <PageHeader title="Reportes de turno" subtitle="Al final de tu turno, reporta cómo fue con cada modelo que llevaste." />
-      <InstruccionesIA claves={['turno', 'informes']} />
       <ReportesFaltantes />
 
       <Panel className="p-5 mb-6">
