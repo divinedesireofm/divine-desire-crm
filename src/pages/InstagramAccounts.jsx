@@ -179,7 +179,7 @@ export default function InstagramAccounts() {
     } catch { /* sin extrabajadores */ }
     const uniq = (a) => Array.from(new Set(a)).sort((x, y) => x.localeCompare(y, 'es'))
     setCreadores([
-      { grupo: 'Asistentes de Instagram', items: uniq(profs.map((x) => limpia(x.full_name)).filter(Boolean)) },
+      { grupo: 'Equipo de Instagram', items: uniq(profs.map((x) => limpia(x.full_name)).filter(Boolean)) },
       { grupo: 'Extrabajadores de Instagram', items: uniq(ex) },
     ])
   }
@@ -189,7 +189,7 @@ export default function InstagramAccounts() {
     const [{ data: acc }, { data: mods }, profs] = await Promise.all([
       supabase.from('instagram_accounts').select('*, models(stage_name), profiles(full_name)').eq('archivada', false).order('created_at', { ascending: false }),
       supabase.from('models').select('id, stage_name'),
-      getProfilesByRoles(['ig_assistant']),
+      getProfilesByRoles(['ig_assistant', 'ig_manager', 'admin']),   // el admin y el manager también pueden ser creador o responsable
     ])
     setAccounts(acc || [])
     supabase.rpc('ig_origenes').then(({ data: og, error: eo }) => {
