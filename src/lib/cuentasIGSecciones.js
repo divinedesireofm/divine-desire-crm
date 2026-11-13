@@ -3,7 +3,7 @@
 // w = ancho máximo (solo si queremos abreviar el texto largo con «ver más»).
 export const ESTADOS_CUENTA = ['ACTIVA', 'ELIMINADA', 'SUSPENDIDA', 'BLOQUEADA', 'RESTRINGIDA', 'EN REPOSO']
 // PERDIDA solo existe al dar de baja una cuenta (apartado Eliminadas); no se elige en General ni en el resto de apartados
-export const ESTADOS_ELIMINADAS = [...ESTADOS_CUENTA.filter((e) => e !== 'ACTIVA'), 'PERDIDA']
+export const ESTADOS_ELIMINADAS = ['ELIMINADA', 'SUSPENDIDA INDEFINIDAMENTE', 'PERDIDA']   // los 3 estados de baja
 // Los mismos estados en General y en todos los apartados (ELIMINADA solo se pone con «Dar de baja»)
 export const ESTADOS_GENERAL = ESTADOS_CUENTA.filter((e) => e !== 'ELIMINADA')
 const ESTADO_DE_STATUS = { activa: 'ACTIVA', calentando: 'ACTIVA', suspendida: 'SUSPENDIDA', baneada: 'BLOQUEADA', en_revision: 'RESTRINGIDA', en_pausa: 'EN REPOSO' }
@@ -12,6 +12,7 @@ export const estadoDeCuenta = (a) => (a?.archivada && !a?.estado_cuenta ? 'ELIMI
 // Normaliza un texto de estado a la lista única
 export function normalizaEstado(e) {
   const t = String(e || '').toUpperCase()
+  if (t.startsWith('SUSP') && t.includes('INDEF')) return 'SUSPENDIDA INDEFINIDAMENTE'
   if (t.startsWith('ACTIV')) return 'ACTIVA'
   if (t.startsWith('SUSP')) return 'SUSPENDIDA'
   if (t.startsWith('BLOQ')) return 'BLOQUEADA'

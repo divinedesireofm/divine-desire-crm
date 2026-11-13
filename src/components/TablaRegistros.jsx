@@ -18,13 +18,16 @@ const cmp = (x, y) => (typeof x === 'number' && typeof y === 'number' ? x - y : 
 function colorEstado(e) {
   const t = String(e || '').toUpperCase()
   if (t.startsWith('ACTIV')) return 'var(--success)'
-  if (t.startsWith('ELIMIN')) return 'var(--text-muted)'
+  // Los 3 estados de baja, en tres rojos: ELIMINADA (suave) < PERDIDA (medio) < SUSPENDIDA INDEFINIDAMENTE (el más intenso)
+  if (t.startsWith('SUSP') && t.includes('INDEF')) return '#FF1F2E'
+  if (t.startsWith('PERD')) return '#EE7780'
+  if (t.startsWith('ELIMIN')) return '#F6B4BA'
   if (t.startsWith('SUSP') || t.startsWith('BLOQ') || t.startsWith('RESTR') || t.startsWith('PERD')) return 'var(--danger)'
   return 'var(--gold)'
 }
 export function Etiqueta({ estado }) {
   const c = colorEstado(estado)
-  return <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap" style={{ background: `color-mix(in srgb, ${c} 16%, transparent)`, color: c }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: c }} />{estado}</span>
+  return <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap" style={{ background: `color-mix(in srgb, ${c} ${/INDEF/i.test(estado || '') ? 24 : 16}%, transparent)`, color: c, fontWeight: /INDEF/i.test(estado || '') ? 700 : undefined }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: c }} />{estado}</span>
 }
 
 // Contraseñas: ocultas por defecto, con ojo para verlas y botón de copiar

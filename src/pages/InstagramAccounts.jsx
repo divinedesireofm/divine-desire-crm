@@ -471,7 +471,7 @@ export default function InstagramAccounts() {
         <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} modelosLista={models} onGuardado={SECCIONES[tab].sincroniza ? (f) => sincronizarPropia(f, tab === 'modelos') : undefined} version={versionElim} onDarDeBaja={(f) => { setModalErr(null); setBajaFila({ f, esModelos: tab === 'modelos' }) }} onRehabilitar={(f) => { setModalErr(null); setRehabDe(f) }} />
         {bajaFila && (
           <ModalMotivo titulo={`Dar de baja @${usuarioIG(bajaFila.f.usuario)}`} descripcion="La cuenta pasa al apartado «Eliminadas» con el motivo y la fecha, y se quita del cuadro General. No se borra nada: se puede rehabilitar desde Eliminadas."
-            tipos={[{ v: 'ELIMINADA', n: 'Eliminada' }, { v: 'SUSPENDIDA', n: 'Suspendida' }, { v: 'PERDIDA', n: 'Perdida' }]} etiquetaTipo="¿Eliminada, suspendida o perdida?" etiquetaMotivo="Motivo" etiquetaFecha="Fecha" textoBoton="Pasar a Eliminadas"
+            tipos={[{ v: 'ELIMINADA', n: 'Eliminada' }, { v: 'SUSPENDIDA INDEFINIDAMENTE', n: 'Suspendida indefinidamente' }, { v: 'PERDIDA', n: 'Perdida' }]} etiquetaTipo="¿Eliminada, suspendida indefinidamente o perdida?" etiquetaMotivo="Motivo" etiquetaFecha="Fecha" textoBoton="Pasar a Eliminadas"
             error={modalErr} trabajando={trabajando} onConfirmar={darDeBajaFila} onCancelar={() => setBajaFila(null)} />
         )}
         {rehabDe && (
@@ -569,7 +569,7 @@ export default function InstagramAccounts() {
 
       {bajaDe && (
         <ModalMotivo titulo={`Dar de baja @${bajaDe.username}`} descripcion="La cuenta pasa al apartado «Eliminadas» con el motivo y la fecha. No se borra nada: conserva sus planificaciones, reels y métricas, y se puede rehabilitar desde Eliminadas."
-          tipos={[{ v: 'ELIMINADA', n: 'Eliminada' }, { v: 'SUSPENDIDA', n: 'Suspendida' }, { v: 'PERDIDA', n: 'Perdida' }]} etiquetaTipo="¿Eliminada, suspendida o perdida?" etiquetaMotivo="Motivo" etiquetaFecha="Fecha" textoBoton="Pasar a Eliminadas"
+          tipos={[{ v: 'ELIMINADA', n: 'Eliminada' }, { v: 'SUSPENDIDA INDEFINIDAMENTE', n: 'Suspendida indefinidamente' }, { v: 'PERDIDA', n: 'Perdida' }]} etiquetaTipo="¿Eliminada, suspendida indefinidamente o perdida?" etiquetaMotivo="Motivo" etiquetaFecha="Fecha" textoBoton="Pasar a Eliminadas"
           error={modalErr} trabajando={trabajando} onConfirmar={darDeBaja} onCancelar={() => setBajaDe(null)} />
       )}
 
