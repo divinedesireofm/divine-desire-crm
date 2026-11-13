@@ -1,7 +1,9 @@
 // Configuración de los subapartados de «Cuentas de Instagram» (Eliminadas, Stock mails, Cuentas propias y Stock Instagram).
 // Cada columna: k = columna en Supabase · n = cabecera · tipo = texto | fecha | estado | secreto | largo | enlace | modelo
 // w = ancho máximo (solo si queremos abreviar el texto largo con «ver más»).
-export const ESTADOS_CUENTA = ['ACTIVA', 'ELIMINADA', 'SUSPENDIDA', 'BLOQUEADA', 'RESTRINGIDA', 'EN REPOSO', 'PERDIDA']
+export const ESTADOS_CUENTA = ['ACTIVA', 'ELIMINADA', 'SUSPENDIDA', 'BLOQUEADA', 'RESTRINGIDA', 'EN REPOSO']
+// PERDIDA solo existe al dar de baja una cuenta (apartado Eliminadas); no se elige en General ni en el resto de apartados
+export const ESTADOS_ELIMINADAS = [...ESTADOS_CUENTA.filter((e) => e !== 'ACTIVA'), 'PERDIDA']
 // Los mismos estados en General y en todos los apartados (ELIMINADA solo se pone con «Dar de baja»)
 export const ESTADOS_GENERAL = ESTADOS_CUENTA.filter((e) => e !== 'ELIMINADA')
 const ESTADO_DE_STATUS = { activa: 'ACTIVA', calentando: 'ACTIVA', suspendida: 'SUSPENDIDA', baneada: 'BLOQUEADA', en_revision: 'RESTRINGIDA', en_pausa: 'EN REPOSO' }
@@ -27,7 +29,7 @@ export const SECCIONES = {
     subtitulo: 'Cuentas suspendidas de forma permanente o eliminadas voluntariamente, con la fecha y el motivo.',
     singular: 'cuenta eliminada', vacio: 'Todavía no hay cuentas eliminadas. Se añaden desde «General» con el botón «Dar de baja» de cada cuenta.',
     sinAnadir: true, rehabilitar: true,
-    estados: ESTADOS_CUENTA.filter((e) => e !== 'ACTIVA'), prohibidos: ['ACTIVA'], nuevo: { estado: 'ELIMINADA' }, // una cuenta eliminada nunca está «activa»
+    estados: ESTADOS_ELIMINADAS, prohibidos: ['ACTIVA'], nuevo: { estado: 'ELIMINADA' }, // una cuenta eliminada nunca está «activa»
     cols: [
       { k: 'instagram_nuevo', n: 'Instagram nuevo', tipo: 'texto', principal: true, usuarioIG: true },
       { k: 'estado', n: 'Estado', tipo: 'estado' },

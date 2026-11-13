@@ -519,7 +519,7 @@ export default function InstagramAccounts() {
 
       {bajaDe && (
         <ModalMotivo titulo={`Dar de baja @${bajaDe.username}`} descripcion="La cuenta pasa al apartado «Eliminadas» con el motivo y la fecha. No se borra nada: conserva sus planificaciones, reels y métricas, y se puede rehabilitar desde Eliminadas."
-          tipos={[{ v: 'ELIMINADA', n: 'Eliminada' }, { v: 'SUSPENDIDA', n: 'Suspendida' }]} etiquetaTipo="¿Eliminada o suspendida?" etiquetaMotivo="Motivo" etiquetaFecha="Fecha" textoBoton="Pasar a Eliminadas"
+          tipos={[{ v: 'ELIMINADA', n: 'Eliminada' }, { v: 'SUSPENDIDA', n: 'Suspendida' }, { v: 'PERDIDA', n: 'Perdida' }]} etiquetaTipo="¿Eliminada, suspendida o perdida?" etiquetaMotivo="Motivo" etiquetaFecha="Fecha" textoBoton="Pasar a Eliminadas"
           error={modalErr} trabajando={trabajando} onConfirmar={darDeBaja} onCancelar={() => setBajaDe(null)} />
       )}
 
@@ -635,7 +635,7 @@ export default function InstagramAccounts() {
                             </button>
                           )}
                           {canDelete && verSecciones && (
-                            <button onClick={() => { setModalErr(null); setBajaDe(a) }} className="text-xs hover:underline" style={{ color: 'var(--gold)' }} title="Pasar a Eliminadas (eliminada o suspendida) indicando el motivo">
+                            <button onClick={() => { setModalErr(null); setBajaDe(a) }} className="text-xs hover:underline" style={{ color: 'var(--gold)' }} title="Pasar a Eliminadas (eliminada, suspendida o perdida) indicando el motivo">
                               Dar de baja
                             </button>
                           )}
