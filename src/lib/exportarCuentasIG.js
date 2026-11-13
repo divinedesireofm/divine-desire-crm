@@ -11,7 +11,7 @@ const hoyISO = () => new Date().toISOString().slice(0, 10)
 const dias = (f) => { if (!f) return ''; const d = Math.floor((Date.now() - new Date(f).getTime()) / 86400000); return d >= 0 ? d : '' }
 
 // Cada hoja: { nombre, titulo, columnas: [{ n, peso }], filas: [[celda]] }  ·  celda = { t: texto, fecha?: 'YYYY-MM-DD', url?: enlace }
-export async function reunirHojas({ accounts = [], seguidores = {}, models = [], verPass = true, ver2fa = true, incluirSecciones = true }) {
+export async function reunirHojas({ accounts = [], seguidores = {}, models = [], verPass = true, ver2fa = true, incluirSecciones = true, origenDe }) {
   const hojas = []
   const nombreModelo = (id) => models.find((m) => m.id === id)?.stage_name || ''
 
@@ -23,7 +23,7 @@ export async function reunirHojas({ accounts = [], seguidores = {}, models = [],
     filas: generales.map((a) => [
       { t: `@${a.username}`, url: urlInstagram(a.username) },
       { t: a.models?.stage_name || '' }, { t: ESTADO_GENERAL[a.status] || a.status || '' }, { t: a.profiles?.full_name || '' },
-      { t: seguidores[a.id] != null ? String(seguidores[a.id]) : '' }, { t: a.original_username || '' }, { t: a.email || '' },
+      { t: seguidores[a.id] != null ? String(seguidores[a.id]) : '' }, { t: (origenDe ? origenDe(a) : a.original_username) || '' }, { t: a.email || '' },
       { t: a.two_fa_code ? (ver2fa ? a.two_fa_code : SIN_PERMISO) : '' }, { t: (a.target_audience || []).join(', ') },
       { t: fechaES(a.assigned_at), fecha: a.assigned_at ? String(a.assigned_at).slice(0, 10) : null }, { t: String(dias(a.assigned_at)) },
       { t: a.observations || '' }, { t: a.restrictions || '' },

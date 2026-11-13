@@ -79,6 +79,9 @@ export default function InstagramAccounts() {
   const [creadores, setCreadores] = useState([]) // opciones del campo «Creador» de Cuentas propias
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [origenes, setOrigenes] = useState({})   // «IG original» automático: cuenta comprada -> su original · propia · de la modelo
+  const origenDe = (a) => origenes[a.id]?.origen || a.original_username || ''
+  const esTextoFijo = (a) => origenes[a.id]?.tipo === 'propia' || origenes[a.id]?.tipo === 'modelo'
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [error, setError] = useState(null)
@@ -110,7 +113,7 @@ export default function InstagramAccounts() {
       case 'estado': return STATUS_OPTIONS.indexOf(a.status)
       case 'responsable': return a.profiles?.full_name ? a.profiles.full_name.toLowerCase() : null
       case 'seguidores': return seguidores[a.id] != null ? Number(seguidores[a.id]) : null
-      case 'original': return a.original_username ? a.original_username.toLowerCase() : null
+      case 'original': return origenDe(a) ? origenDe(a).toLowerCase() : null
       case 'correo': return a.email ? a.email.toLowerCase() : null
       case 'dosfa': return ver2fa ? (a.two_fa_code || null) : null
       case 'publico': return (a.target_audience || []).join(', ').toLowerCase() || null
@@ -129,7 +132,7 @@ export default function InstagramAccounts() {
       if (fModelo !== 'todos' && (fModelo === 'sin' ? a.model_id : a.model_id !== fModelo)) return false
       if (fEstado !== 'todos' && a.status !== fEstado) return false
       if (fResp !== 'todos' && (fResp === 'sin' ? a.assigned_to : a.assigned_to !== fResp)) return false
-      if (q && ![a.username, a.original_username, a.email, a.models?.stage_name, a.profiles?.full_name, a.observations, a.restrictions].some((v) => String(v || '').toLowerCase().includes(q))) return false
+      if (q && ![a.username, origenDe(a), a.email, a.models?.stage_name, a.profiles?.full_name, a.observations, a.restrictions].some((v) => String(v || '').toLowerCase().includes(q))) return false
       return true
     })
     if (ordenK === 'manual') return lista.sort((p, q2) => (Number(p.orden ?? 1e15) - Number(q2.orden ?? 1e15)) || cmp(valorDe(p, 'cuenta'), valorDe(q2, 'cuenta')))
@@ -188,6 +191,10 @@ export default function InstagramAccounts() {
       getProfilesByRoles(['ig_assistant']),
     ])
     setAccounts(acc || [])
+    supabase.rpc('ig_origenes').then(({ data: og, error: eo }) => {
+      if (eo || !Array.isArray(og)) return   // sin la migración 117 se sigue viendo lo escrito a mano
+      const m = {}; og.forEach((r) => { if (r.origen) m[r.cuenta_id] = { origen: r.origen, tipo: r.tipo } }); setOrigenes(m)
+    })
     supabase.from('ig_profile_stats').select('account_id, followers, profile_pic_url, captured_at').order('captured_at', { ascending: false }).limit(2000).then(({ data: st }) => {
       const m = {}, ft = {}
       ;(st || []).forEach((r) => { if (!(r.account_id in m)) m[r.account_id] = r.followers; if (r.profile_pic_url && !(r.account_id in ft)) ft[r.account_id] = r.profile_pic_url })
@@ -283,7 +290,7 @@ export default function InstagramAccounts() {
     const obs = [a.observations, a.restrictions ? `Restricciones: ${a.restrictions}` : null].filter(Boolean).join(' · ') || null
     const ficha = {
       cuenta_id: a.id, estado: tipo, motivo, fecha_eliminacion: fecha,
-      instagram_nuevo: a.username, instagram_original: a.original_username || null, correo: a.email || null, link: urlInstagram(a.username) || null,
+      instagram_nuevo: a.username, instagram_original: origenDe(a) || null, correo: a.email || null, link: urlInstagram(a.username) || null,
       modelo: a.models?.stage_name || null, idioma: (a.target_audience || []).join(', ') || null, link_bio: a.bio_link || null,
       asistente: a.profiles?.full_name || null, dos_fa: a.two_fa_code || null, fecha_asignacion: a.assigned_at || null, observaciones: obs,
     }
@@ -318,7 +325,7 @@ export default function InstagramAccounts() {
       const mod = models.find((m) => String(m.stage_name || '').trim().toLowerCase() === String(f.modelo || '').trim().toLowerCase())
       const asis = assistants.find((x) => String(x.full_name || '').trim().toLowerCase() === String(f.asistente || '').trim().toLowerCase())
       const { error: e } = await supabase.from('instagram_accounts').insert([{
-        username: usuario, original_username: f.instagram_original || null, email: f.correo || null, profile_link: urlInstagram(usuario) || null,
+        username: usuario, original_username: (['Propia', 'De la modelo'].includes(f.instagram_original) ? null : f.instagram_original) || null, email: f.correo || null, profile_link: urlInstagram(usuario) || null,
         model_id: mod?.id || null, assigned_to: asis?.id || null, target_audience: f.idioma ? f.idioma.split(',').map((x) => x.trim()).filter(Boolean) : null,
         bio_link: f.link_bio || null, status: 'activa', two_fa_code: f.dos_fa || null, assigned_at: f.fecha_asignacion || null,
         observations: sumar(f.observaciones), archivada: false,
@@ -400,7 +407,7 @@ export default function InstagramAccounts() {
         </button>
       ))}
       <div className="ml-auto flex flex-wrap items-start gap-2">
-        <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={verSecciones} />
+        <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={verSecciones} origenDe={origenDe} />
         {puedeVer(PERMISO_IG_HISTORIAL, ['admin', 'ig_manager']) && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
       </div>
     </div>
@@ -460,7 +467,9 @@ export default function InstagramAccounts() {
           <option value="">Sin asistente asignado</option>
           {assistants.map((x) => <option key={x.id} value={x.id}>{x.full_name}</option>)}
         </Select>) })}
-      {C({ t: 'Instagram original (si la cuenta fue comprada)', children: <Input placeholder="Instagram original" value={form.original_username} onChange={(e) => setForm({ ...form, original_username: e.target.value })} /> })}
+      {C({ t: 'Instagram original (se rellena solo)', children: origenes[editingId]
+        ? <Input value={origenes[editingId].origen} disabled readOnly title="Se calcula solo: cuenta comprada -> su Instagram original · creada por nosotros -> Propia · de una modelo -> De la modelo" />
+        : <Input placeholder="Instagram original" value={form.original_username} onChange={(e) => setForm({ ...form, original_username: e.target.value })} /> })}
       {C({ t: 'Correo de la cuenta', children: <Input placeholder="Correo de la cuenta" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /> })}
       {C({ t: 'Código 2FA y foto del QR', children: !ver2fa ? <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-muted)' }} data-candado title="El admin no te ha dado permiso para ver el 2FA">🔒 No tienes permiso</span> : <div className="flex items-center gap-3"><div style={{ flex: 1 }}><Input placeholder="Código 2FA" value={form.two_fa_code} onChange={(e) => setForm({ ...form, two_fa_code: e.target.value })} /></div><QrCelda usuario={form.username} canEdit={canEdit} /></div> })}
       {C({ t: 'Link bio', children: <Input placeholder="Link bio" value={form.bio_link} onChange={(e) => setForm({ ...form, bio_link: e.target.value })} /> })}
@@ -601,7 +610,11 @@ export default function InstagramAccounts() {
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Estado" texto={String(a.status || '').replace(/_/g, ' ')}><StatusBadge status={a.status} /></CeldaCopia></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Responsable" texto={a.profiles?.full_name} /></td>
                       <td className="px-4 align-middle tabular-nums" style={fila}><CeldaCopia completo titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
-                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="IG original" texto={a.original_username} /></td>
+                      <td className="px-4 align-middle" style={fila}>
+                        {esTextoFijo(a)
+                          ? <span data-origen={origenes[a.id].tipo} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap" style={{ background: origenes[a.id].tipo === 'propia' ? 'color-mix(in srgb, var(--success) 16%, transparent)' : 'color-mix(in srgb, var(--gold) 16%, transparent)', color: origenes[a.id].tipo === 'propia' ? 'var(--success)' : 'var(--gold)' }} title={origenes[a.id].tipo === 'propia' ? 'Cuenta creada por nosotros desde cero' : 'Cuenta que trae la modelo'}>{origenes[a.id].origen}</span>
+                          : <CeldaCopia completo titulo="IG original" texto={origenDe(a)}>{origenDe(a) && /^[\w.@]+$/.test(origenDe(a)) ? <a href={urlInstagram(origenDe(a))} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir el Instagram original">{origenDe(a)}</a> : null}</CeldaCopia>}
+                      </td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Correo" texto={a.email} muted /></td>
                       <td className="px-4 align-middle" style={corta(COLS[7])}>{!ver2fa ? <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }} data-candado title="El admin no te ha dado permiso para ver el 2FA">🔒 No tienes permiso</span> : <div className="flex items-center gap-2" style={{ minWidth: 0 }}><div style={{ minWidth: 0, flex: '1 1 auto' }}><CeldaCopia titulo="2FA" texto={a.two_fa_code} muted><span className="font-mono tracking-wide">{a.two_fa_code}</span></CeldaCopia></div><QrCelda usuario={a.username} canEdit={canEdit} /></div>}</td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Público" texto={(a.target_audience || []).join(', ')} /></td>
