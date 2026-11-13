@@ -208,7 +208,6 @@ export default function WhatWorks() {
         {ordenTabs.items.map(([k, t]) => (
           <button key={k} onClick={() => setTab(k)} {...ordenTabs.dragProps(k)} className="px-4 py-2 text-sm whitespace-nowrap" style={{ background: tab === k ? 'var(--accent-soft)' : 'transparent', color: tab === k ? 'var(--accent)' : 'var(--text-muted)', ...ordenTabs.estilo(k) }}>{t}</button>
         ))}
-        {ordenTabs.personalizado && <button type="button" onClick={ordenTabs.restablecer} className="px-3 text-xs hover:underline whitespace-nowrap" style={{ color: 'var(--text-muted)' }} title="Volver al orden original de las pestañas">↺ Orden original</button>}
       </div>
 
       {tab === 'auto' && <Automatico />}

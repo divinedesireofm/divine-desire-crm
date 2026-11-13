@@ -457,7 +457,6 @@ export default function Recaptures() {
               {n}
             </button>
           ))}
-          {ordenTabs.personalizado && <button type="button" onClick={ordenTabs.restablecer} className="text-xs hover:underline self-center" style={{ color: 'var(--text-muted)' }} title="Volver al orden original de las pestañas">↺ Orden original</button>}
         </div>
       )}
 

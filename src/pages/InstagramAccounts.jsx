@@ -460,7 +460,6 @@ export default function InstagramAccounts() {
           {label}
         </button>
       ))}
-      {ordenTabs.personalizado && <button type="button" onClick={ordenTabs.restablecer} className="text-xs hover:underline self-center" style={{ color: 'var(--text-muted)' }} title="Volver al orden original de las pestañas">↺ Orden original</button>}
       <div className="ml-auto flex flex-wrap items-start gap-2">
         <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={seccionesVisibles} origenDe={origenDe} personas={creadores} />
         {puedeVer(PERMISO_IG_HISTORIAL, ['admin', 'ig_manager']) && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
