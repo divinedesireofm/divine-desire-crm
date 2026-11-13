@@ -57,6 +57,7 @@ export const SECCIONES = {
     estados: ESTADOS_CUENTA, nuevo: { estado: 'ACTIVA' },
     cols: [
       { k: 'usuario', n: 'Usuario', tipo: 'texto', principal: true, usuarioIG: true },
+      { k: 'instagram_original', n: 'IG original (si fue comprada)', tipo: 'texto', usuarioIG: true, stockIG: true },
       { k: 'modelo_id', n: 'Modelo', tipo: 'modeloSel' },
       { k: 'contrasena', n: 'Contraseña', tipo: 'secreto' },
       { k: 'email', n: 'Email', tipo: 'texto', correoStock: true },

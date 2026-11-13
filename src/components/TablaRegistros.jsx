@@ -68,6 +68,45 @@ function CampoCorreoStock({ val, onTexto, onElegir, mails, verPass }) {
   )
 }
 
+// Campo «IG original» con búsqueda en Stock Instagram: al escribir se ve qué cuenta comprada se va a usar
+function CampoStockIG({ val, onTexto, onElegir, cuentas, usadas, verPass }) {
+  const [abierto, setAbierto] = useState(false)
+  const norm = (t) => String(t || '').trim().replace(/^@+/, '').toLowerCase()
+  const q = norm(val)
+  const exacto = q ? cuentas.find((m) => norm(m.instagram_original) === q || norm(m.instagram_actual) === q) : null
+  const sugeridas = q && !exacto
+    ? cuentas.filter((m) => norm(m.instagram_original).includes(q) || norm(m.instagram_actual).includes(q))
+        .sort((a, b) => (estaUsada(a) ? 1 : 0) - (estaUsada(b) ? 1 : 0) || String(a.instagram_original).localeCompare(String(b.instagram_original))).slice(0, 6)
+    : []
+  function estaUsada(m) { return usadas.has(norm(m.instagram_original)) || (m.instagram_actual && usadas.has(norm(m.instagram_actual))) }
+  const nombre = (m) => `${m.instagram_original || '—'}${m.instagram_actual && norm(m.instagram_actual) !== norm(m.instagram_original) ? ` → ahora @${String(m.instagram_actual).replace(/^@+/, '')}` : ''}`
+  const estado = (m) => (estaUsada(m) ? 'Ya está en Cuentas propias' : 'Libre')
+  return (
+    <div style={{ position: 'relative' }}>
+      <Input value={val} autoComplete="off" placeholder="Si fue comprada: escribe el Instagram original… (se busca en Stock Instagram)" onChange={(e) => { onTexto(e.target.value); setAbierto(true) }} onFocus={() => setAbierto(true)} onBlur={() => setTimeout(() => setAbierto(false), 150)} />
+      {abierto && sugeridas.length > 0 && (
+        <div data-sugerencias-ig className="rounded-md overflow-hidden" style={{ position: 'absolute', zIndex: 30, left: 0, right: 0, top: '100%', marginTop: 4, background: 'var(--panel)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
+          <p className="px-3 py-1.5 text-xs" style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>Cuentas de Stock Instagram</p>
+          {sugeridas.map((m) => (
+            <button key={m.id} type="button" onMouseDown={(e) => { e.preventDefault(); onElegir(m); setAbierto(false) }} className="w-full text-left px-3 py-2 text-sm flex flex-col gap-0.5 hover:opacity-80" style={{ background: 'transparent', color: 'var(--text)' }}>
+              <span style={{ wordBreak: 'break-all' }}>{nombre(m)}</span>
+              <span className="text-xs" style={{ color: estaUsada(m) ? 'var(--gold)' : 'var(--success)' }}>{estado(m)}{m.estado ? ` · ${m.estado}` : ''}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {q && exacto && (
+        <p data-ig-stock className="text-xs mt-1" style={{ color: estaUsada(exacto) ? 'var(--gold)' : 'var(--success)' }}>
+          ✓ Cuenta de Stock Instagram: {nombre(exacto)} · {estado(exacto)}{exacto.estado ? ` · ${exacto.estado}` : ''}. Si ahora se llama distinto, pon el nombre actual en «Usuario»: quedará anotado como «Instagram nuevo» en Stock Instagram.
+        </p>
+      )}
+      {q && !exacto && sugeridas.length === 0 && (
+        <p data-ig-fuera className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Esta cuenta no está en Stock Instagram.</p>
+      )}
+    </div>
+  )
+}
+
 function CeldaSecreto({ valor }) {
   const [ver, setVer] = useState(false)
   const [ok, setOk] = useState(false)
@@ -96,6 +135,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
   const es2faBloq = (c) => c.k === 'dos_fa' && !ver2fa
   const [filas, setFilas] = useState([])
   const [stockMails, setStockMails] = useState([])
+  const [stockIG, setStockIG] = useState([])
+  const [usadasIG, setUsadasIG] = useState(new Set())
   const [cargando, setCargando] = useState(true)
   const [busca, setBusca] = useState('')
   const [fEstado, setFEstado] = useState('todos')
@@ -136,6 +177,15 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
   useEffect(() => {
     if (!pideCorreoStock) return
     supabase.from('ig_stock_mails').select('id, correo, contrasena, estado, instagram').limit(5000).then(({ data }) => setStockMails(data || []))
+  }, [cfg.tabla, mostrarNuevo, editId]) // eslint-disable-line
+  const pideStockIG = cfg.cols.some((c) => c.stockIG)
+  useEffect(() => {
+    if (!pideStockIG) return
+    supabase.from('ig_stock_instagram').select('id, instagram_original, instagram_actual, correo, contrasena, contrasena_ig, dos_fa, estado').limit(5000).then(({ data }) => setStockIG(data || []))
+    supabase.from(cfg.tabla).select('usuario, instagram_original').limit(5000).then(({ data }) => {
+      const n = (t) => String(t || '').trim().replace(/^@+/, '').toLowerCase()
+      const s = new Set(); (data || []).forEach((r) => { if (n(r.usuario)) s.add(n(r.usuario)); if (n(r.instagram_original)) s.add(n(r.instagram_original)) }); setUsadasIG(s)
+    })
   }, [cfg.tabla, mostrarNuevo, editId]) // eslint-disable-line
 
   useEffect(() => {
@@ -242,6 +292,26 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
       control = <Select value={val} onChange={(e) => set(e.target.value)}><option value="">Sin modelo asignada</option>{modelosLista.slice().sort((x, y) => String(x.stage_name).localeCompare(String(y.stage_name), 'es')).map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}</Select>
     } else if (c.tipo === 'modelo') control = <Input list="lista-modelos-ig" value={val} onChange={(e) => set(e.target.value)} placeholder="Modelo" />
     else if (c.tipo === 'largo') control = <textarea rows={2} value={val} onChange={(e) => set(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm outline-none" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', resize: 'vertical' }} />
+    else if (c.stockIG) {
+      const rellenar = (p, m) => {
+        const hueco = (k) => vacio(p[k])
+        return {
+          ...p,
+          ...(hueco('usuario') ? { usuario: m.instagram_actual || m.instagram_original || '' } : {}),
+          ...(hueco('contrasena') && m.contrasena_ig ? { contrasena: m.contrasena_ig } : {}),
+          ...(hueco('email') && m.correo ? { email: m.correo } : {}),
+          ...(hueco('contrasena_email') && m.contrasena ? { contrasena_email: m.contrasena } : {}),
+          ...(hueco('dos_fa') && m.dos_fa ? { dos_fa: m.dos_fa } : {}),
+        }
+      }
+      const norm = (t) => String(t || '').trim().replace(/^@+/, '').toLowerCase()
+      control = <CampoStockIG val={val} cuentas={stockIG} usadas={usadasIG} verPass={verPass}
+        onTexto={(t) => setForm((p) => {
+          const m = stockIG.find((x) => norm(x.instagram_original) === norm(t) || norm(x.instagram_actual) === norm(t))
+          return m ? rellenar({ ...p, [c.k]: t }, m) : { ...p, [c.k]: t }
+        })}
+        onElegir={(m) => setForm((p) => rellenar({ ...p, [c.k]: m.instagram_original || '' }, m))} />
+    }
     else if (c.correoStock) {
       control = <CampoCorreoStock val={val} mails={stockMails} verPass={verPass}
         onTexto={(t) => setForm((p) => {
