@@ -10,6 +10,7 @@ import CopyButton from '../components/CopyButton'
 import VideoReel from '../components/VideoReel'
 import { subirVideo, subirImagenReel, borrarVideos, videosDe, quitarVideos } from '../lib/planVideos'
 import ImagenesReel from '../components/ImagenesReel'
+import ScrollSuperior from '../components/ScrollSuperior'
 
 const ORIGENES = [{ id: 'nuevo', n: 'Nuevo' }, { id: 'ganador', n: 'Ganador' }]
 const TIPOS = [{ id: 'sugerente', n: 'Sugerente' }, { id: 'marca_personal', n: 'Marca personal' }]
@@ -570,9 +571,9 @@ export default function IGPlans() {
             {vista === 'planes' ? 'Todavía no hay planificaciones. Pulsa «Nueva planificación».' : 'No hay borradores. Usa «Guardar como borrador» en una planificación para dejarla pendiente de revisar.'}
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <ScrollSuperior altoMax="calc(100vh - 260px)">
             <table className="w-full text-sm">
-              <thead>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 3, background: 'var(--panel)' }}>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {['Cuenta', 'Fecha de creación', 'Periodo', 'Responsable', 'Estado', 'Contenido', ''].map((c) => <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>)}
                 </tr>
@@ -632,7 +633,7 @@ export default function IGPlans() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ScrollSuperior>
         )}
       </Panel>
     </div>
