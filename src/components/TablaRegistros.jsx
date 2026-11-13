@@ -129,7 +129,7 @@ function CeldaSecreto({ valor }) {
   )
 }
 
-export default function TablaRegistros({ cfg, canEdit = true, modelos = [], modelosLista = [], personas = [], onRehabilitar, onGuardado, version = 0 }) {
+export default function TablaRegistros({ cfg, canEdit = true, modelos = [], modelosLista = [], personas = [], onRehabilitar, onDarDeBaja, onGuardado, version = 0 }) {
   const { puedeVer } = useAuth()
   const verPass = puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])   // permiso adicional «Ver contraseñas»
   const ver2fa = puedeVer(PERMISO_IG_2FA, ['admin', 'ig_manager', 'ig_assistant'])   // permiso adicional «Ver 2FA»
@@ -465,6 +465,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
                       ))}
                       <td className="px-4 align-middle" style={{ position: 'sticky', right: 0, zIndex: 5, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
                         <div className="flex gap-3 whitespace-nowrap">
+                          {canEdit && cfg.sincroniza && onDarDeBaja && <button onClick={() => onDarDeBaja(f)} className="text-xs hover:underline" style={{ color: 'var(--gold)' }} title="Pasar la cuenta a Eliminadas (eliminada, suspendida o perdida) indicando el motivo">Dar de baja</button>}
                           {canEdit && cfg.rehabilitar && onRehabilitar && <button onClick={() => onRehabilitar(f)} className="text-xs hover:underline" style={{ color: 'var(--success)' }} title="Devolver la cuenta al cuadro General">Rehabilitar</button>}
                           {canEdit && <button onClick={() => (editId === f.id ? cerrar() : editar(f))} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>{editId === f.id && !cerrando ? 'Cerrar' : 'Editar'}</button>}
                           {canEdit && <button onClick={() => borrar(f)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>}

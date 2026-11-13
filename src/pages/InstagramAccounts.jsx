@@ -96,6 +96,7 @@ export default function InstagramAccounts() {
   const [busca, setBusca] = useState('')
   const [arrastrando, setArrastrando] = useState(null)
   const [sobre, setSobre] = useState(null)
+  const [bajaFila, setBajaFila] = useState(null)   // fila de Cuentas propias / de modelos que se va a dar de baja
   const [bajaDe, setBajaDe] = useState(null)         // cuenta que se va a dar de baja (eliminada/suspendida)
   const [rehabDe, setRehabDe] = useState(null)        // fila de Eliminadas que se va a rehabilitar
   const [modalErr, setModalErr] = useState(null)
@@ -287,9 +288,7 @@ export default function InstagramAccounts() {
   const fmt = (f) => String(f || '').split('-').reverse().join('/')
 
   // General → Eliminadas: la cuenta NO se borra (conserva planificaciones, reels y métricas), se guarda una ficha en Eliminadas y se oculta del General
-  async function darDeBaja({ tipo, motivo, fecha }) {
-    const a = bajaDe
-    setTrabajando(true); setModalErr(null)
+  async function bajaCuenta(a, { tipo, motivo, fecha }) {
     const obs = [a.observations, a.restrictions ? `Restricciones: ${a.restrictions}` : null].filter(Boolean).join(' · ') || null
     const ficha = {
       cuenta_id: a.id, estado: tipo, motivo, fecha_eliminacion: fecha,
@@ -298,13 +297,54 @@ export default function InstagramAccounts() {
       asistente: a.profiles?.full_name || null, dos_fa: a.two_fa_code || null, fecha_asignacion: a.assigned_at || null, observaciones: obs,
     }
     const { data: ins, error: e1 } = await supabase.from('ig_eliminadas').insert([ficha]).select('id').single()
-    if (e1) { setTrabajando(false); setModalErr('No se pudo guardar en Eliminadas: ' + e1.message); return }
+    if (e1) return 'No se pudo guardar en Eliminadas: ' + e1.message
     const { error: e2 } = await supabase.from('instagram_accounts').update({ archivada: true }).eq('id', a.id)
-    if (e2) { await supabase.from('ig_eliminadas').delete().eq('id', ins.id); setTrabajando(false); setModalErr('No se pudo quitar del General: ' + e2.message); return }
+    if (e2) { await supabase.from('ig_eliminadas').delete().eq('id', ins.id); return 'No se pudo quitar del General: ' + e2.message }
+    return null
+  }
+  async function darDeBaja(datos) {
+    const a = bajaDe
+    setTrabajando(true); setModalErr(null)
+    const err = await bajaCuenta(a, datos)
+    if (err) { setTrabajando(false); setModalErr(err); return }
     setTrabajando(false); setBajaDe(null)
     if (editingId === a.id) finEdicion()
     setVersionElim((v) => v + 1)
     load()
+  }
+
+  // Cuentas propias / Cuentas de modelos → Eliminadas. Si la cuenta está en General se da de baja esa misma (como desde General);
+  // si no está, se guarda la ficha en Eliminadas con los datos de la fila y la fila pasa al estado elegido.
+  async function darDeBajaFila({ tipo, motivo, fecha }) {
+    const { f, esModelos } = bajaFila
+    setTrabajando(true); setModalErr(null)
+    try {
+      const usuario = usuarioIG(f.usuario)
+      let cuenta = null
+      if (f.cuenta_id) { const { data } = await supabase.from('instagram_accounts').select('*, models(stage_name), profiles(full_name)').eq('id', f.cuenta_id).maybeSingle(); cuenta = data }
+      if (!cuenta && usuario) {
+        const { data: cand } = await supabase.from('instagram_accounts').select('*, models(stage_name), profiles(full_name)').ilike('username', usuario)
+        cuenta = (cand || []).find((c) => String(c.username).trim().toLowerCase() === usuario.toLowerCase()) || null
+      }
+      if (cuenta?.archivada) throw new Error(`@${usuario} ya está dada de baja (mírala en Eliminadas).`)
+      if (cuenta) {
+        const err = await bajaCuenta(cuenta, { tipo, motivo, fecha })
+        if (err) throw new Error(err)
+      } else {
+        if (!usuario) throw new Error('Esta fila no tiene usuario de Instagram.')
+        const mod = models.find((m) => m.id === f.modelo_id)
+        const ficha = {
+          estado: tipo, motivo, fecha_eliminacion: fecha, instagram_nuevo: usuario, instagram_original: f.instagram_original || null, correo: f.email || null,
+          link: urlInstagram(usuario) || null, modelo: mod?.stage_name || null, asistente: String(f.responsable || (esModelos ? '' : f.creador) || '').replace(/\s*\(extrabajador\)\s*$/i, '') || null,
+          dos_fa: f.dos_fa || null, fecha_asignacion: f.fecha_creacion || null,
+        }
+        const { error: e1 } = await supabase.from('ig_eliminadas').insert([ficha])
+        if (e1) throw new Error('No se pudo guardar en Eliminadas: ' + e1.message)
+        await supabase.from(esModelos ? 'ig_cuentas_modelos' : 'ig_cuentas_propias').update({ estado: tipo }).eq('id', f.id)
+      }
+      setBajaFila(null); setVersionElim((v) => v + 1)
+    } catch (ex) { setModalErr(ex.message) }
+    setTrabajando(false)
   }
 
   // Eliminadas → General (pidiendo el motivo). Si la ficha viene de una cuenta del CRM se reactiva esa misma; si viene del Excel se crea de nuevo en General.
@@ -423,7 +463,12 @@ export default function InstagramAccounts() {
       <div>
         <PageHeader title="Cuentas de Instagram" subtitle={SECCIONES[tab].subtitulo} />
         {pestanas}
-        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} modelosLista={models} onGuardado={SECCIONES[tab].sincroniza ? (f) => sincronizarPropia(f, tab === 'modelos') : undefined} version={versionElim} onRehabilitar={(f) => { setModalErr(null); setRehabDe(f) }} />
+        <TablaRegistros cfg={SECCIONES[tab]} canEdit={canEditSecciones} modelos={models.map((m) => m.stage_name).filter(Boolean)} personas={creadores} modelosLista={models} onGuardado={SECCIONES[tab].sincroniza ? (f) => sincronizarPropia(f, tab === 'modelos') : undefined} version={versionElim} onDarDeBaja={(f) => { setModalErr(null); setBajaFila({ f, esModelos: tab === 'modelos' }) }} onRehabilitar={(f) => { setModalErr(null); setRehabDe(f) }} />
+        {bajaFila && (
+          <ModalMotivo titulo={`Dar de baja @${usuarioIG(bajaFila.f.usuario)}`} descripcion="La cuenta pasa al apartado «Eliminadas» con el motivo y la fecha, y se quita del cuadro General. No se borra nada: se puede rehabilitar desde Eliminadas."
+            tipos={[{ v: 'ELIMINADA', n: 'Eliminada' }, { v: 'SUSPENDIDA', n: 'Suspendida' }, { v: 'PERDIDA', n: 'Perdida' }]} etiquetaTipo="¿Eliminada, suspendida o perdida?" etiquetaMotivo="Motivo" etiquetaFecha="Fecha" textoBoton="Pasar a Eliminadas"
+            error={modalErr} trabajando={trabajando} onConfirmar={darDeBajaFila} onCancelar={() => setBajaFila(null)} />
+        )}
         {rehabDe && (
           <ModalMotivo titulo={`Rehabilitar @${rehabDe.instagram_nuevo || rehabDe.instagram_original || ''}`} descripcion="La cuenta volverá al cuadro General como activa. Queda anotado el motivo de la baja y el de la rehabilitación en sus observaciones." etiquetaMotivo="Motivo de la rehabilitación" etiquetaFecha="Fecha de rehabilitación" textoBoton="Rehabilitar cuenta" error={modalErr} trabajando={trabajando} onConfirmar={rehabilitar} onCancelar={() => setRehabDe(null)} />
         )}
