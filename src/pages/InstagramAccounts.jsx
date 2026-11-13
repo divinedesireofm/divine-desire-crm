@@ -13,9 +13,10 @@ import TablaRegistros from '../components/TablaRegistros'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
 import QrCelda from '../components/QrCelda'
-import { PERMISO_IG_2FA, PERMISO_IG_HISTORIAL } from '../lib/navigation'
+import { PERMISO_IG_2FA, PERMISO_IG_HISTORIAL, PERMISO_IG_CONTRASENAS } from '../lib/navigation'
 import { urlInstagram, usuarioIG } from '../lib/instagramLink'
 import HistorialIG from '../components/HistorialIG'
+import ExportarCuentasIG from '../components/ExportarCuentasIG'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
 
 // Columnas: k = clave de orden, n = cabecera. Todo se ve completo salvo 2FA, Observaciones y Restricciones, que se abrevian (con «ver más») si son largas: `w` es su ancho máximo.
@@ -398,7 +399,10 @@ export default function InstagramAccounts() {
           {label}
         </button>
       ))}
-      {puedeVer(PERMISO_IG_HISTORIAL, ['admin', 'ig_manager']) && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
+      <div className="ml-auto flex flex-wrap items-start gap-2">
+        <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={verSecciones} />
+        {puedeVer(PERMISO_IG_HISTORIAL, ['admin', 'ig_manager']) && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
+      </div>
     </div>
   )
 
