@@ -8,7 +8,7 @@ const FORMATOS = [
   { id: 'pdf', etiqueta: 'PDF (.pdf)', icono: '📄', fn: exportarPdf },
 ]
 
-export default function ExportarCuentasIG({ accounts, seguidores, models, verPass, ver2fa, incluirSecciones, origenDe }) {
+export default function ExportarCuentasIG({ accounts, seguidores, models, verPass, ver2fa, incluirSecciones, origenDe, personas }) {
   const [abierto, setAbierto] = useState(false)
   const [haciendo, setHaciendo] = useState(null)
   const [error, setError] = useState(null)
@@ -24,7 +24,7 @@ export default function ExportarCuentasIG({ accounts, seguidores, models, verPas
   async function exportar(f) {
     setHaciendo(f.id); setError(null); setAbierto(false)
     try {
-      const hojas = await reunirHojas({ accounts, seguidores, models, verPass, ver2fa, incluirSecciones, origenDe })
+      const hojas = await reunirHojas({ accounts, seguidores, models, verPass, ver2fa, incluirSecciones, origenDe, personas })
       await f.fn(hojas)
     } catch (e) {
       setError('No se pudo exportar: ' + (e?.message || e))

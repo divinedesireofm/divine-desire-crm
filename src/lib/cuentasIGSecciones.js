@@ -64,6 +64,7 @@ export const SECCIONES = {
       { k: 'contrasena_email', n: 'Contraseña email', tipo: 'secreto' },
       { k: 'fecha_creacion', n: 'Fecha de creación', tipo: 'fecha' },
       { k: 'creador', n: 'Creador', tipo: 'persona' },
+      { k: 'responsable', n: 'Responsable', tipo: 'persona' },
       { k: 'dos_fa', n: '2FA', tipo: 'texto', w: 200, mono: true, qrDe: 'usuario' },
       { k: 'estado', n: 'Estado', tipo: 'estado' },
     ],

@@ -347,7 +347,7 @@ export default function InstagramAccounts() {
     if (!usuario) return { tipo: 'error', texto: 'Para añadirla al General hace falta el usuario de Instagram.' }
     const mod = models.find((m) => m.id === f.modelo_id)
     const status = est.startsWith('ACTIV') ? 'activa' : est.startsWith('SUSP') || est.startsWith('BLOQ') ? 'suspendida' : est.startsWith('RESTR') ? 'en_revision' : est.includes('REPOSO') ? 'en_pausa' : 'activa'
-    const creador = String((esModelos ? f.responsable : f.creador) || '').trim().toLowerCase().replace(/\s*\(extrabajador\)\s*$/, '')   // en Cuentas de modelos, el responsable
+    const creador = String(f.responsable || (esModelos ? '' : f.creador) || '').trim().toLowerCase().replace(/\s*\(extrabajador\)\s*$/, '')   // en Cuentas de modelos, el responsable
     const asis = assistants.find((x) => String(x.full_name || '').trim().toLowerCase().replace(/\s*\(extrabajador\)\s*$/, '') === creador)
 
     let cuenta = null
@@ -361,7 +361,7 @@ export default function InstagramAccounts() {
     let texto
     if (cuenta) {
       const cambios = { model_id: f.modelo_id }
-      if (esModelos && asis) cambios.assigned_to = asis.id
+      if (f.responsable && asis) cambios.assigned_to = asis.id
       if (!cuenta.email && f.email) cambios.email = f.email
       if (!cuenta.profile_link) cambios.profile_link = urlInstagram(usuario)
       if (!cuenta.two_fa_code && f.dos_fa) cambios.two_fa_code = f.dos_fa
@@ -408,7 +408,7 @@ export default function InstagramAccounts() {
         </button>
       ))}
       <div className="ml-auto flex flex-wrap items-start gap-2">
-        <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={verSecciones} origenDe={origenDe} />
+        <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={verSecciones} origenDe={origenDe} personas={creadores} />
         {puedeVer(PERMISO_IG_HISTORIAL, ['admin', 'ig_manager']) && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
       </div>
     </div>

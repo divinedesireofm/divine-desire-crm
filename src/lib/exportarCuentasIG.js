@@ -3,6 +3,7 @@
 import { supabase } from './supabase'
 import { SECCIONES, ORDEN_SECCIONES } from './cuentasIGSecciones'
 import { urlInstagram, usuarioIG } from './instagramLink'
+import { conjuntoExtrabajadores, conEtiqueta } from './personasIG'
 
 const SIN_PERMISO = 'Sin permiso'
 const ESTADO_GENERAL = { calentando: 'Calentando', activa: 'Activa', en_pausa: 'En pausa', en_revision: 'En revisión', suspendida: 'Suspendida', baneada: 'Baneada' }
@@ -11,8 +12,9 @@ const hoyISO = () => new Date().toISOString().slice(0, 10)
 const dias = (f) => { if (!f) return ''; const d = Math.floor((Date.now() - new Date(f).getTime()) / 86400000); return d >= 0 ? d : '' }
 
 // Cada hoja: { nombre, titulo, columnas: [{ n, peso }], filas: [[celda]] }  ·  celda = { t: texto, fecha?: 'YYYY-MM-DD', url?: enlace }
-export async function reunirHojas({ accounts = [], seguidores = {}, models = [], verPass = true, ver2fa = true, incluirSecciones = true, origenDe }) {
+export async function reunirHojas({ accounts = [], seguidores = {}, models = [], verPass = true, ver2fa = true, incluirSecciones = true, origenDe, personas = [] }) {
   const hojas = []
+  const extras = conjuntoExtrabajadores(personas)
   const nombreModelo = (id) => models.find((m) => m.id === id)?.stage_name || ''
 
   const generales = accounts.slice().sort((a, b) => (a.orden ?? 1e15) - (b.orden ?? 1e15))
@@ -45,6 +47,7 @@ export async function reunirHojas({ accounts = [], seguidores = {}, models = [],
           if (c.tipo === 'secreto') return { t: verPass ? String(v) : SIN_PERMISO }
           if (c.k === 'dos_fa') return { t: ver2fa ? String(v) : SIN_PERMISO }
           if (c.tipo === 'modeloSel') return { t: nombreModelo(v) }
+          if (c.tipo === 'persona') return { t: conEtiqueta(v, extras) }
           if (c.tipo === 'fecha') return { t: fechaES(v), fecha: String(v).slice(0, 10) }
           if (c.usuarioIG) return { t: String(v), url: urlInstagram(v) }
           return { t: String(v) }

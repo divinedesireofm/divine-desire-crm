@@ -9,6 +9,7 @@ import { moverFila, guardarOrden } from '../lib/ordenManual'
 import { useAuth } from '../context/AuthContext'
 import { PERMISO_IG_CONTRASENAS, PERMISO_IG_2FA } from '../lib/navigation'
 import { urlInstagram, usuarioIG } from '../lib/instagramLink'
+import { conjuntoExtrabajadores, conEtiqueta, ETIQUETA_EXTRA } from '../lib/personasIG'
 
 const vacio = (v) => v === null || v === undefined || v === ''
 const cmp = (x, y) => (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { numeric: true }))
@@ -134,6 +135,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
   const ver2fa = puedeVer(PERMISO_IG_2FA, ['admin', 'ig_manager', 'ig_assistant'])   // permiso adicional «Ver 2FA»
   const es2faBloq = (c) => c.k === 'dos_fa' && !ver2fa
   const [filas, setFilas] = useState([])
+  const extras = useMemo(() => conjuntoExtrabajadores(personas), [personas])   // extrabajadores: siempre con su etiqueta
   const [stockMails, setStockMails] = useState([])
   const [stockIG, setStockIG] = useState([])
   const [usadasIG, setUsadasIG] = useState(new Set())
@@ -284,8 +286,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
       control = (
         <Select value={val} onChange={(e) => set(e.target.value)}>
           <option value="">Sin indicar</option>
-          {val && !todos.includes(val) && <optgroup label="Valor actual"><option value={val}>{val}</option></optgroup>}
-          {personas.filter((g) => g.items.length).map((g) => <optgroup key={g.grupo} label={g.grupo}>{g.items.map((n) => <option key={g.grupo + n} value={n}>{n}</option>)}</optgroup>)}
+          {val && !todos.includes(val) && <optgroup label="Valor actual"><option value={val}>{conEtiqueta(val, extras)}</option></optgroup>}
+          {personas.filter((g) => g.items.length).map((g) => <optgroup key={g.grupo} label={g.grupo}>{g.items.map((n) => <option key={g.grupo + n} value={n}>{/^extrabajadores/i.test(g.grupo) ? `${n} ${ETIQUETA_EXTRA}` : n}</option>)}</optgroup>)}
         </Select>
       )
     } else if (c.tipo === 'modeloSel') {
@@ -354,7 +356,8 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
       return <CeldaCopia completo titulo={c.n} texto={v}>{url ? <a href={/^https?:\/\//i.test(url) ? url : `https://${url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta">{v}</a> : null}</CeldaCopia>
     }
     let cuerpo
-    if (c.tipo === 'modeloSel') cuerpo = <CeldaCopia completo titulo={c.n} texto={nombreModelo(v)} />
+    if (c.tipo === 'persona') cuerpo = <CeldaCopia completo titulo={c.n} texto={conEtiqueta(v, extras)} />
+    else if (c.tipo === 'modeloSel') cuerpo = <CeldaCopia completo titulo={c.n} texto={nombreModelo(v)} />
     else if (c.tipo === 'secreto') cuerpo = verPass ? <CeldaSecreto valor={v} /> : <Candado />
     else if (c.tipo === 'estado') cuerpo = vacio(v) ? <span style={{ color: 'var(--text-muted)' }}>—</span> : <Etiqueta estado={v} />
     else if (c.tipo === 'enlace') cuerpo = <CeldaCopia completo titulo={c.n} texto={v} muted>{v ? <a href={v} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{String(v).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</a> : null}</CeldaCopia>
