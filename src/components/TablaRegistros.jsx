@@ -32,6 +32,42 @@ function Candado({ que = 'las contraseñas' }) {
   return <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }} data-candado title={`El admin no te ha dado permiso para ver ${que}`}>🔒 No tienes permiso</span>
 }
 
+// Campo de correo con previsualización de Stock mails: al escribir las primeras letras se ve qué correo del stock se va a usar
+function CampoCorreoStock({ val, onTexto, onElegir, mails, verPass }) {
+  const [abierto, setAbierto] = useState(false)
+  const q = String(val || '').trim().toLowerCase()
+  const exacto = q ? mails.find((m) => String(m.correo || '').trim().toLowerCase() === q) : null
+  const sugeridos = q && !exacto
+    ? mails.filter((m) => String(m.correo || '').toLowerCase().includes(q))
+        .sort((a, b) => (a.instagram ? 1 : 0) - (b.instagram ? 1 : 0) || String(a.correo).localeCompare(String(b.correo))).slice(0, 6)
+    : []
+  const usadoPor = (m) => (m.instagram ? `Ya asignado a @${String(m.instagram).replace(/^@+/, '')}` : 'Libre')
+  return (
+    <div style={{ position: 'relative' }}>
+      <Input value={val} autoComplete="off" placeholder="Escribe el correo… (se busca en Stock mails)" onChange={(e) => { onTexto(e.target.value); setAbierto(true) }} onFocus={() => setAbierto(true)} onBlur={() => setTimeout(() => setAbierto(false), 150)} />
+      {abierto && sugeridos.length > 0 && (
+        <div data-sugerencias-correo className="rounded-md overflow-hidden" style={{ position: 'absolute', zIndex: 30, left: 0, right: 0, top: '100%', marginTop: 4, background: 'var(--panel)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
+          <p className="px-3 py-1.5 text-xs" style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>Correos de Stock mails</p>
+          {sugeridos.map((m) => (
+            <button key={m.id || m.correo} type="button" onMouseDown={(e) => { e.preventDefault(); onElegir(m); setAbierto(false) }} className="w-full text-left px-3 py-2 text-sm flex flex-col gap-0.5 hover:opacity-80" style={{ background: 'transparent', color: 'var(--text)' }}>
+              <span style={{ wordBreak: 'break-all' }}>{m.correo}</span>
+              <span className="text-xs" style={{ color: m.instagram ? 'var(--gold)' : 'var(--success)' }}>{usadoPor(m)}{m.estado ? ` · ${m.estado}` : ''}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {q && exacto && (
+        <p data-correo-stock className="text-xs mt-1" style={{ color: exacto.instagram ? 'var(--gold)' : 'var(--success)' }}>
+          ✓ Correo de Stock mails: {exacto.correo} · {usadoPor(exacto)}{exacto.estado ? ` · ${exacto.estado}` : ''}{exacto.contrasena ? (verPass ? '' : ' · contraseña cargada') : ' · sin contraseña en el stock'}
+        </p>
+      )}
+      {q && !exacto && sugeridos.length === 0 && (
+        <p data-correo-fuera className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Este correo no está en Stock mails.</p>
+      )}
+    </div>
+  )
+}
+
 function CeldaSecreto({ valor }) {
   const [ver, setVer] = useState(false)
   const [ok, setOk] = useState(false)
@@ -59,6 +95,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
   const ver2fa = puedeVer(PERMISO_IG_2FA, ['admin', 'ig_manager', 'ig_assistant'])   // permiso adicional «Ver 2FA»
   const es2faBloq = (c) => c.k === 'dos_fa' && !ver2fa
   const [filas, setFilas] = useState([])
+  const [stockMails, setStockMails] = useState([])
   const [cargando, setCargando] = useState(true)
   const [busca, setBusca] = useState('')
   const [fEstado, setFEstado] = useState('todos')
@@ -93,6 +130,13 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
   useEffect(() => { setEditId(null); setMostrarNuevo(false); setBusca(''); setFEstado('todos'); setOrdenK('orden'); setOrdenDir('asc'); setError(null); cargar() }, [cfg.tabla]) // eslint-disable-line
 
   useEffect(() => { if (version) cargar() }, [version]) // eslint-disable-line
+
+  // Correos del stock para la previsualización (solo en las secciones que lo piden)
+  const pideCorreoStock = cfg.cols.some((c) => c.correoStock)
+  useEffect(() => {
+    if (!pideCorreoStock) return
+    supabase.from('ig_stock_mails').select('id, correo, contrasena, estado, instagram').limit(5000).then(({ data }) => setStockMails(data || []))
+  }, [cfg.tabla, mostrarNuevo, editId]) // eslint-disable-line
 
   useEffect(() => {
     const el = panelRef.current
@@ -198,6 +242,14 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
       control = <Select value={val} onChange={(e) => set(e.target.value)}><option value="">Sin modelo asignada</option>{modelosLista.slice().sort((x, y) => String(x.stage_name).localeCompare(String(y.stage_name), 'es')).map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}</Select>
     } else if (c.tipo === 'modelo') control = <Input list="lista-modelos-ig" value={val} onChange={(e) => set(e.target.value)} placeholder="Modelo" />
     else if (c.tipo === 'largo') control = <textarea rows={2} value={val} onChange={(e) => set(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm outline-none" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', resize: 'vertical' }} />
+    else if (c.correoStock) {
+      control = <CampoCorreoStock val={val} mails={stockMails} verPass={verPass}
+        onTexto={(t) => setForm((p) => {
+          const m = stockMails.find((x) => String(x.correo || '').trim().toLowerCase() === t.trim().toLowerCase())
+          return { ...p, [c.k]: t, ...(m && vacio(p.contrasena_email) && m.contrasena ? { contrasena_email: m.contrasena } : {}) }
+        })}
+        onElegir={(m) => setForm((p) => ({ ...p, [c.k]: m.correo, ...(m.contrasena ? { contrasena_email: m.contrasena } : {}) }))} />
+    }
     else if (es2faBloq(c)) control = <div className="px-3 py-2 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}><Candado que="el 2FA" /></div>
     else if (c.tipo === 'secreto' && !verPass) control = <div className="px-3 py-2 rounded-md text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}><Candado /></div>
     else control = <Input value={val} onChange={(e) => set(e.target.value)} style={c.tipo === 'secreto' || c.mono ? { fontFamily: 'ui-monospace, monospace' } : undefined} />
