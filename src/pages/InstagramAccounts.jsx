@@ -15,6 +15,7 @@ import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
 import QrCelda from '../components/QrCelda'
 import { PERMISO_IG_2FA } from '../lib/navigation'
 import { urlInstagram, usuarioIG } from '../lib/instagramLink'
+import HistorialIG from '../components/HistorialIG'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
 
 // Columnas: k = clave de orden, n = cabecera. Todo se ve completo salvo 2FA, Observaciones y Restricciones, que se abrevian (con «ver más») si son largas: `w` es su ancho máximo.
@@ -397,6 +398,7 @@ export default function InstagramAccounts() {
           {label}
         </button>
       ))}
+      {verSecciones && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
     </div>
   )
 
