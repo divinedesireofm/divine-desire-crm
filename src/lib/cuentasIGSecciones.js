@@ -1,7 +1,7 @@
 // Configuración de los subapartados de «Cuentas de Instagram» (Eliminadas, Stock mails, Cuentas propias y Stock Instagram).
 // Cada columna: k = columna en Supabase · n = cabecera · tipo = texto | fecha | estado | secreto | largo | enlace | modelo
 // w = ancho máximo (solo si queremos abreviar el texto largo con «ver más»).
-export const ESTADOS_CUENTA = ['ACTIVA', 'ELIMINADA', 'SUSPENDIDA', 'BLOQUEADA', 'RESTRINGIDA', 'EN REPOSO']
+export const ESTADOS_CUENTA = ['ACTIVA', 'ELIMINADA', 'SUSPENDIDA', 'BLOQUEADA', 'RESTRINGIDA', 'EN REPOSO', 'PERDIDA']
 // Los mismos estados en General y en todos los apartados (ELIMINADA solo se pone con «Dar de baja»)
 export const ESTADOS_GENERAL = ESTADOS_CUENTA.filter((e) => e !== 'ELIMINADA')
 const ESTADO_DE_STATUS = { activa: 'ACTIVA', calentando: 'ACTIVA', suspendida: 'SUSPENDIDA', baneada: 'BLOQUEADA', en_revision: 'RESTRINGIDA', en_pausa: 'EN REPOSO' }
@@ -16,6 +16,7 @@ export function normalizaEstado(e) {
   if (t.startsWith('RESTR')) return 'RESTRINGIDA'
   if (t.includes('REPOSO')) return 'EN REPOSO'
   if (t.startsWith('ELIM')) return 'ELIMINADA'
+  if (t.startsWith('PERD')) return 'PERDIDA'
   return ''
 }
 

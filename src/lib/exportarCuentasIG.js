@@ -34,6 +34,7 @@ export async function reunirHojas({ accounts = [], seguidores = {}, models = [],
 
   if (incluirSecciones) {
     for (const id of ORDEN_SECCIONES) {
+      if (Array.isArray(incluirSecciones) && !incluirSecciones.includes(id)) continue
       const cfg = SECCIONES[id]
       const { data, error } = await supabase.from(cfg.tabla).select('*').order('orden', { ascending: true }).limit(5000)
       if (error) throw new Error(`No se pudo leer «${cfg.pestana}»: ${error.message}`)

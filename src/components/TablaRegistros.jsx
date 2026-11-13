@@ -19,7 +19,7 @@ function colorEstado(e) {
   const t = String(e || '').toUpperCase()
   if (t.startsWith('ACTIV')) return 'var(--success)'
   if (t.startsWith('ELIMIN')) return 'var(--text-muted)'
-  if (t.startsWith('SUSP') || t.startsWith('BLOQ') || t.startsWith('RESTR')) return 'var(--danger)'
+  if (t.startsWith('SUSP') || t.startsWith('BLOQ') || t.startsWith('RESTR') || t.startsWith('PERD')) return 'var(--danger)'
   return 'var(--gold)'
 }
 export function Etiqueta({ estado }) {

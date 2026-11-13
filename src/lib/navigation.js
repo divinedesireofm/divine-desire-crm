@@ -102,6 +102,7 @@ export const SECTIONS = [
 export const PERMISO_IG_CONTRASENAS = 'permiso:ig_contrasenas'
 export const PERMISO_IG_2FA = 'permiso:ig_2fa'
 export const PERMISO_IG_HISTORIAL = 'permiso:ig_historial'
+export const permisoSeccionIG = (id) => `permiso:ig_seccion_${id}`
 export const PERMISOS_EXTRA = [
   {
     id: 'extra', label: 'Permisos adicionales',
@@ -109,6 +110,11 @@ export const PERMISOS_EXTRA = [
       { to: PERMISO_IG_2FA, label: 'Ver 2FA (código y QR) en Cuentas de Instagram', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: PERMISO_IG_HISTORIAL, label: 'Ver el historial y restaurar cambios en Cuentas de Instagram', roles: ['admin', 'ig_manager', 'ig_assistant'] },
     ],
+  },
+  {
+    id: 'ig_apartados', label: 'Apartados de Cuentas de Instagram',
+    items: [['stock_mails', 'Stock mails'], ['propias', 'Cuentas propias'], ['modelos', 'Cuentas de modelos'], ['stock_ig', 'Stock Instagram'], ['eliminadas', 'Eliminadas']]
+      .map(([id, label]) => ({ to: permisoSeccionIG(id), label: `Acceder a «${label}»`, roles: ['admin', 'ig_manager'] })),
   },
 ]
 

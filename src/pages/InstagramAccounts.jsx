@@ -13,7 +13,7 @@ import TablaRegistros, { Etiqueta } from '../components/TablaRegistros'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES, ESTADOS_CUENTA, ESTADOS_GENERAL, estadoDeCuenta, normalizaEstado } from '../lib/cuentasIGSecciones'
 import QrCelda from '../components/QrCelda'
-import { PERMISO_IG_2FA, PERMISO_IG_HISTORIAL, PERMISO_IG_CONTRASENAS } from '../lib/navigation'
+import { PERMISO_IG_2FA, PERMISO_IG_HISTORIAL, PERMISO_IG_CONTRASENAS, permisoSeccionIG } from '../lib/navigation'
 import { urlInstagram, usuarioIG } from '../lib/instagramLink'
 import HistorialIG from '../components/HistorialIG'
 import ExportarCuentasIG from '../components/ExportarCuentasIG'
@@ -70,8 +70,10 @@ export default function InstagramAccounts() {
   const [params, setParams] = useSearchParams()
   // Eliminadas, Stock mails, Cuentas propias y Stock Instagram llevan credenciales: solo admin y manager de Instagram
   const verSecciones = hasAnyRole(['admin', 'ig_manager'])
+  // Qué apartados ve cada rol: se ajusta desde Equipo → Permisos (por defecto, admin y Manager de Instagram)
+  const seccionesVisibles = ORDEN_SECCIONES.filter((id) => puedeVer(permisoSeccionIG(id), ['admin', 'ig_manager']))
   const tabParam = params.get('tab')
-  const tab = tabParam === 'cero' ? 'cero' : tabParam === 'metricas' ? 'metricas' : (verSecciones && SECCIONES[tabParam]) ? tabParam : 'cuentas'
+  const tab = tabParam === 'cero' ? 'cero' : tabParam === 'metricas' ? 'metricas' : (seccionesVisibles.includes(tabParam)) ? tabParam : 'cuentas'
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
   const [assistants, setAssistants] = useState([])
@@ -395,7 +397,7 @@ export default function InstagramAccounts() {
 
   const pestanas = (
     <div className="flex flex-wrap gap-2 mb-5">
-      {[['cuentas', 'General'], ...(verSecciones ? ORDEN_SECCIONES.map((id) => [id, SECCIONES[id].pestana]) : []), ['metricas', 'Métricas de perfil'], ['cero', 'Cuentas de cero']].map(([id, label]) => (
+      {[['cuentas', 'General'], ...(seccionesVisibles.length ? seccionesVisibles.map((id) => [id, SECCIONES[id].pestana]) : []), ['metricas', 'Métricas de perfil'], ['cero', 'Cuentas de cero']].map(([id, label]) => (
         <button
           key={id}
           onClick={() => setParams(id === 'cuentas' ? {} : { tab: id })}
@@ -410,7 +412,7 @@ export default function InstagramAccounts() {
         </button>
       ))}
       <div className="ml-auto flex flex-wrap items-start gap-2">
-        <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={verSecciones} origenDe={origenDe} personas={creadores} />
+        <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={seccionesVisibles} origenDe={origenDe} personas={creadores} />
         {puedeVer(PERMISO_IG_HISTORIAL, ['admin', 'ig_manager']) && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
       </div>
     </div>
