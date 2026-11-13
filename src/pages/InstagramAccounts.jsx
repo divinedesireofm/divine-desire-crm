@@ -337,10 +337,13 @@ export default function InstagramAccounts() {
           estado: tipo, motivo, fecha_eliminacion: fecha, instagram_nuevo: usuario, instagram_original: f.instagram_original || null, correo: f.email || null,
           link: urlInstagram(usuario) || null, modelo: mod?.stage_name || null, asistente: String(f.responsable || (esModelos ? '' : f.creador) || '').replace(/\s*\(extrabajador\)\s*$/i, '') || null,
           dos_fa: f.dos_fa || null, fecha_asignacion: f.fecha_creacion || null,
+          hojas_previas: { [esModelos ? 'modelos' : 'propias']: [f] },   // lo que tenía la fila, para devolverlo si se rehabilita
         }
-        const { error: e1 } = await supabase.from('ig_eliminadas').insert([ficha])
+        let { error: e1 } = await supabase.from('ig_eliminadas').insert([ficha])
+        if (e1 && /hojas_previas/.test(e1.message)) { delete ficha.hojas_previas; ;({ error: e1 } = await supabase.from('ig_eliminadas').insert([ficha])) }   // sin la migración 125
         if (e1) throw new Error('No se pudo guardar en Eliminadas: ' + e1.message)
-        await supabase.from(esModelos ? 'ig_cuentas_modelos' : 'ig_cuentas_propias').update({ estado: tipo }).eq('id', f.id)
+        await supabase.from(esModelos ? 'ig_cuentas_modelos' : 'ig_cuentas_propias').delete().eq('id', f.id)
+        await supabase.from('ig_stock_instagram').update({ estado: 'ELIMINADA' }).ilike('instagram_actual', usuario)   // en Stock Instagram la línea se conserva
       }
       setBajaFila(null); setVersionElim((v) => v + 1)
     } catch (ex) { setModalErr(ex.message) }
@@ -353,7 +356,7 @@ export default function InstagramAccounts() {
     setTrabajando(true); setModalErr(null)
     const nota = `Eliminada/suspendida${f.fecha_eliminacion ? ' el ' + fmt(f.fecha_eliminacion) : ''}${f.motivo ? ': ' + f.motivo : ''} · Rehabilitada el ${fmt(fecha)}: ${motivo}`
     const sumar = (previo) => [previo, nota].filter(Boolean).join('\n')
-    let ok = false
+    let ok = false, nuevaCta = null
     if (f.cuenta_id) {
       const { data: cta } = await supabase.from('instagram_accounts').select('id, observations').eq('id', f.cuenta_id).maybeSingle()
       if (cta) {
@@ -367,14 +370,16 @@ export default function InstagramAccounts() {
       if (!usuario) { setTrabajando(false); setModalErr('Esta ficha no tiene usuario de Instagram. Edítala y pon el «Instagram nuevo» antes de rehabilitarla.'); return }
       const mod = models.find((m) => String(m.stage_name || '').trim().toLowerCase() === String(f.modelo || '').trim().toLowerCase())
       const asis = assistants.find((x) => String(x.full_name || '').trim().toLowerCase() === String(f.asistente || '').trim().toLowerCase())
-      const { error: e } = await supabase.from('instagram_accounts').insert([{
+      const { data: nc, error: e } = await supabase.from('instagram_accounts').insert([{
         username: usuario, original_username: (['Propia', 'De la modelo'].includes(f.instagram_original) ? null : f.instagram_original) || null, email: f.correo || null, profile_link: urlInstagram(usuario) || null,
         model_id: mod?.id || null, assigned_to: asis?.id || null, target_audience: f.idioma ? f.idioma.split(',').map((x) => x.trim()).filter(Boolean) : null,
         bio_link: f.link_bio || null, status: 'activa', estado_cuenta: 'ACTIVA', two_fa_code: f.dos_fa || null, assigned_at: f.fecha_asignacion || null,
         observations: sumar(f.observaciones), archivada: false,
-      }])
+      }]).select('id').single()
+      nuevaCta = nc
       if (e) { setTrabajando(false); setModalErr(/duplicate|unique/i.test(e.message) ? `Ya existe en General una cuenta con el usuario «${usuario}». Cambia el «Instagram nuevo» de esta ficha o revisa la cuenta del General.` : 'No se pudo rehabilitar: ' + e.message); return }
     }
+    if (!ok && nuevaCta?.id) await supabase.rpc('ig_restaurar_hojas', { p_ficha: f.id, p_cuenta: nuevaCta.id })   // devuelve a Cuentas propias / de modelos lo que se quitó al dar de baja
     await supabase.from('ig_eliminadas').delete().eq('id', f.id)
     setTrabajando(false); setRehabDe(null)
     setVersionElim((v) => v + 1)
