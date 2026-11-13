@@ -3,15 +3,15 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles } from '../lib/roles'
-import { Panel, Button, Input, Select, Td, StatusBadge, PageHeader } from '../components/ui'
+import { Panel, Button, Input, Select, Td, PageHeader } from '../components/ui'
 import CeldaCopia from '../components/CeldaCopia'
 import ScrollSuperior from '../components/ScrollSuperior'
 import Desplegable from '../components/Desplegable'
 import ZeroAccounts from './ZeroAccounts'
 import IGProfileMetrics from './IGProfileMetrics'
-import TablaRegistros from '../components/TablaRegistros'
+import TablaRegistros, { Etiqueta } from '../components/TablaRegistros'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
-import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
+import { SECCIONES, ORDEN_SECCIONES, ESTADOS_CUENTA, ESTADOS_GENERAL, estadoDeCuenta, normalizaEstado } from '../lib/cuentasIGSecciones'
 import QrCelda from '../components/QrCelda'
 import { PERMISO_IG_2FA, PERMISO_IG_HISTORIAL, PERMISO_IG_CONTRASENAS } from '../lib/navigation'
 import { urlInstagram, usuarioIG } from '../lib/instagramLink'
@@ -38,7 +38,6 @@ function FotoIG({ url, nombre, size = 36 }) {
 const ORDENABLES = [{ k: 'manual', n: 'Orden manual (arrastrar)' }, ...COLS.filter((c) => c.k !== 'acc')]
 const vacio = (v) => v === null || v === undefined || v === ''
 
-const STATUS_OPTIONS = ['calentando', 'activa', 'en_pausa', 'en_revision', 'suspendida', 'baneada']
 
 const EMPTY_FORM = {
   original_username: '',
@@ -110,7 +109,7 @@ export default function InstagramAccounts() {
       case 'manual': return a.orden != null ? Number(a.orden) : null
       case 'cuenta': return (a.username || '').toLowerCase()
       case 'modelo': return a.models?.stage_name ? a.models.stage_name.toLowerCase() : null
-      case 'estado': return STATUS_OPTIONS.indexOf(a.status)
+      case 'estado': return ESTADOS_CUENTA.indexOf(estadoDeCuenta(a))
       case 'responsable': return a.profiles?.full_name ? a.profiles.full_name.toLowerCase() : null
       case 'seguidores': return seguidores[a.id] != null ? Number(seguidores[a.id]) : null
       case 'original': return origenDe(a) ? origenDe(a).toLowerCase() : null
@@ -130,7 +129,7 @@ export default function InstagramAccounts() {
     const q = busca.trim().toLowerCase()
     const lista = accounts.filter((a) => {
       if (fModelo !== 'todos' && (fModelo === 'sin' ? a.model_id : a.model_id !== fModelo)) return false
-      if (fEstado !== 'todos' && a.status !== fEstado) return false
+      if (fEstado !== 'todos' && estadoDeCuenta(a) !== fEstado) return false
       if (fResp !== 'todos' && (fResp === 'sin' ? a.assigned_to : a.assigned_to !== fResp)) return false
       if (q && ![a.username, origenDe(a), a.email, a.models?.stage_name, a.profiles?.full_name, a.observations, a.restrictions].some((v) => String(v || '').toLowerCase().includes(q))) return false
       return true
@@ -238,6 +237,7 @@ export default function InstagramAccounts() {
       target_audience: (a.target_audience || []).join(', '),
       bio_link: a.bio_link || '',
       status: a.status || 'calentando',
+      estado_cuenta: estadoDeCuenta(a) || 'ACTIVA',
       assigned_to: a.assigned_to || '',
       two_fa_code: a.two_fa_code || '',
       assigned_at: a.assigned_at || '',
@@ -262,6 +262,7 @@ export default function InstagramAccounts() {
         : null,
       bio_link: form.bio_link || null,
       status: form.status,
+      estado_cuenta: form.estado_cuenta,
       assigned_to: form.assigned_to || null,
       two_fa_code: form.two_fa_code || null,
       assigned_at: form.assigned_at || null,
@@ -314,7 +315,7 @@ export default function InstagramAccounts() {
     if (f.cuenta_id) {
       const { data: cta } = await supabase.from('instagram_accounts').select('id, observations').eq('id', f.cuenta_id).maybeSingle()
       if (cta) {
-        const { error: e } = await supabase.from('instagram_accounts').update({ archivada: false, status: 'activa', observations: sumar(cta.observations) }).eq('id', cta.id)
+        const { error: e } = await supabase.from('instagram_accounts').update({ archivada: false, status: 'activa', estado_cuenta: 'ACTIVA', observations: sumar(cta.observations) }).eq('id', cta.id)
         if (e) { setTrabajando(false); setModalErr('No se pudo rehabilitar: ' + e.message); return }
         ok = true
       }
@@ -327,7 +328,7 @@ export default function InstagramAccounts() {
       const { error: e } = await supabase.from('instagram_accounts').insert([{
         username: usuario, original_username: (['Propia', 'De la modelo'].includes(f.instagram_original) ? null : f.instagram_original) || null, email: f.correo || null, profile_link: urlInstagram(usuario) || null,
         model_id: mod?.id || null, assigned_to: asis?.id || null, target_audience: f.idioma ? f.idioma.split(',').map((x) => x.trim()).filter(Boolean) : null,
-        bio_link: f.link_bio || null, status: 'activa', two_fa_code: f.dos_fa || null, assigned_at: f.fecha_asignacion || null,
+        bio_link: f.link_bio || null, status: 'activa', estado_cuenta: 'ACTIVA', two_fa_code: f.dos_fa || null, assigned_at: f.fecha_asignacion || null,
         observations: sumar(f.observaciones), archivada: false,
       }])
       if (e) { setTrabajando(false); setModalErr(/duplicate|unique/i.test(e.message) ? `Ya existe en General una cuenta con el usuario «${usuario}». Cambia el «Instagram nuevo» de esta ficha o revisa la cuenta del General.` : 'No se pudo rehabilitar: ' + e.message); return }
@@ -346,7 +347,8 @@ export default function InstagramAccounts() {
     const usuario = usuarioIG(f.usuario)
     if (!usuario) return { tipo: 'error', texto: 'Para añadirla al General hace falta el usuario de Instagram.' }
     const mod = models.find((m) => m.id === f.modelo_id)
-    const status = est.startsWith('ACTIV') ? 'activa' : est.startsWith('SUSP') || est.startsWith('BLOQ') ? 'suspendida' : est.startsWith('RESTR') ? 'en_revision' : est.includes('REPOSO') ? 'en_pausa' : 'activa'
+    const estadoCuenta = normalizaEstado(est) || 'ACTIVA'
+    const status = est.startsWith('ACTIV') ? 'activa' : est.startsWith('SUSP') ? 'suspendida' : est.startsWith('BLOQ') ? 'baneada' : est.startsWith('RESTR') ? 'en_revision' : est.includes('REPOSO') ? 'en_pausa' : 'activa'
     const creador = String(f.responsable || (esModelos ? '' : f.creador) || '').trim().toLowerCase().replace(/\s*\(extrabajador\)\s*$/, '')   // en Cuentas de modelos, el responsable
     const asis = assistants.find((x) => String(x.full_name || '').trim().toLowerCase().replace(/\s*\(extrabajador\)\s*$/, '') === creador)
 
@@ -360,7 +362,7 @@ export default function InstagramAccounts() {
 
     let texto
     if (cuenta) {
-      const cambios = { model_id: f.modelo_id }
+      const cambios = { model_id: f.modelo_id, estado_cuenta: estadoCuenta }
       if (f.responsable && asis) cambios.assigned_to = asis.id
       if (!cuenta.email && f.email) cambios.email = f.email
       if (!cuenta.profile_link) cambios.profile_link = urlInstagram(usuario)
@@ -371,7 +373,7 @@ export default function InstagramAccounts() {
       texto = `@${usuario} ya estaba en el General: se ha asignado a ${mod?.stage_name || 'la modelo'}.`
     } else {
       const { data: nueva, error } = await supabase.from('instagram_accounts').insert([{
-        username: usuario, model_id: f.modelo_id, status, email: f.email || null, profile_link: urlInstagram(usuario) || null, two_fa_code: f.dos_fa || null,
+        username: usuario, model_id: f.modelo_id, status, estado_cuenta: estadoCuenta, email: f.email || null, profile_link: urlInstagram(usuario) || null, two_fa_code: f.dos_fa || null,
         assigned_at: f.fecha_creacion || null, assigned_to: asis?.id || null, archivada: false,
       }]).select('id').single()
       if (error) throw error
@@ -460,8 +462,8 @@ export default function InstagramAccounts() {
           {models.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
         </Select>) })}
       {C({ t: 'Estado', children: (
-        <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
-          {STATUS_OPTIONS.map((st) => <option key={st} value={st}>{st.replaceAll('_', ' ')}</option>)}
+        <Select value={form.estado_cuenta} onChange={(e) => setForm({ ...form, estado_cuenta: e.target.value })}>
+          {(ESTADOS_GENERAL.includes(form.estado_cuenta) ? ESTADOS_GENERAL : [form.estado_cuenta, ...ESTADOS_GENERAL]).map((st) => <option key={st} value={st}>{st}</option>)}
         </Select>) })}
       {C({ t: 'Responsable (asistente)', children: (
         <Select value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}>
@@ -535,7 +537,7 @@ export default function InstagramAccounts() {
             <div className="w-40">
               <Select value={fEstado} onChange={(e) => setFEstado(e.target.value)} aria-label="Estado">
                 <option value="todos">Estado: todos</option>
-                {STATUS_OPTIONS.map((st) => <option key={st} value={st}>{st.replace(/_/g, ' ')}</option>)}
+                {ESTADOS_GENERAL.map((st) => <option key={st} value={st}>{st}</option>)}
               </Select>
             </div>
             <div className="w-52">
@@ -608,7 +610,7 @@ export default function InstagramAccounts() {
                         </div>
                       </td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Modelo" texto={a.models?.stage_name} /></td>
-                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Estado" texto={String(a.status || '').replace(/_/g, ' ')}><StatusBadge status={a.status} /></CeldaCopia></td>
+                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Estado" texto={estadoDeCuenta(a)}><Etiqueta estado={estadoDeCuenta(a)} /></CeldaCopia></td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Responsable" texto={a.profiles?.full_name} /></td>
                       <td className="px-4 align-middle tabular-nums" style={fila}><CeldaCopia completo titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
                       <td className="px-4 align-middle" style={fila}>

@@ -22,7 +22,7 @@ function colorEstado(e) {
   if (t.startsWith('SUSP') || t.startsWith('BLOQ') || t.startsWith('RESTR')) return 'var(--danger)'
   return 'var(--gold)'
 }
-function Etiqueta({ estado }) {
+export function Etiqueta({ estado }) {
   const c = colorEstado(estado)
   return <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap" style={{ background: `color-mix(in srgb, ${c} 16%, transparent)`, color: c }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: c }} />{estado}</span>
 }

@@ -1,7 +1,7 @@
 // Exporta «Cuentas de Instagram» a Excel, Word o PDF: General + cada subapartado como una hoja / sección del mismo documento.
 // Respeta los permisos: sin permiso para ver contraseñas o 2FA, esas columnas salen como «Sin permiso».
 import { supabase } from './supabase'
-import { SECCIONES, ORDEN_SECCIONES } from './cuentasIGSecciones'
+import { SECCIONES, ORDEN_SECCIONES, estadoDeCuenta } from './cuentasIGSecciones'
 import { urlInstagram, usuarioIG } from './instagramLink'
 import { conjuntoExtrabajadores, conEtiqueta } from './personasIG'
 
@@ -24,7 +24,7 @@ export async function reunirHojas({ accounts = [], seguidores = {}, models = [],
       { n: 'Correo', peso: 1.6 }, { n: '2FA', peso: 1.4 }, { n: 'Público' }, { n: 'Asignación', peso: 0.9 }, { n: 'Días', peso: 0.6 }, { n: 'Observaciones', peso: 2.5 }, { n: 'Restricciones', peso: 2.5 }],
     filas: generales.map((a) => [
       { t: `@${a.username}`, url: urlInstagram(a.username) },
-      { t: a.models?.stage_name || '' }, { t: ESTADO_GENERAL[a.status] || a.status || '' }, { t: a.profiles?.full_name || '' },
+      { t: a.models?.stage_name || '' }, { t: estadoDeCuenta(a) || ESTADO_GENERAL[a.status] || a.status || '' }, { t: a.profiles?.full_name || '' },
       { t: seguidores[a.id] != null ? String(seguidores[a.id]) : '' }, { t: (origenDe ? origenDe(a) : a.original_username) || '' }, { t: a.email || '' },
       { t: a.two_fa_code ? (ver2fa ? a.two_fa_code : SIN_PERMISO) : '' }, { t: (a.target_audience || []).join(', ') },
       { t: fechaES(a.assigned_at), fecha: a.assigned_at ? String(a.assigned_at).slice(0, 10) : null }, { t: String(dias(a.assigned_at)) },

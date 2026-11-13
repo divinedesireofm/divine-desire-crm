@@ -1,7 +1,23 @@
 // Configuración de los subapartados de «Cuentas de Instagram» (Eliminadas, Stock mails, Cuentas propias y Stock Instagram).
 // Cada columna: k = columna en Supabase · n = cabecera · tipo = texto | fecha | estado | secreto | largo | enlace | modelo
 // w = ancho máximo (solo si queremos abreviar el texto largo con «ver más»).
-const ESTADOS_CUENTA = ['ACTIVA', 'ELIMINADA', 'SUSPENDIDA', 'BLOQUEADA', 'RESTRINGIDA', 'EN REPOSO']
+export const ESTADOS_CUENTA = ['ACTIVA', 'ELIMINADA', 'SUSPENDIDA', 'BLOQUEADA', 'RESTRINGIDA', 'EN REPOSO']
+// Los mismos estados en General y en todos los apartados (ELIMINADA solo se pone con «Dar de baja»)
+export const ESTADOS_GENERAL = ESTADOS_CUENTA.filter((e) => e !== 'ELIMINADA')
+const ESTADO_DE_STATUS = { activa: 'ACTIVA', calentando: 'ACTIVA', suspendida: 'SUSPENDIDA', baneada: 'BLOQUEADA', en_revision: 'RESTRINGIDA', en_pausa: 'EN REPOSO' }
+// Estado unificado de una cuenta del General (si aún no tiene el campo nuevo, se deduce del antiguo)
+export const estadoDeCuenta = (a) => (a?.archivada && !a?.estado_cuenta ? 'ELIMINADA' : a?.estado_cuenta || ESTADO_DE_STATUS[a?.status] || '')
+// Normaliza un texto de estado a la lista única
+export function normalizaEstado(e) {
+  const t = String(e || '').toUpperCase()
+  if (t.startsWith('ACTIV')) return 'ACTIVA'
+  if (t.startsWith('SUSP')) return 'SUSPENDIDA'
+  if (t.startsWith('BLOQ')) return 'BLOQUEADA'
+  if (t.startsWith('RESTR')) return 'RESTRINGIDA'
+  if (t.includes('REPOSO')) return 'EN REPOSO'
+  if (t.startsWith('ELIM')) return 'ELIMINADA'
+  return ''
+}
 
 export const SECCIONES = {
   eliminadas: {
