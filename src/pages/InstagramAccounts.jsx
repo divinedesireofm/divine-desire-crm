@@ -347,8 +347,8 @@ export default function InstagramAccounts() {
     if (!usuario) return { tipo: 'error', texto: 'Para añadirla al General hace falta el usuario de Instagram.' }
     const mod = models.find((m) => m.id === f.modelo_id)
     const status = est.startsWith('ACTIV') ? 'activa' : est.startsWith('SUSP') || est.startsWith('BLOQ') ? 'suspendida' : est.startsWith('RESTR') ? 'en_revision' : est.includes('REPOSO') ? 'en_pausa' : 'activa'
-    const creador = String(f.creador || '').trim().toLowerCase()
-    const asis = esModelos ? null : assistants.find((x) => String(x.full_name || '').trim().toLowerCase() === creador)
+    const creador = String((esModelos ? f.responsable : f.creador) || '').trim().toLowerCase().replace(/\s*\(extrabajador\)\s*$/, '')   // en Cuentas de modelos, el responsable
+    const asis = assistants.find((x) => String(x.full_name || '').trim().toLowerCase().replace(/\s*\(extrabajador\)\s*$/, '') === creador)
 
     let cuenta = null
     if (f.cuenta_id) { const { data } = await supabase.from('instagram_accounts').select('*').eq('id', f.cuenta_id).maybeSingle(); cuenta = data }
@@ -361,6 +361,7 @@ export default function InstagramAccounts() {
     let texto
     if (cuenta) {
       const cambios = { model_id: f.modelo_id }
+      if (esModelos && asis) cambios.assigned_to = asis.id
       if (!cuenta.email && f.email) cambios.email = f.email
       if (!cuenta.profile_link) cambios.profile_link = urlInstagram(usuario)
       if (!cuenta.two_fa_code && f.dos_fa) cambios.two_fa_code = f.dos_fa

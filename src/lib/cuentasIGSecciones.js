@@ -78,6 +78,7 @@ export const SECCIONES = {
     cols: [
       { k: 'usuario', n: 'Usuario', tipo: 'texto', principal: true, usuarioIG: true },
       { k: 'modelo_id', n: 'Modelo (dueña de la cuenta)', tipo: 'modeloSel' },
+      { k: 'responsable', n: 'Responsable', tipo: 'persona' },
       { k: 'contrasena', n: 'Contraseña', tipo: 'secreto' },
       { k: 'email', n: 'Email', tipo: 'texto' },
       { k: 'contrasena_email', n: 'Contraseña email', tipo: 'secreto' },
