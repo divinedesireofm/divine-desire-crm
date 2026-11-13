@@ -18,7 +18,7 @@ const nTipo = (id) => TIPOS.find((t) => t.id === id)?.n || id || ''
 
 const FUENTES = [{ id: 'inspiracion', n: '✨ Inspiración' }, { id: 'original', n: '💡 Idea original' }]
 const esOriginal = (r) => r?.fuente === 'original'
-const reelVacio = (i = 0) => ({ fuente: 'inspiracion', idea: '', origen: 'nuevo', tipo: i % 2 === 0 ? 'sugerente' : 'marca_personal', link: '', gancho: '', texto: '', edicion: '', tematica: '', prueba: false })
+const reelVacio = (i = 0) => ({ fuente: 'inspiracion', idea: '', origen: 'nuevo', tipo: i % 2 === 0 ? 'sugerente' : 'marca_personal', link: '', gancho: '', texto: '', edicion: '', tematica: '', prueba: false, aire_libre: false })
 const estructura = (dias, porDia) => Array.from({ length: dias }, () => ({ reels: Array.from({ length: porDia }, (_, i) => reelVacio(i)) }))
 const VACIA = { id: null, account_id: '', titulo: '', reglas: '', mostrar_resumen: true, estado: 'guardada', responsable_id: '', created_at: null, dias: estructura(7, 2) }
 
@@ -48,6 +48,7 @@ const ESTADOS = { borrador: ['Borrador', 'var(--gold)'], guardada: ['Guardada', 
 function bloqueReel(r) {
   const l = [`${nOrigen(r.origen).toUpperCase()} ${nTipo(r.tipo).toUpperCase()}${esOriginal(r) ? ' · IDEA ORIGINAL' : ''}`]
   if (r.prueba) l.push('🧪 REEL DE PRUEBA')
+  if (r.aire_libre) l.push('🌳 AL AIRE LIBRE')
   if (r.tematica?.trim()) l.push(`🎯 Temática: ${r.tematica.trim()}`)
   if (esOriginal(r)) { if (r.idea?.trim()) l.push(`💡 IDEA ORIGINAL: ${r.idea.trim()}`) }
   else if (r.link?.trim()) l.push(`🔗 ${r.link.trim()}`)
@@ -75,6 +76,8 @@ export function textoPlan(p, usuario) {
     if (gM) resumen.push(plural(gM, 'reel ganador marca personal adaptado', 'reels ganadores marca personal adaptados'))
     const pr = todos.filter((r) => r.prueba).length
     if (pr) resumen.push(plural(pr, 'reel de prueba', 'reels de prueba'))
+    const al = todos.filter((r) => r.aire_libre).length
+    if (al) resumen.push(plural(al, 'reel al aire libre', 'reels al aire libre'))
     if (resumen.length) partes.push('\n' + resumen.join('\n'))
   }
   if (p.reglas?.trim()) partes.push('\n' + p.reglas.trim())
@@ -145,7 +148,7 @@ export default function IGPlans() {
   const baseRef = useRef('')
   const ocupadoRef = useRef(false)
   const instantanea = (e) => JSON.stringify({ a: e.account_id, t: e.titulo, r: e.reglas, m: e.mostrar_resumen, p: e.responsable_id, pd: e.periodo_desde || '', ph: e.periodo_hasta || '', d: e.dias })
-  const tieneContenido = (e) => e.dias.some((d) => d.reels.some((r) => r.link || r.idea || r.gancho || r.texto || r.edicion || r.tematica || r.prueba || r.video || r.imagenes?.length))
+  const tieneContenido = (e) => e.dias.some((d) => d.reels.some((r) => r.link || r.idea || r.gancho || r.texto || r.edicion || r.tematica || r.prueba || r.aire_libre || r.video || r.imagenes?.length))
   // Una planificación nueva o que ya es borrador se autoguarda; las guardadas/enviadas no (no se les cambia el estado sin querer)
   const autoguardable = (e) => !!e && !!e.account_id && (e.id ? e.estado === 'borrador' : true)
 
@@ -247,7 +250,7 @@ export default function IGPlans() {
     const copia = {
       id: null, account_id: p.account_id, titulo: tituloHoy(), reglas: ultimasReglas(p.account_id) || p.reglas || '', mostrar_resumen: p.mostrar_resumen, estado: 'guardada', responsable_id: profile?.id || '', created_at: null,
       ...(p.periodo_hasta ? { periodo_desde: sumaDias(p.periodo_hasta, 1), periodo_hasta: sumaDias(p.periodo_hasta, 7) } : {}),
-      dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ fuente: r.fuente || 'inspiracion', idea: '', origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '', edicion: '', tematica: '', prueba: false })) })),
+      dias: (p.dias || []).map((d) => ({ reels: (d.reels || []).map((r) => ({ fuente: r.fuente || 'inspiracion', idea: '', origen: r.origen, tipo: r.tipo, link: '', gancho: '', texto: '', edicion: '', tematica: '', prueba: false, aire_libre: false })) })),
     }
     baseRef.current = instantanea(copia)
     setEd(copia)
@@ -481,6 +484,10 @@ export default function IGPlans() {
                       <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
                         <input type="checkbox" checked={!!r.prueba} onChange={(e) => setReel(di, ri, 'prueba', e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} />
                         🧪 Reel de prueba <span className="text-xs" style={{ color: 'var(--text-muted)' }}>(opcional)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
+                        <input type="checkbox" checked={!!r.aire_libre} onChange={(e) => setReel(di, ri, 'aire_libre', e.target.checked)} style={{ width: 16, height: 16, accentColor: 'var(--accent)' }} data-aire-libre />
+                        🌳 Reel al aire libre <span className="text-xs" style={{ color: 'var(--text-muted)' }}>(opcional)</span>
                       </label>
                       <div className="space-y-2">
                         {esOriginal(r) ? (

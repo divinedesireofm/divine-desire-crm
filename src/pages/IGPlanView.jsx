@@ -65,7 +65,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                 <div key={ri} className="rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: `1px solid ${hechos[di + ':' + ri] ? 'var(--success, #30a46c)' : 'var(--border)'}` }}>
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
                     <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gold, var(--accent))' }}>
-                      {nOrigen(r.origen)} · {nTipo(r.tipo)}{r.fuente === 'original' ? ' · 💡 Idea original' : ''}{r.prueba ? ' · 🧪 Prueba' : ''}
+                      {nOrigen(r.origen)} · {nTipo(r.tipo)}{r.fuente === 'original' ? ' · 💡 Idea original' : ''}{r.prueba ? ' · 🧪 Prueba' : ''}{r.aire_libre ? ' · 🌳 Al aire libre' : ''}
                     </p>
                     {paraModelo ? (
                       <button type="button" onClick={() => marcar(di, ri)} data-hecho={di + ':' + ri} className="text-xs px-2.5 py-1 rounded-full"
