@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useOrdenPestanas } from '../lib/ordenPestanas'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 
 // ---------------------------------------------------------------------------
@@ -59,11 +60,14 @@ function Badge({ v }) {
   return <span className="px-2 py-0.5 rounded-full text-xs whitespace-nowrap" style={{ background: `${color}22`, color }}>{v}</span>
 }
 
+const TABS = [['registro', 'Registro de reels'], ['resumen', 'Resumen y Top 10'], ['auto', 'Automático (scrapper)']]
+
 export default function WhatWorks() {
   const { hasAnyRole } = useAuth()
   const puedeEditar = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
   const puedeAjustar = hasAnyRole(['admin', 'ig_manager'])
   const [tab, setTab] = useState('registro')
+  const ordenTabs = useOrdenPestanas('whatworks', TABS)
   const [cuentas, setCuentas] = useState([])
   const [reels, setReels] = useState([])
   const [cfg, setCfg] = useState(CFG_DEFECTO)
@@ -191,7 +195,6 @@ export default function WhatWorks() {
   }
   const top10 = useMemo(() => filas.filter((r) => GANADORES.includes(r.veredicto)).sort((a, b) => b.por1000 - a.por1000).slice(0, 10), [filas])
 
-  const TABS = [['registro', 'Registro de reels'], ['resumen', 'Resumen y Top 10'], ['auto', 'Automático (scrapper)']]
 
   return (
     <div>
@@ -202,9 +205,10 @@ export default function WhatWorks() {
       />
 
       <div className="flex rounded-md overflow-hidden mb-6 w-fit max-w-full overflow-x-auto" style={{ border: '1px solid var(--border)' }}>
-        {TABS.map(([k, t]) => (
-          <button key={k} onClick={() => setTab(k)} className="px-4 py-2 text-sm whitespace-nowrap" style={{ background: tab === k ? 'var(--accent-soft)' : 'transparent', color: tab === k ? 'var(--accent)' : 'var(--text-muted)' }}>{t}</button>
+        {ordenTabs.items.map(([k, t]) => (
+          <button key={k} onClick={() => setTab(k)} {...ordenTabs.dragProps(k)} className="px-4 py-2 text-sm whitespace-nowrap" style={{ background: tab === k ? 'var(--accent-soft)' : 'transparent', color: tab === k ? 'var(--accent)' : 'var(--text-muted)', ...ordenTabs.estilo(k) }}>{t}</button>
         ))}
+        {ordenTabs.personalizado && <button type="button" onClick={ordenTabs.restablecer} className="px-3 text-xs hover:underline whitespace-nowrap" style={{ color: 'var(--text-muted)' }} title="Volver al orden original de las pestañas">↺ Orden original</button>}
       </div>
 
       {tab === 'auto' && <Automatico />}

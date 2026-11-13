@@ -10,6 +10,7 @@ import Desplegable from '../components/Desplegable'
 import ZeroAccounts from './ZeroAccounts'
 import IGProfileMetrics from './IGProfileMetrics'
 import TablaRegistros, { Etiqueta } from '../components/TablaRegistros'
+import { useOrdenPestanas } from '../lib/ordenPestanas'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES, ESTADOS_CUENTA, ESTADOS_GENERAL, estadoDeCuenta, normalizaEstado } from '../lib/cuentasIGSecciones'
 import QrCelda from '../components/QrCelda'
@@ -73,6 +74,7 @@ export default function InstagramAccounts() {
   // Qué apartados ve cada rol: se ajusta desde Equipo → Permisos (por defecto, admin y Manager de Instagram)
   const seccionesVisibles = ORDEN_SECCIONES.filter((id) => puedeVer(permisoSeccionIG(id), ['admin', 'ig_manager']))
   const tabParam = params.get('tab')
+  const ordenTabs = useOrdenPestanas('instagram', [['cuentas', 'General'], ...seccionesVisibles.map((id) => [id, SECCIONES[id].pestana]), ['metricas', 'Métricas de perfil'], ['cero', 'Cuentas de cero']])
   const tab = tabParam === 'cero' ? 'cero' : tabParam === 'metricas' ? 'metricas' : (seccionesVisibles.includes(tabParam)) ? tabParam : 'cuentas'
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
@@ -442,20 +444,23 @@ export default function InstagramAccounts() {
 
   const pestanas = (
     <div className="flex flex-wrap gap-2 mb-5">
-      {[['cuentas', 'General'], ...(seccionesVisibles.length ? seccionesVisibles.map((id) => [id, SECCIONES[id].pestana]) : []), ['metricas', 'Métricas de perfil'], ['cero', 'Cuentas de cero']].map(([id, label]) => (
+      {ordenTabs.items.map(([id, label]) => (
         <button
           key={id}
+          {...ordenTabs.dragProps(id)}
           onClick={() => setParams(id === 'cuentas' ? {} : { tab: id })}
           className="px-3 py-1.5 rounded-full text-sm"
           style={{
             background: tab === id ? 'var(--accent-soft)' : 'var(--panel-alt)',
             border: `1px solid ${tab === id ? 'var(--accent)' : 'var(--border)'}`,
             color: tab === id ? 'var(--accent)' : 'var(--text)',
+            ...ordenTabs.estilo(id),
           }}
         >
           {label}
         </button>
       ))}
+      {ordenTabs.personalizado && <button type="button" onClick={ordenTabs.restablecer} className="text-xs hover:underline self-center" style={{ color: 'var(--text-muted)' }} title="Volver al orden original de las pestañas">↺ Orden original</button>}
       <div className="ml-auto flex flex-wrap items-start gap-2">
         <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={seccionesVisibles} origenDe={origenDe} personas={creadores} />
         {puedeVer(PERMISO_IG_HISTORIAL, ['admin', 'ig_manager']) && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}

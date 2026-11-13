@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useOrdenPestanas } from '../lib/ordenPestanas'
 import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
@@ -151,6 +152,7 @@ export default function Recaptures() {
   const [importados, setImportados] = useState([])
   const [incluirImp, setIncluirImp] = useState(true)
   const [pestana, setPestana] = useState('asignados')
+  const ordenTabs = useOrdenPestanas('recaptaciones', [['asignados', 'Fans asignados'], ['reparto', 'Repartir fans'], ['ranking', 'Ranking de fans'], ['desaparecidos', 'Fans desaparecidos']])
   const [desaps, setDesaps] = useState([])
   const [fModDesap, setFModDesap] = useState('todos')
 
@@ -449,12 +451,13 @@ export default function Recaptures() {
 
       {esMgr && (
         <div className="flex gap-2 mb-5">
-          {[['asignados', 'Fans asignados'], ['reparto', 'Repartir fans'], ['ranking', 'Ranking de fans'], ['desaparecidos', 'Fans desaparecidos']].map(([id, n]) => (
-            <button key={id} type="button" onClick={() => setPestana(id)} className="px-4 py-2 rounded-md text-sm"
-              style={{ background: pestana === id ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${pestana === id ? 'var(--accent)' : 'var(--border)'}`, color: pestana === id ? 'var(--accent)' : 'var(--text)' }}>
+          {ordenTabs.items.map(([id, n]) => (
+            <button key={id} type="button" onClick={() => setPestana(id)} {...ordenTabs.dragProps(id)} className="px-4 py-2 rounded-md text-sm"
+              style={{ background: pestana === id ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${pestana === id ? 'var(--accent)' : 'var(--border)'}`, color: pestana === id ? 'var(--accent)' : 'var(--text)', ...ordenTabs.estilo(id) }}>
               {n}
             </button>
           ))}
+          {ordenTabs.personalizado && <button type="button" onClick={ordenTabs.restablecer} className="text-xs hover:underline self-center" style={{ color: 'var(--text-muted)' }} title="Volver al orden original de las pestañas">↺ Orden original</button>}
         </div>
       )}
 
