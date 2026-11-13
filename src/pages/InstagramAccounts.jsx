@@ -13,7 +13,7 @@ import TablaRegistros from '../components/TablaRegistros'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES } from '../lib/cuentasIGSecciones'
 import QrCelda from '../components/QrCelda'
-import { PERMISO_IG_2FA } from '../lib/navigation'
+import { PERMISO_IG_2FA, PERMISO_IG_HISTORIAL } from '../lib/navigation'
 import { urlInstagram, usuarioIG } from '../lib/instagramLink'
 import HistorialIG from '../components/HistorialIG'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
@@ -398,7 +398,7 @@ export default function InstagramAccounts() {
           {label}
         </button>
       ))}
-      {verSecciones && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
+      {puedeVer(PERMISO_IG_HISTORIAL, ['admin', 'ig_manager']) && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
     </div>
   )
 

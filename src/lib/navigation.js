@@ -101,11 +101,13 @@ export const SECTIONS = [
 // Permisos adicionales (no son apartados del menú): se guardan en la misma tabla de permisos con la clave `ruta`.
 export const PERMISO_IG_CONTRASENAS = 'permiso:ig_contrasenas'
 export const PERMISO_IG_2FA = 'permiso:ig_2fa'
+export const PERMISO_IG_HISTORIAL = 'permiso:ig_historial'
 export const PERMISOS_EXTRA = [
   {
     id: 'extra', label: 'Permisos adicionales',
     items: [{ to: PERMISO_IG_CONTRASENAS, label: 'Ver contraseñas en Cuentas de Instagram', roles: ['admin', 'ig_manager'] },
       { to: PERMISO_IG_2FA, label: 'Ver 2FA (código y QR) en Cuentas de Instagram', roles: ['admin', 'ig_manager', 'ig_assistant'] },
+      { to: PERMISO_IG_HISTORIAL, label: 'Ver el historial y restaurar cambios en Cuentas de Instagram', roles: ['admin', 'ig_manager', 'ig_assistant'] },
     ],
   },
 ]
