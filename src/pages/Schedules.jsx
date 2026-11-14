@@ -342,6 +342,7 @@ function SelectorModelos({ modelos, value, onChange }) {
 function Grupos({ esMgr }) {
   const [rows, setRows] = useState([])
   const [edit, setEdit] = useState(null)
+  const [errNombre, setErrNombre] = useState(false)
   const [modelos, setModelos] = useState([])
 
   async function load() {
@@ -363,7 +364,7 @@ function Grupos({ esMgr }) {
   return (
     <div>
       {esMgr && (
-        <Button className="mb-4" onClick={() => setEdit({ nombre: '', modelos: '' })}>+ Nuevo grupo</Button>
+        <Button className="mb-4" onClick={() => { setErrNombre(false); setEdit({ nombre: '', modelos: '' }) }}>+ Nuevo grupo</Button>
       )}
       {rows.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin grupos todavía</p>
@@ -394,13 +395,14 @@ function Grupos({ esMgr }) {
         <Panel className="p-5 mt-4">
           <p className="text-sm font-medium mb-3">{edit.id ? 'Editar grupo' : 'Nuevo grupo'}</p>
           <div className="mb-3">
-            <Input placeholder="Nombre del grupo" value={edit.nombre} onChange={(e) => setEdit({ ...edit, nombre: e.target.value })} />
+            <Input placeholder="Nombre del grupo" value={edit.nombre} onChange={(e) => { setErrNombre(false); setEdit({ ...edit, nombre: e.target.value }) }} style={errNombre ? { borderColor: 'var(--danger)' } : undefined} />
+            {errNombre && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>Falta poner el nombre del grupo.</p>}
           </div>
           <SelectorModelos modelos={modelos} value={edit.modelos} onChange={(v) => setEdit({ ...edit, modelos: v })} />
           <div className="flex gap-2">
             <Button
               onClick={async () => {
-                if (!edit.nombre.trim()) return
+                if (!edit.nombre.trim()) { setErrNombre(true); return }
                 const payload = { nombre: edit.nombre.trim(), modelos: edit.modelos }
                 if (edit.id) await supabase.from('shift_groups').update(payload).eq('id', edit.id)
                 else await supabase.from('shift_groups').insert([{ ...payload, esquema: 'General', activo: true }])
@@ -409,7 +411,7 @@ function Grupos({ esMgr }) {
             >
               Guardar
             </Button>
-            <Button variant="ghost" onClick={() => setEdit(null)}>Cancelar</Button>
+            <Button variant="ghost" onClick={() => { setEdit(null); setErrNombre(false) }}>Cancelar</Button>
           </div>
         </Panel>
       )}
