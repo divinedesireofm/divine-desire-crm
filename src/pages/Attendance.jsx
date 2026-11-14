@@ -71,7 +71,7 @@ export default function Attendance() {
     const { error } = await supabase.from('attendance_events').insert([{ chatter_id: profile.id, tipo }])
     if (error) setError('No se pudo registrar.')
     else {
-      window.dispatchEvent(new Event('attendance-changed'))
+      window.dispatchEvent(new CustomEvent('attendance-changed', { detail: { tipo } }))
       if (tipo === 'salida') setMostrarRecordatorioReporte(true)
     }
     await load()

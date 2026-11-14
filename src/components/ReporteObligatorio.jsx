@@ -17,6 +17,7 @@ export function BloqueoReporte({ marcarEnviado }) {
       <p className="text-4xl mb-3">📝</p>
       <p className="font-display text-xl font-semibold mb-2">Falta tu reporte de turno</p>
       <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>Has finalizado tu turno. Hasta que no envíes el reporte no puedes usar ni cerrar el CRM.</p>
+      <p className="text-sm mb-5 font-medium" style={{ color: 'var(--danger)' }}>No enviar el reporte conlleva penalización.</p>
       <Link to="/reportes-turno" className="inline-block px-5 py-2.5 rounded-md font-medium text-sm" style={{ background: 'var(--accent)', color: '#000' }}>Hacer el reporte ahora</Link>
       <div className="mt-5">
         <button onClick={ya} disabled={busy} className="text-xs underline" style={{ color: 'var(--text-muted)' }}>{busy ? 'Guardando…' : 'Ya lo envié (marcar como enviado)'}</button>
@@ -35,7 +36,7 @@ export function BannerReporte({ marcarEnviado }) {
   }
   return (
     <div className="rounded-md px-4 py-3 mb-4 flex items-center gap-3 flex-wrap text-sm" style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>
-      <span className="flex-1">📝 Envía el reporte de tu turno para poder cerrar el CRM.</span>
+      <span className="flex-1">📝 Envía el reporte de tu turno para poder cerrar el CRM. No hacerlo conlleva penalización.</span>
       <button onClick={ya} disabled={busy} className="text-xs underline" style={{ color: 'var(--text-muted)' }}>Ya lo envié (marcar como enviado)</button>
     </div>
   )

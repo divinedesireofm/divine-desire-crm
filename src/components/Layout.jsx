@@ -7,7 +7,8 @@ import AnnouncementGate from './AnnouncementGate'
 import MasivoGate from './MasivoGate'
 import PildoraGate from './PildoraGate'
 import ShiftTimer from './ShiftTimer'
-import { useReportePendiente } from '../lib/reportePendiente'
+import { useReportePendiente, useEnTurno } from '../lib/reportePendiente'
+import AvisoSalidaModal from './AvisoSalidaModal'
 import { BloqueoReporte, BannerReporte } from './ReporteObligatorio'
 import NotificationBell from './NotificationBell'
 import NotificationPopup from './NotificationPopup'
@@ -70,15 +71,16 @@ export default function Layout() {
   const navRef = useRef(null)
   const location = useLocation()
   const { pendiente: reportePend, marcarEnviado } = useReportePendiente()
+  const enTurno = useEnTurno()
   const enReportes = location.pathname.startsWith('/reportes-turno')
 
-  // Mientras el reporte esté pendiente, el navegador pide confirmación antes de cerrar o recargar la pestaña
+  // Mientras esté en turno (sin marcar la salida) o con el reporte pendiente, el navegador pide confirmación antes de cerrar o recargar la pestaña
   useEffect(() => {
-    if (!reportePend) return undefined
+    if (!reportePend && !enTurno) return undefined
     const aviso = (e) => { e.preventDefault(); e.returnValue = '' }
     window.addEventListener('beforeunload', aviso)
     return () => window.removeEventListener('beforeunload', aviso)
-  }, [reportePend])
+  }, [reportePend, enTurno])
 
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0)
@@ -332,6 +334,7 @@ export default function Layout() {
       </main>
       </div>
       <NotificationPopup />
+      <AvisoSalidaModal />
       <MasivoGate />
     </div>
     </NotificationsProvider>

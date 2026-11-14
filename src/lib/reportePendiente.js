@@ -2,6 +2,30 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 import { useAuth } from '../context/AuthContext'
 
+// Está «en turno» cuando su último movimiento de asistencia NO es una salida (entrada, break o fin de break).
+// Solo aplica a quien ficha: chatters y managers.
+export function useEnTurno() {
+  const { profile, hasAnyRole } = useAuth()
+  const aplica = !!profile && hasAnyRole(['chatter', 'manager'])
+  const [enTurno, setEnTurno] = useState(false)
+
+  const comprobar = useCallback(async () => {
+    if (!aplica) { setEnTurno(false); return }
+    const { data: ev, error } = await supabase.from('attendance_events').select('tipo, created_at').eq('chatter_id', profile.id).order('created_at', { ascending: false }).limit(1)
+    if (error) return
+    setEnTurno(!!ev?.length && ev[0].tipo !== 'salida')
+  }, [aplica, profile])
+
+  useEffect(() => {
+    comprobar()
+    const poll = setInterval(comprobar, 15000)
+    window.addEventListener('attendance-changed', comprobar)
+    return () => { clearInterval(poll); window.removeEventListener('attendance-changed', comprobar) }
+  }, [comprobar])
+
+  return enTurno
+}
+
 // Un chatter tiene el reporte pendiente cuando su último movimiento de asistencia es «salida»
 // y desde que entró no ha enviado ningún reporte de turno ni ha marcado «ya lo envié».
 export function useReportePendiente() {
