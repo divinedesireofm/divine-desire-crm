@@ -27,6 +27,17 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
     }).catch(() => {})
     return () => { vivo = false }
   }, [plan.id, paraModelo])
+  // El equipo ve los checks casi en directo: se refrescan solos mientras la planificación está abierta
+  useEffect(() => {
+    if (paraModelo) return undefined
+    const t = setInterval(() => {
+      Promise.resolve(supabase.from('plan_reels_hechos').select('plan_id, dia, reel, hecho_at').eq('plan_id', plan.id)).then(({ data }) => {
+        if (!data) return
+        const m = {}; data.forEach((h) => { m[h.dia + ':' + h.reel] = h.hecho_at }); setHechos(m)
+      }).catch(() => {})
+    }, 20000)
+    return () => clearInterval(t)
+  }, [plan.id, paraModelo])
   async function marcar(di, ri) {
     const k = di + ':' + ri; const ya = !!hechos[k]
     setErrHecho('')
@@ -65,7 +76,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                 <div key={ri} className="rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: `1px solid ${hechos[di + ':' + ri] ? 'var(--success, #30a46c)' : 'var(--border)'}` }}>
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
                     <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gold, var(--accent))' }}>
-                      {nOrigen(r.origen)} · {nTipo(r.tipo)}{r.fuente === 'original' ? ' · 💡 Idea original' : ''}{r.prueba ? ' · 🧪 Prueba' : ''}{r.aire_libre ? ' · 🌳 Al aire libre' : ''}
+                      {hechos[di + ':' + ri] ? '✅ ' : ''}{nOrigen(r.origen)} · {nTipo(r.tipo)}{r.fuente === 'original' ? ' · 💡 Idea original' : ''}{r.prueba ? ' · 🧪 Prueba' : ''}{r.aire_libre ? ' · 🌳 Al aire libre' : ''}
                     </p>
                     {paraModelo ? (
                       <button type="button" onClick={() => marcar(di, ri)} data-hecho={di + ':' + ri} className="text-xs px-2.5 py-1 rounded-full"

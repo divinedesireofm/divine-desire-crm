@@ -108,6 +108,14 @@ export default function IGPlans() {
   const alternar = (id) => setAbiertos((s0) => { const n = new Set(s0); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const linkDe = (id) => `${window.location.origin}/planificaciones?ver=${id}`
 
+  // Reels que la modelo ha marcado como hechos, por planificación (se actualiza solo cada 30 s)
+  const [hechosPlan, setHechosPlan] = useState({})
+  async function cargarHechos() {
+    const { data } = await supabase.from('plan_reels_hechos').select('plan_id').limit(10000)
+    const m = {}; (data || []).forEach((h) => { m[h.plan_id] = (m[h.plan_id] || 0) + 1 }); setHechosPlan(m)
+  }
+  useEffect(() => { const t = setInterval(cargarHechos, 30000); return () => clearInterval(t) }, [])
+
   async function cargar(silencioso = false) {
     if (!silencioso) setLoading(true)
     const [{ data: c }, { data: p }, eq] = await Promise.all([
@@ -119,6 +127,7 @@ export default function IGPlans() {
     supabase.from('profiles').select('id, full_name').then(({ data: ps }) => setTodosNombres(Object.fromEntries((ps || []).map((x) => [x.id, x.full_name]))))
     setCuentas(c || [])
     setPlanes(p || [])
+    cargarHechos()
     setLoading(false)
   }
   useEffect(() => { cargar() }, [])
@@ -604,6 +613,11 @@ export default function IGPlans() {
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span style={{ color: est[1] }}>{est[0]}</span>
                         {p.estado !== 'borrador' && p.enviado_at && <span className="text-xs block" style={{ color: 'var(--success)' }}>✓ Enviada · {fmtExacta(p.enviado_at)}</span>}
+                        {p.estado !== 'borrador' && p.enviado_at && totalReels(p) > 0 && (
+                          <span className="text-xs block" data-hechos-plan={p.id} style={{ color: (hechosPlan[p.id] || 0) >= totalReels(p) ? 'var(--success)' : 'var(--text-muted)' }}>
+                            {(hechosPlan[p.id] || 0) >= totalReels(p) ? '✅' : '☑'} Reels hechos por la modelo: {hechosPlan[p.id] || 0}/{totalReels(p)}
+                          </span>
+                        )}
                         {p.hecha_at && <span className="text-xs block" style={{ color: 'var(--success)' }}>✓ Hecha · {fmtExacta(p.hecha_at)} · videos borrados</span>}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}{videosDe(p.dias).length > 0 && <span> · 🎞 {plural(videosDe(p.dias).length, 'video', 'videos')}</span>}</td>
