@@ -111,11 +111,14 @@ export default function Requests() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [fCat, setFCat] = useState('todas')
-  const [fEstado, setFEstado] = useState('pendiente')
+  const [fEstado, setFEstado] = useState('todas')
   const [rev, setRev] = useState(null)
-  const [openModel, setOpenModel] = useState({})
   const [openReq, setOpenReq] = useState({})
   const [editId, setEditId] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [fModelo, setFModelo] = useState('todas')
+  const [q, setQ] = useState('')
+  const [vista, setVista] = useState('tarjetas')
 
   const esInterno = T_OBJ(form.tipo).cat === 'interno'
 
@@ -153,6 +156,7 @@ export default function Requests() {
     setBusy(false)
     if (err) { setError(editId ? 'No se pudieron guardar los cambios.' : 'No se pudo crear la solicitud.'); return }
     setEditId(null)
+    setShowForm(false)
     setForm((f) => ({ ...EMPTY_FORM, tipo: f.tipo, modelo: f.modelo, idioma: f.idioma, uso: f.uso }))
     load()
   }
@@ -167,10 +171,12 @@ export default function Requests() {
       imagenesTxt: (Array.isArray(r.imagenes) ? r.imagenes : []).join('\n'),
     })
     setRev(null)
+    setShowForm(true)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   function cancelarEdicion() {
     setEditId(null)
+    setShowForm(false)
     setError('')
     setForm((f) => ({ ...EMPTY_FORM, modelo: f.modelo }))
   }
@@ -191,22 +197,122 @@ export default function Requests() {
     const est = E_OBJ(r.estado).id
     const okEstado = fEstado === 'todas' ? true : est === fEstado
     const okCat = fCat === 'todas' ? true : T_OBJ(r.tipo).cat === fCat
-    return okEstado && okCat
-  }), [rows, fEstado, fCat])
+    const okModelo = fModelo === 'todas' ? true : r.modelo === fModelo
+    const t = q.trim().toLowerCase()
+    const okQ = !t || [r.fan, r.user_of, r.descripcion, r.modelo].some((x) => String(x || '').toLowerCase().includes(t))
+    return okEstado && okCat && okModelo && okQ
+  }), [rows, fEstado, fCat, fModelo, q])
+
+  const conteo = useMemo(() => {
+    const c = { pendiente: 0, entregada: 0, cancelada: 0, vencidas: 0 }
+    rows.forEach((r) => {
+      const e = E_OBJ(r.estado).id
+      c[e] = (c[e] || 0) + 1
+      if (e === 'pendiente' && r.fecha_entrega && String(r.fecha_entrega).slice(0, 10) < hoyISO()) c.vencidas++
+    })
+    return c
+  }, [rows])
 
   const grupos = useMemo(() => {
     const g = {}
-    rows.forEach((r) => { const k = r.modelo || '(sin modelo)'; (g[k] = g[k] || []).push(r) })
+    vis.forEach((r) => { const k = r.modelo || '(sin modelo)'; (g[k] = g[k] || []).push(r) })
     return Object.keys(g).sort((a, b) => g[b].length - g[a].length || a.localeCompare(b)).map((k) => ({ modelo: k, items: g[k] }))
-  }, [rows])
+  }, [vis])
+
+  const tarjeta = (r) => {
+    const tm = T_OBJ(r.tipo)
+    const interno = tm.cat === 'interno'
+    const uo = U_OBJ(r.uso)
+    const eo = E_OBJ(r.estado)
+    const abierto = !!openReq[r.id]
+    const imgs = Array.isArray(r.imagenes) ? r.imagenes : []
+    const vencida = r.estado === 'pendiente' && r.fecha_entrega && String(r.fecha_entrega).slice(0, 10) < hoyISO()
+    return (
+      <div key={r.id} className="rounded-lg p-4 flex flex-col" style={{ background: 'var(--panel)', border: `1px solid ${vencida ? 'var(--danger)' : 'var(--border)'}`, borderLeft: `4px solid ${eo.color}` }}>
+        <div className="flex items-center gap-2 mb-3">
+          <ModelAvatar name={r.modelo || '?'} size={28} />
+          <strong className="text-sm">{r.modelo || '(sin modelo)'}</strong>
+          <span className="ml-auto text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{tm.n}</span>
+        </div>
+        <div className="flex items-baseline justify-between gap-2 mb-2">
+          <p className="text-sm font-medium">{interno ? `Uso: ${uo?.n || '—'}` : (r.fan || 'Fan sin nombre')}{!interno && r.user_of && r.user_of.length > 1 ? <span className="font-normal" style={{ color: 'var(--text-muted)' }}> {r.user_of}</span> : null}</p>
+          {!interno && r.precio ? <span className="text-base font-semibold" style={{ color: 'var(--success)' }}>{r.precio}</span> : null}
+        </div>
+        <p className="text-sm whitespace-pre-wrap mb-3" style={{ color: 'var(--text-muted)', display: abierto ? 'block' : '-webkit-box', WebkitLineClamp: abierto ? 'unset' : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.descripcion}</p>
+        {abierto && (
+          <div className="text-xs space-y-1 mb-3" style={{ color: 'var(--text-muted)' }}>
+            {r.duracion && <div>⏱️ Duración: {r.duracion}</div>}
+            {!interno && r.idioma && <div>🗣️ Idioma: {r.idioma}</div>}
+            {r.updated_at && r.updated_at !== r.created_at && <div>✏️ Modificada: {fmtTS(r.updated_at)}</div>}
+            {imgs.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="block truncate hover:underline" style={{ color: 'var(--accent)' }}>🖼️ {u}</a>)}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+          <span style={{ color: vencida ? 'var(--danger)' : undefined }}>📅 {r.fecha_entrega ? fmtFechaISO(r.fecha_entrega) + (vencida ? ' · vencida' : '') : 'Sin fecha de entrega'}</span>
+          <span>👤 {r.profiles?.full_name || '—'} · {fmtTS(r.created_at)}</span>
+        </div>
+        <div className="mt-auto pt-3 flex flex-wrap items-center gap-3" style={{ borderTop: '1px solid var(--border)' }}>
+          <select value={eo.id} onChange={(e) => cambiarEstado(r, e.target.value)} className="text-xs px-2 py-1 rounded-md"
+            style={{ background: `${eo.color}22`, border: `1px solid ${eo.color}`, color: eo.color }}>
+            {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.n}</option>)}
+          </select>
+          <button onClick={() => setRev(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Texto WhatsApp</button>
+          <button onClick={() => editar(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar</button>
+          <button onClick={() => setOpenReq((o) => ({ ...o, [r.id]: !o[r.id] }))} className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}>{abierto ? 'Ver menos' : 'Ver más'}</button>
+          {esAdmin && <button onClick={() => borrar(r)} className="ml-auto text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>}
+        </div>
+      </div>
+    )
+  }
+
+  const chip = (on, color) => ({ background: on ? `${color}22` : 'var(--panel-alt)', border: `1px solid ${on ? color : 'var(--border)'}`, color: on ? color : 'var(--text)' })
 
   return (
     <div>
       <PageHeader
-        title="Solicitudes"
+        title="Solicitudes personalizadas"
         subtitle="Customs de fans y contenido pedido por el equipo. Al revisar, genera el texto listo para WhatsApp."
       />
 
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        {[
+          { id: 'pendiente', n: 'Pendientes', v: conteo.pendiente, c: 'var(--gold)' },
+          { id: 'entregada', n: 'Entregadas', v: conteo.entregada, c: 'var(--success)' },
+          { id: 'cancelada', n: 'Canceladas', v: conteo.cancelada, c: 'var(--danger)' },
+          { id: 'todas', n: 'Todas', v: rows.length, c: 'var(--accent)' },
+        ].map((k) => (
+          <button key={k.id} onClick={() => setFEstado(k.id)} className="rounded-lg p-4 text-left" style={{ ...chip(fEstado === k.id, k.c), background: fEstado === k.id ? `${k.c}22` : 'var(--panel)' }}>
+            <div className="text-2xl font-semibold" style={{ color: k.c }}>{k.v}</div>
+            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{k.n}</div>
+          </button>
+        ))}
+      </div>
+      {conteo.vencidas > 0 && <p className="text-sm mb-4" style={{ color: 'var(--danger)' }}>⚠️ {conteo.vencidas} solicitud{conteo.vencidas === 1 ? '' : 'es'} pendiente{conteo.vencidas === 1 ? '' : 's'} con la fecha de entrega vencida.</p>}
+
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <div className="flex-1 min-w-[200px]"><Input placeholder="Buscar por fan, usuario, modelo o descripción…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <div className="min-w-[160px]">
+          <Select value={fModelo} onChange={(e) => setFModelo(e.target.value)}>
+            <option value="todas">Todas las modelos</option>
+            {[...new Set(rows.map((r) => r.modelo).filter(Boolean))].sort().map((m) => <option key={m} value={m}>{m}</option>)}
+          </Select>
+        </div>
+        <div className="min-w-[170px]">
+          <Select value={fCat} onChange={(e) => setFCat(e.target.value)}>
+            <option value="todas">Todas las categorías</option>
+            <option value="custom">Customs de fans</option>
+            <option value="interno">Contenido del equipo</option>
+          </Select>
+        </div>
+        <div className="flex gap-1">
+          {[['tarjetas', 'Tarjetas'], ['modelo', 'Por modelo']].map(([id, n]) => (
+            <button key={id} onClick={() => setVista(id)} className="px-3 py-1.5 rounded-full text-xs" style={chip(vista === id, 'var(--accent)')}>{n}</button>
+          ))}
+        </div>
+        <Button onClick={() => { if (showForm && !editId) { setShowForm(false) } else { setEditId(null); setError(''); setForm((f) => ({ ...EMPTY_FORM, modelo: f.modelo })); setShowForm(true) } }}>{showForm && !editId ? 'Cerrar' : '+ Nueva solicitud'}</Button>
+      </div>
+
+      {showForm && (
       <Panel className="p-5 mb-6">
         <p className="text-sm font-medium mb-4">{editId ? 'Editando solicitud' : 'Nueva solicitud'}</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
@@ -314,167 +420,28 @@ export default function Requests() {
           {editId && <Button variant="ghost" onClick={cancelarEdicion}>Cancelar edición</Button>}
         </div>
       </Panel>
-
-      <Panel className="p-5 mb-6">
-        <p className="font-medium mb-3">📒 Registro por modelo <span className="text-xs font-normal" style={{ color: 'var(--text-muted)' }}>· {rows.length} solicitudes en total</span></p>
-        {grupos.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Aún no hay solicitudes registradas.</p>
-        ) : grupos.map((g) => (
-          <div key={g.modelo} className="mb-2">
-            <button
-              onClick={() => setOpenModel((o) => ({ ...o, [g.modelo]: !o[g.modelo] }))}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm"
-              style={{ background: 'var(--panel-alt)' }}
-            >
-              <strong>{g.modelo}</strong>
-              <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{g.items.length}</span>
-              <span className="ml-auto">{openModel[g.modelo] ? '▾' : '▸'}</span>
-            </button>
-            {openModel[g.modelo] && (
-              <div className="pl-3 mt-1 space-y-1">
-                {g.items.map((r) => {
-                  const tm = T_OBJ(r.tipo)
-                  const interno = tm.cat === 'interno'
-                  const uo = U_OBJ(r.uso)
-                  const eo = E_OBJ(r.estado)
-                  const abierto = !!openReq[r.id]
-                  const imgs = Array.isArray(r.imagenes) ? r.imagenes : []
-                  const vencida = r.estado === 'pendiente' && r.fecha_entrega && String(r.fecha_entrega).slice(0, 10) < hoyISO()
-                  const campo = (label, val) => val ? (
-                    <div><span className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</span><div>{val}</div></div>
-                  ) : null
-                  return (
-                    <div key={r.id} className="rounded-md" style={{ border: abierto ? '1px solid var(--border)' : '1px solid transparent' }}>
-                      <div onClick={() => setOpenReq((o) => ({ ...o, [r.id]: !o[r.id] }))} className="flex items-center gap-3 text-sm px-3 py-1.5 cursor-pointer hover:opacity-80">
-                        <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{tm.n}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: `${eo.color}22`, color: eo.color }}>{eo.n}</span>
-                        <span style={{ color: 'var(--text-muted)' }}>{interno ? (uo?.n || '—') : (r.fan || '—')}</span>
-                        <span className="flex-1 truncate" style={{ color: 'var(--text-muted)' }}>{r.descripcion}</span>
-                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtTS(r.created_at)}</span>
-                        <span className="text-xs">{abierto ? '▾' : '▸'}</span>
-                      </div>
-                      {abierto && (
-                        <div className="px-3 pb-3 pt-1">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 sm:grid-cols-3 gap-3 text-sm mb-3">
-                            {campo('Tipo', tm.n)}
-                            {campo('Estado', <span style={{ color: eo.color }}>{eo.n}</span>)}
-                            {campo('Modelo', r.modelo)}
-                            {interno ? campo('Uso', uo?.n) : (<>
-                              {campo('Fan', r.fan)}
-                              {campo('Usuario', r.user_of && r.user_of.length > 1 ? r.user_of : '')}
-                              {campo('Precio', r.precio)}
-                              {campo('Idioma', r.idioma)}
-                            </>)}
-                            {campo('Duración', r.duracion)}
-                            {campo('Entrega estimada', r.fecha_entrega ? <span style={{ color: vencida ? 'var(--danger)' : undefined }}>{fmtFechaISO(r.fecha_entrega)}{vencida ? ' · vencida' : ''}</span> : '')}
-                            {campo('Pedida por', r.profiles?.full_name)}
-                            {campo('Creada', fmtTS(r.created_at))}
-                            {r.updated_at && r.updated_at !== r.created_at ? campo('Última modificación', fmtTS(r.updated_at)) : null}
-                          </div>
-                          <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Descripción</div>
-                          <p className="text-sm whitespace-pre-wrap mb-3">{r.descripcion}</p>
-                          {imgs.length > 0 && (
-                            <div className="mb-3">
-                              <div className="text-xs" style={{ color: 'var(--text-muted)' }}>Referencias</div>
-                              {imgs.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="block text-xs truncate hover:underline" style={{ color: 'var(--accent)' }}>{u}</a>)}
-                            </div>
-                          )}
-                          <div className="flex flex-wrap items-center gap-3">
-                            <select
-                              value={eo.id}
-                              onChange={(e) => cambiarEstado(r, e.target.value)}
-                              className="text-xs px-2 py-1 rounded-md"
-                              style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: eo.color }}
-                            >
-                              {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.n}</option>)}
-                            </select>
-                            <button onClick={() => editar(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar</button>
-                            <button onClick={() => setRev(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Texto WhatsApp</button>
-                            {esAdmin && <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        ))}
-      </Panel>
-
-      <Panel>
-        <div className="p-4 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: '1px solid var(--border)' }}>
-          <p className="text-sm font-medium">Listado</p>
-          <div className="flex gap-2">
-            <Select value={fCat} onChange={(e) => setFCat(e.target.value)} className="max-w-[180px]">
-              <option value="todas">Todas las categorías</option>
-              <option value="custom">Customs de fans</option>
-              <option value="interno">Contenido del equipo</option>
-            </Select>
-            <Select value={fEstado} onChange={(e) => setFEstado(e.target.value)} className="max-w-[160px]">
-              <option value="todas">Todos los estados</option>
-              {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.n}</option>)}
-            </Select>
-          </div>
-        </div>
-        {vis.length === 0 ? (
-          <p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>No hay solicitudes en este filtro.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Tipo', 'Modelo', 'Fan / Uso', 'Precio', 'Duración', 'Entrega', 'Descripción', 'Pedida por', 'Estado', ''].map((c) => (
-                    <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{c}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {vis.map((r) => {
-                  const tm = T_OBJ(r.tipo)
-                  const interno = tm.cat === 'interno'
-                  const uo = U_OBJ(r.uso)
-                  return (
-                    <tr key={r.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td className="px-3 py-2"><span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{tm.n}</span></td>
-                      <td className="px-3 py-2"><strong>{r.modelo}</strong></td>
-                      <td className="px-3 py-2">{interno ? (uo?.n || '—') : (r.fan || '—')}</td>
-                      <td className="px-3 py-2">{interno ? '—' : (r.precio || '—')}</td>
-                      <td className="px-3 py-2">{r.duracion || '—'}</td>
-                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: r.estado === 'pendiente' && r.fecha_entrega && String(r.fecha_entrega).slice(0, 10) < hoyISO() ? 'var(--danger)' : undefined }}>{r.fecha_entrega ? fmtFechaISO(r.fecha_entrega) : '—'}</td>
-                      <td className="px-3 py-2" style={{ maxWidth: 260, whiteSpace: 'pre-wrap', color: 'var(--text-muted)' }}>{r.descripcion}</td>
-                      <td className="px-3 py-2">
-                        {r.profiles?.full_name}
-                        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{fmtTS(r.created_at)}</div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <select
-                          value={E_OBJ(r.estado).id}
-                          onChange={(e) => cambiarEstado(r, e.target.value)}
-                          className="text-xs px-2 py-1 rounded-md"
-                          style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: E_OBJ(r.estado).color }}
-                        >
-                          {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.n}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex gap-3 whitespace-nowrap">
-                          <button onClick={() => setRev(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Revisar</button>
-                          <button onClick={() => editar(r)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar</button>
-                          {esAdmin && <button onClick={() => borrar(r)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
+      )}
 
       {rev && <RevisarModal key={rev.id} r={rev} onClose={() => setRev(null)} />}
+
+      {vis.length === 0 ? (
+        <Panel className="p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+          {rows.length === 0 ? 'Aún no hay solicitudes registradas. Pulsa «+ Nueva solicitud» para crear la primera.' : 'No hay solicitudes con estos filtros.'}
+        </Panel>
+      ) : vista === 'tarjetas' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-4">{vis.map(tarjeta)}</div>
+      ) : (
+        grupos.map((g) => (
+          <div key={g.modelo} className="mb-6 mt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <ModelAvatar name={g.modelo} size={28} />
+              <strong>{g.modelo}</strong>
+              <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{g.items.length}</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{g.items.map(tarjeta)}</div>
+          </div>
+        ))
+      )}
     </div>
   )
 }

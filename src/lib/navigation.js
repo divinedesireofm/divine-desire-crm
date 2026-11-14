@@ -24,7 +24,7 @@ export const SECTIONS = [
     items: [
       { to: '/asistencia', label: 'Entradas y salidas', icon: 'clock', roles: ['admin', 'manager', 'chatter'] },
       { to: '/reportes-turno', label: 'Reportes de turno', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
-      { to: '/solicitudes', label: 'Solicitudes', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/solicitudes', label: 'Solicitudes personalizadas', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
       { to: '/recaptaciones', label: 'Recaptaciones', icon: 'target', roles: ['admin', 'manager', 'chatter'] },
       { to: '/contenido', label: 'Contenido pedido', icon: 'package', roles: ['admin', 'manager'] },
       { to: '/solicitudes-modelos', label: 'Solicitudes de modelos', icon: 'sparkle', roles: ['admin', 'manager'] },
