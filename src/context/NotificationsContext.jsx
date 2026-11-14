@@ -14,7 +14,7 @@ const Ctx = createContext(null)
 //  - los avisos de fechas importantes para TODO el mundo, también modelos (1 semana, 2 días, 1 día y el mismo día)
 // Cada aviso tiene una clave; al marcarlo como leído se guarda esa clave y desaparece para esa persona.
 export function NotificationsProvider({ children }) {
-  const { profile, hasAnyRole } = useAuth()
+  const { profile, roles, hasAnyRole } = useAuth()
   const activo = !!profile && hasAnyRole(['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant', 'modelo'])
   const gestiona = hasAnyRole(['admin', 'manager', 'ig_manager'])
   const esModelo = hasAnyRole(['modelo'])
@@ -41,6 +41,22 @@ export function NotificationsProvider({ children }) {
     return f
   }
 
+  // Personas que aún no han creado su contraseña. El admin las ve todas; cada manager, solo las de SU departamento
+  // (Manager de Chatting: chatters · Manager de Instagram: asistentes de IG).
+  function pendientesDeContrasena() {
+    const hace1d = new Date(Date.now() - 86400000).toISOString()
+    const base = () => supabase.from('profiles').select('id, full_name').eq('password_set', false).eq('active', true).lt('created_at', hace1d)
+    if (roles.includes('admin')) return base()
+    const dept = []
+    if (roles.includes('manager')) dept.push('manager', 'chatter')
+    if (roles.includes('ig_manager')) dept.push('ig_manager', 'ig_assistant')
+    if (!dept.length) return Promise.resolve({ data: [] })
+    return supabase.from('user_roles').select('user_id').in('role', dept).then(({ data }) => {
+      const ids = Array.from(new Set((data || []).map((r) => r.user_id)))
+      return ids.length ? base().in('id', ids) : { data: [] }
+    })
+  }
+
   const cargar = useCallback(async () => {
     if (!profile) return
     const hace14d = new Date(Date.now() - 14 * 86400000).toISOString()
@@ -53,7 +69,7 @@ export function NotificationsProvider({ children }) {
     if (gestiona) {
       consultas.push(
         supabase.from('content_assignments').select('id, titulo, models(stage_name)').lte('enviado_en', hace14dias).is('hecho_en', null).not('enviado_en', 'is', null),
-        supabase.from('profiles').select('id, full_name').eq('password_set', false).eq('active', true).lt('created_at', new Date(Date.now() - 86400000).toISOString()), // solo si lleva más de 1 día sin crearla
+        pendientesDeContrasena(), // solo si lleva más de 1 día sin crearla
       )
     }
     const [{ data: notifs }, { data: reads }, r3, r4] = await Promise.all(consultas)
@@ -99,7 +115,7 @@ export function NotificationsProvider({ children }) {
     setItems(lista)
     setLeidas(new Set((reads || []).map((r) => r.clave)))
     setCargado(true)
-  }, [profile, gestiona, esModelo])
+  }, [profile, roles, gestiona, esModelo]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!activo) return
