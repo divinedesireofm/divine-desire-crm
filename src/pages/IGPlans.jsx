@@ -540,7 +540,7 @@ export default function IGPlans() {
                 <Button variant="ghost" onClick={volver}>Cerrar</Button>
               </div>
               <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                Cuando ya se la hayas pasado a la modelo, pulsa «Por enviar» en la lista principal para marcarla como enviada (es solo una marca, no se envía nada). Los borradores quedan en la pestaña «Borradores» para revisarlos antes.
+                Cuando ya se la hayas pasado a la modelo, pulsa «Enviar» en la lista principal para marcarla como enviada (es solo una marca, no se envía nada). Los borradores quedan en la pestaña «Borradores» para revisarlos antes.
               </p>
             </Panel>
           </div>
@@ -613,7 +613,7 @@ export default function IGPlans() {
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(textoPlan(p, usuarioDe(p.account_id))).catch(() => {}); setMsg(''); alert('Texto copiado.') }}>Copiar texto</button>
                         {p.estado !== 'borrador' && (p.enviado_at
                           ? <button className="text-xs underline mr-3" onClick={() => marcarEnviada(p, false)}>Quitar marca de enviada</button>
-                          : <button className="text-xs underline mr-3" style={{ color: 'var(--success)' }} onClick={() => marcarEnviada(p, true)} title="Clic para marcarla como enviada">Por enviar</button>)}
+                          : <button className="text-xs underline mr-3" style={{ color: 'var(--success)' }} onClick={() => marcarEnviada(p, true)} title="Clic para marcarla como enviada">Enviar</button>)}
                         {p.estado !== 'borrador' && (p.hecha_at
                           ? <button className="text-xs underline mr-3" onClick={() => quitarHecha(p)}>Quitar marca de hecha</button>
                           : <button className="text-xs underline mr-3" style={{ color: 'var(--success)' }} onClick={() => marcarHecha(p)}>✔ Marcar como hecha (borra los videos)</button>)}
