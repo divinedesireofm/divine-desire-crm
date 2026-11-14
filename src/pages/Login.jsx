@@ -21,6 +21,7 @@ export default function Login() {
     localStorage.setItem('dd-remember', recordar ? 'true' : 'false')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) setError('Email o contraseña incorrectos.')
+    else supabase.rpc('marcar_primer_acceso').then(() => {}, () => {})   // deja de verse como «pendiente» en el CRM
     setLoading(false)
   }
 

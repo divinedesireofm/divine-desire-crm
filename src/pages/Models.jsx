@@ -39,6 +39,7 @@ export default function Models() {
   const [accErr, setAccErr] = useState('')
   const [accRes, setAccRes] = useState(null)
   const [activos, setActivos] = useState({})      // { user_id: active } para saber si el acceso está suspendido
+  const [yaEntro, setYaEntro] = useState({})      // { user_id: true } si ya ha entrado alguna vez (si no, aparece como pendiente)
   const [editAcc, setEditAcc] = useState(null)    // modelo cuyo acceso se está editando
   const [eaEmail, setEaEmail] = useState('')
   const [eaEmailOrig, setEaEmailOrig] = useState('')
@@ -115,8 +116,10 @@ export default function Models() {
       setPrivados(Object.fromEntries((pv || []).map((r) => [r.model_id, r])))
     }
     if (canEdit) {
-      const { data: pf } = await supabase.from('profiles').select('id, active')
+      let { data: pf, error: epf } = await supabase.from('profiles').select('id, active, primer_acceso')
+      if (epf) ({ data: pf } = await supabase.from('profiles').select('id, active'))   // sin la migración 129 todos cuentan como que ya han entrado
       setActivos(Object.fromEntries((pf || []).map((x) => [x.id, x.active !== false])))
+      setYaEntro(Object.fromEntries((pf || []).map((x) => [x.id, epf ? true : !!x.primer_acceso])))
     }
     if (canEdit) {
       const { data: mp } = await supabase.from('model_procesos').select('model_id, hecho_at')
@@ -426,7 +429,9 @@ export default function Models() {
                       ? <div className="flex items-center gap-2 whitespace-nowrap">
                           {activos[m.user_id] === false
                             ? <span className="text-xs" style={{ color: 'var(--danger)' }}>⛔ Suspendido</span>
-                            : <span className="text-xs" style={{ color: 'var(--success)' }}>✅ Con acceso</span>}
+                            : yaEntro[m.user_id] === false
+                              ? <span className="text-xs" data-pendiente style={{ color: '#F97316' }} title="Todavía no ha entrado por primera vez">🕒 Pendiente</span>
+                              : <span className="text-xs" style={{ color: 'var(--success)' }}>✅ Con acceso</span>}
                           <button onClick={() => abrirEditarAcceso(m)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar acceso</button>
                         </div>
                       : <button onClick={() => abrirAcceso(m)} className="text-xs px-3 py-1.5 rounded-md whitespace-nowrap" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--accent)' }}>🔑 Dar acceso</button>}
