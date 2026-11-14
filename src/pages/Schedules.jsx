@@ -360,72 +360,50 @@ function Grupos({ esMgr }) {
     load()
   }
 
-  const porEsq = useMemo(() => {
-    const g = {}
-    for (const r of rows) { const k = r.esquema || 'Otros'; (g[k] = g[k] || []).push(r) }
-    return g
-  }, [rows])
-
   return (
     <div>
-      <Panel className="p-4 mb-4">
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-          Los grupos son fijos pero el manager los ajusta si entran o salen modelos. Según cuántos chatters haya en un turno se usa el esquema correspondiente.
-        </p>
-      </Panel>
       {esMgr && (
-        <Button className="mb-4" onClick={() => setEdit({ nombre: '', nchatters: 3, modelos: '' })}>+ Nuevo grupo</Button>
+        <Button className="mb-4" onClick={() => setEdit({ nombre: '', modelos: '' })}>+ Nuevo grupo</Button>
       )}
-      {Object.keys(porEsq).length === 0 ? (
+      {rows.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Sin grupos todavía</p>
       ) : (
-        Object.keys(porEsq).sort((a, b) => {
-          const na = parseInt((a.match(/\d+/) || [999])[0])
-          const nb = parseInt((b.match(/\d+/) || [999])[0])
-          return na - nb
-        }).map((esq) => (
-          <div key={esq} className="mb-6">
-            <p className="text-sm font-medium mb-2">{esq} <span style={{ color: 'var(--text-muted)' }}>({porEsq[esq].length})</span></p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {porEsq[esq].map((g) => (
-                <Panel key={g.id} className="p-4">
-                  <p className="font-medium mb-1">{g.nombre}</p>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-3">
-                    {aLista(g.modelos).map((n) => (
-                      <span key={n} className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-                        <ModelAvatar name={modelos.find((m) => normN(m.stage_name) === normN(n))?.stage_name || n} size={22} />{n}
-                      </span>
-                    ))}
-                  </div>
-                  {esMgr && (
-                    <div className="flex gap-2">
-                      <button onClick={() => setEdit({ ...g, nchatters: parseInt((g.esquema.match(/\d+/) || [3])[0]) })} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar</button>
-                      <button onClick={() => borrar(g)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>
-                    </div>
-                  )}
-                </Panel>
-              ))}
-            </div>
-          </div>
-        ))
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+          {[...rows].sort((x, y) => x.nombre.localeCompare(y.nombre)).map((g) => (
+            <Panel key={g.id} className="p-4">
+              <p className="font-medium mb-1">{g.nombre}</p>
+              <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-3">
+                {aLista(g.modelos).map((n) => (
+                  <span key={n} className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+                    <ModelAvatar name={modelos.find((m) => normN(m.stage_name) === normN(n))?.stage_name || n} size={22} />{n}
+                  </span>
+                ))}
+              </div>
+              {esMgr && (
+                <div className="flex gap-2">
+                  <button onClick={() => setEdit({ ...g })} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar</button>
+                  <button onClick={() => borrar(g)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>
+                </div>
+              )}
+            </Panel>
+          ))}
+        </div>
       )}
 
       {edit && (
         <Panel className="p-5 mt-4">
           <p className="text-sm font-medium mb-3">{edit.id ? 'Editar grupo' : 'Nuevo grupo'}</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div className="mb-3">
             <Input placeholder="Nombre del grupo" value={edit.nombre} onChange={(e) => setEdit({ ...edit, nombre: e.target.value })} />
-            <Input type="number" min="2" max="20" placeholder="¿Para cuántos chatters?" value={edit.nchatters} onChange={(e) => setEdit({ ...edit, nchatters: e.target.value })} />
           </div>
           <SelectorModelos modelos={modelos} value={edit.modelos} onChange={(v) => setEdit({ ...edit, modelos: v })} />
           <div className="flex gap-2">
             <Button
               onClick={async () => {
                 if (!edit.nombre.trim()) return
-                const nNum = Math.max(2, parseInt(edit.nchatters) || 2)
-                const payload = { nombre: edit.nombre.trim(), esquema: `Para ${nNum} chatters`, modelos: edit.modelos }
+                const payload = { nombre: edit.nombre.trim(), modelos: edit.modelos }
                 if (edit.id) await supabase.from('shift_groups').update(payload).eq('id', edit.id)
-                else await supabase.from('shift_groups').insert([{ ...payload, activo: true }])
+                else await supabase.from('shift_groups').insert([{ ...payload, esquema: 'General', activo: true }])
                 setEdit(null); load()
               }}
             >
