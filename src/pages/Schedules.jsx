@@ -61,23 +61,27 @@ function HorarioSemana({ esMgr }) {
   const [chatters, setChatters] = useState([])
   const [grupos, setGrupos] = useState([])
   const [add, setAdd] = useState(null)
+  const [reps, setReps] = useState([])
 
   const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(lunes, i)), [lunes])
 
   async function load() {
     const desde = isoDate(dias[0]), hasta = isoDate(dias[6])
-    const [{ data: r }, u, { data: g }, ex] = await Promise.all([
+    try { await supabase.rpc('materializar_repeticiones', { p_desde: desde, p_hasta: hasta }) } catch (e) { /* migración 131 aún sin ejecutar */ }
+    const [{ data: r }, u, { data: g }, ex, { data: rp }] = await Promise.all([
       supabase.from('schedules').select('*, profiles(full_name)').gte('fecha', desde).lte('fecha', hasta),
       getProfilesByRoles(['manager', 'chatter']),
-      supabase.from('shift_groups').select('id, nombre').eq('activo', true).order('nombre'),
+      supabase.from('shift_groups').select('id, nombre, modelos').eq('activo', true).order('nombre'),
       getExtrabajadorIds(),
+      supabase.from('schedule_repeticiones').select('*').eq('activo', true).order('desde'),
     ])
-    setRows((r || []).filter((x) => !ex.has(x.chatter_id)).map((x) => (x.turno === 'madrugada' ? { ...x, turno: 'noche' } : x))); setChatters(u); setGrupos(g || [])
+    setRows((r || []).filter((x) => !ex.has(x.chatter_id)).map((x) => (x.turno === 'madrugada' ? { ...x, turno: 'noche' } : x))); setChatters(u); setGrupos(g || []); setReps(rp || [])
   }
   useEffect(() => { load() }, [lunes])
 
   async function borrar(h) {
-    await supabase.from('schedules').delete().eq('id', h.id)
+    if (h.repeticion_id) await supabase.rpc('excluir_dia_repeticion', { p_id: h.repeticion_id, p_fecha: h.fecha })
+    else await supabase.from('schedules').delete().eq('id', h.id)
     setRows((rs) => rs.filter((x) => x.id !== h.id))
   }
 
@@ -87,6 +91,27 @@ function HorarioSemana({ esMgr }) {
     return g
   }, [rows])
   const hoy = fechaHoyISO()
+
+  // Resumen por chatter de la semana mostrada: días, nº de días y modelos (según el grupo asignado)
+  const resumen = useMemo(() => {
+    const m = {}
+    for (const r of rows) {
+      const c = (m[r.chatter_id] = m[r.chatter_id] || { nombre: r.profiles?.full_name || '—', fechas: new Set(), grupos: new Set(), modelos: [] })
+      c.fechas.add(r.fecha)
+      const g = grupos.find((x) => x.id === r.grupo_id)
+      if (g) { c.grupos.add(g.nombre); for (const n of aLista(g.modelos)) if (!c.modelos.some((y) => normN(y) === normN(n))) c.modelos.push(n) }
+    }
+    return Object.values(m).sort((a, b) => a.nombre.localeCompare(b.nombre)).map((c) => ({
+      ...c,
+      dias: [...c.fechas].sort().map((f) => DIAS[(new Date(f + 'T12:00:00').getDay() + 6) % 7].slice(0, 3)),
+    }))
+  }, [rows, grupos])
+
+  async function detener(rp) {
+    if (!confirm('¿Detener esta repetición desde hoy? Se borran los turnos futuros que generó.')) return
+    await supabase.rpc('detener_repeticion', { p_id: rp.id, p_desde: hoy > rp.desde ? hoy : rp.desde })
+    load()
+  }
 
   return (
     <div>
@@ -145,6 +170,52 @@ function HorarioSemana({ esMgr }) {
         </div>
       </Panel>
 
+      <Panel className="p-5 mb-4">
+        <p className="text-sm font-medium mb-3">Resumen de la semana por chatter</p>
+        {resumen.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Nadie asignado esta semana.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-left" style={{ color: 'var(--text-muted)' }}>
+                  <th className="py-1 pr-3 font-normal">Chatter</th><th className="py-1 pr-3 font-normal">Días que trabaja</th>
+                  <th className="py-1 pr-3 font-normal">Nº de días</th><th className="py-1 font-normal">Modelos asignadas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resumen.map((c) => (
+                  <tr key={c.nombre} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td className="py-2 pr-3 font-medium">{c.nombre}</td>
+                    <td className="py-2 pr-3">{c.dias.join(', ')}</td>
+                    <td className="py-2 pr-3">{c.dias.length}</td>
+                    <td className="py-2" style={{ color: c.modelos.length ? 'var(--text)' : 'var(--text-muted)' }}>
+                      {c.modelos.length ? c.modelos.join(', ') : 'Sin grupo asignado'}
+                      {c.grupos.size > 0 && <span style={{ color: 'var(--text-muted)' }}> · {[...c.grupos].join(', ')}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+
+      {esMgr && reps.length > 0 && (
+        <Panel className="p-5 mb-4">
+          <p className="text-sm font-medium mb-3">Repeticiones activas</p>
+          {reps.map((rp) => (
+            <div key={rp.id} className="flex flex-wrap items-center justify-between gap-2 text-xs py-1.5" style={{ borderTop: '1px solid var(--border)' }}>
+              <span>
+                <strong>{chatters.find((c) => c.id === rp.chatter_id)?.full_name || 'Chatter'}</strong> · {TURNOS.find((t) => t.id === rp.turno)?.n} · {rp.dias.map((d) => DIAS[d].slice(0, 3)).join(', ')} ·{' '}
+                desde {fmtFecha(rp.desde)} {rp.hasta ? `hasta ${fmtFecha(rp.hasta)}` : '· indefinidamente'}
+              </span>
+              <button onClick={() => detener(rp)} className="hover:underline" style={{ color: 'var(--danger)' }}>Detener</button>
+            </div>
+          ))}
+        </Panel>
+      )}
+
       {add && (
         <Panel className="p-5 mb-6">
           <p className="text-sm font-medium mb-3">Asignar turno</p>
@@ -161,11 +232,49 @@ function HorarioSemana({ esMgr }) {
               {grupos.map((g) => <option key={g.id} value={g.id}>{g.nombre}</option>)}
             </Select>
           </div>
+          <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
+            <input type="checkbox" checked={!!add.repetir} onChange={(e) => setAdd({ ...add, repetir: e.target.checked, dias: add.dias || [(new Date(add.fecha + 'T12:00:00').getDay() + 6) % 7], fin: add.fin || 'fecha' })} />
+            Repetir este horario cada semana
+          </label>
+          {add.repetir && (
+            <div className="mb-3 p-3 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Días de la semana en los que se repite</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {DIAS.map((d, i) => {
+                  const on = (add.dias || []).includes(i)
+                  return (
+                    <button key={d} type="button" onClick={() => setAdd({ ...add, dias: on ? add.dias.filter((x) => x !== i) : [...add.dias, i] })}
+                      className="px-2.5 py-1 rounded-full text-xs"
+                      style={{ background: on ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}>
+                      {d.slice(0, 3)}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>¿Hasta cuándo?</p>
+              <div className="flex flex-wrap items-center gap-4 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={add.fin !== 'siempre'} onChange={() => setAdd({ ...add, fin: 'fecha' })} /> Hasta una fecha</label>
+                {add.fin !== 'siempre' && <Input type="date" value={add.hasta || ''} min={add.fecha} onChange={(e) => setAdd({ ...add, hasta: e.target.value })} />}
+                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={add.fin === 'siempre'} onChange={() => setAdd({ ...add, fin: 'siempre' })} /> Indefinidamente</label>
+              </div>
+            </div>
+          )}
           <div className="flex gap-2">
             <Button
               onClick={async () => {
                 if (!add.chatter_id) return
-                await supabase.from('schedules').insert([{ ...add, grupo_id: add.grupo_id || null, creado_por: profile.id }])
+                const { repetir, dias: dsel, fin, hasta, ...base } = add
+                if (repetir) {
+                  if (!dsel?.length) return alert('Elige al menos un día de la semana')
+                  if (fin !== 'siempre' && !hasta) return alert('Elige hasta qué fecha se repite, o marca «Indefinidamente»')
+                  const { error } = await supabase.from('schedule_repeticiones').insert([{
+                    chatter_id: base.chatter_id, turno: base.turno, grupo_id: base.grupo_id || null,
+                    dias: dsel, desde: base.fecha, hasta: fin === 'siempre' ? null : hasta, creado_por: profile.id,
+                  }])
+                  if (error) return alert('No se pudo guardar la repetición: ' + error.message)
+                } else {
+                  await supabase.from('schedules').insert([{ ...base, grupo_id: base.grupo_id || null, creado_por: profile.id }])
+                }
                 setAdd(null); load()
               }}
             >
