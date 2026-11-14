@@ -62,20 +62,22 @@ function HorarioSemana({ esMgr }) {
   const [grupos, setGrupos] = useState([])
   const [add, setAdd] = useState(null)
   const [reps, setReps] = useState([])
+  const [modelosCRM, setModelosCRM] = useState([])
 
   const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(lunes, i)), [lunes])
 
   async function load() {
     const desde = isoDate(dias[0]), hasta = isoDate(dias[6])
     try { await supabase.rpc('materializar_repeticiones', { p_desde: desde, p_hasta: hasta }) } catch (e) { /* migración 131 aún sin ejecutar */ }
-    const [{ data: r }, u, { data: g }, ex, { data: rp }] = await Promise.all([
+    const [{ data: r }, u, { data: g }, ex, { data: rp }, { data: md }] = await Promise.all([
       supabase.from('schedules').select('*, profiles(full_name)').gte('fecha', desde).lte('fecha', hasta),
       getProfilesByRoles(['manager', 'chatter']),
       supabase.from('shift_groups').select('id, nombre, modelos').eq('activo', true).order('nombre'),
       getExtrabajadorIds(),
       supabase.from('schedule_repeticiones').select('*').eq('activo', true).order('desde'),
+      supabase.from('models').select('id, stage_name, status').order('stage_name'),
     ])
-    setRows((r || []).filter((x) => !ex.has(x.chatter_id)).map((x) => (x.turno === 'madrugada' ? { ...x, turno: 'noche' } : x))); setChatters(u); setGrupos(g || []); setReps(rp || [])
+    setRows((r || []).filter((x) => !ex.has(x.chatter_id)).map((x) => (x.turno === 'madrugada' ? { ...x, turno: 'noche' } : x))); setChatters(u); setGrupos(g || []); setReps(rp || []); setModelosCRM((md || []).filter((m) => m.status !== 'baja'))
   }
   useEffect(() => { load() }, [lunes])
 
@@ -99,7 +101,8 @@ function HorarioSemana({ esMgr }) {
       const c = (m[r.chatter_id] = m[r.chatter_id] || { nombre: r.profiles?.full_name || '—', fechas: new Set(), grupos: new Set(), modelos: [] })
       c.fechas.add(r.fecha)
       const g = grupos.find((x) => x.id === r.grupo_id)
-      if (g) { c.grupos.add(g.nombre); for (const n of aLista(g.modelos)) if (!c.modelos.some((y) => normN(y) === normN(n))) c.modelos.push(n) }
+      if (g) c.grupos.add(g.nombre)
+      for (const n of [...(g ? aLista(g.modelos) : []), ...aLista(r.modelos)]) if (!c.modelos.some((y) => normN(y) === normN(n))) c.modelos.push(n)
     }
     return Object.values(m).sort((a, b) => a.nombre.localeCompare(b.nombre)).map((c) => ({
       ...c,
@@ -148,13 +151,14 @@ function HorarioSemana({ esMgr }) {
                           <span>
                             <strong>{h.profiles?.full_name}</strong>
                             {h.grupo_id ? <span style={{ color: 'var(--text-muted)' }}> · {grupos.find((g) => g.id === h.grupo_id)?.nombre}</span> : null}
+                            {aLista(h.modelos).length > 0 ? <span style={{ color: 'var(--text-muted)' }}> · {aLista(h.modelos).join(', ')}</span> : null}
                           </span>
                           {esMgr && <span onClick={() => borrar(h)} className="cursor-pointer" style={{ color: 'var(--danger)' }}>✕</span>}
                         </div>
                       ))}
                       {esMgr && (
                         <button
-                          onClick={() => setAdd({ fecha: iso, turno: t.id, chatter_id: chatters[0]?.id || '', grupo_id: '' })}
+                          onClick={() => setAdd({ fecha: iso, turno: t.id, chatter_id: chatters[0]?.id || '', grupo_id: '', modelos: '' })}
                           className="text-xs w-full text-left opacity-60 hover:opacity-100"
                           style={{ color: 'var(--accent)' }}
                         >
@@ -190,7 +194,7 @@ function HorarioSemana({ esMgr }) {
                     <td className="py-2 pr-3">{c.dias.join(', ')}</td>
                     <td className="py-2 pr-3">{c.dias.length}</td>
                     <td className="py-2" style={{ color: c.modelos.length ? 'var(--text)' : 'var(--text-muted)' }}>
-                      {c.modelos.length ? c.modelos.join(', ') : 'Sin grupo asignado'}
+                      {c.modelos.length ? c.modelos.join(', ') : 'Sin modelos asignadas'}
                       {c.grupos.size > 0 && <span style={{ color: 'var(--text-muted)' }}> · {[...c.grupos].join(', ')}</span>}
                     </td>
                   </tr>
@@ -232,6 +236,7 @@ function HorarioSemana({ esMgr }) {
               {grupos.map((g) => <option key={g.id} value={g.id}>{g.nombre}</option>)}
             </Select>
           </div>
+          <SelectorModelos modelos={modelosCRM} value={add.modelos} onChange={(v) => setAdd({ ...add, modelos: v })} titulo="Modelos asignadas manualmente (además del grupo, si eliges uno)" />
           <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
             <input type="checkbox" checked={!!add.repetir} onChange={(e) => setAdd({ ...add, repetir: e.target.checked, dias: add.dias || [(new Date(add.fecha + 'T12:00:00').getDay() + 6) % 7], fin: add.fin || 'fecha' })} />
             Repetir este horario cada semana
@@ -268,12 +273,12 @@ function HorarioSemana({ esMgr }) {
                   if (!dsel?.length) return alert('Elige al menos un día de la semana')
                   if (fin !== 'siempre' && !hasta) return alert('Elige hasta qué fecha se repite, o marca «Indefinidamente»')
                   const { error } = await supabase.from('schedule_repeticiones').insert([{
-                    chatter_id: base.chatter_id, turno: base.turno, grupo_id: base.grupo_id || null,
+                    chatter_id: base.chatter_id, turno: base.turno, grupo_id: base.grupo_id || null, modelos: base.modelos || null,
                     dias: dsel, desde: base.fecha, hasta: fin === 'siempre' ? null : hasta, creado_por: profile.id,
                   }])
                   if (error) return alert('No se pudo guardar la repetición: ' + error.message)
                 } else {
-                  await supabase.from('schedules').insert([{ ...base, grupo_id: base.grupo_id || null, creado_por: profile.id }])
+                  await supabase.from('schedules').insert([{ ...base, grupo_id: base.grupo_id || null, modelos: base.modelos || null, creado_por: profile.id }])
                 }
                 setAdd(null); load()
               }}
@@ -292,7 +297,7 @@ function HorarioSemana({ esMgr }) {
 const aLista = (txt) => String(txt || '').split(/[,\n]+/).map((x) => x.trim()).filter(Boolean)
 const normN = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 
-function SelectorModelos({ modelos, value, onChange }) {
+function SelectorModelos({ modelos, value, onChange, titulo = 'Modelos del grupo' }) {
   const [q, setQ] = useState('')
   const elegidas = aLista(value)
   const enCRM = new Set(modelos.map((m) => normN(m.stage_name)))
@@ -306,7 +311,7 @@ function SelectorModelos({ modelos, value, onChange }) {
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between gap-3 mb-2">
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Modelos del grupo · {elegidas.length} seleccionada{elegidas.length === 1 ? '' : 's'}</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{titulo} · {elegidas.length} seleccionada{elegidas.length === 1 ? '' : 's'}</p>
         <input
           value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…"
           className="px-3 py-1 rounded-md text-xs outline-none"
