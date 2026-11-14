@@ -4,6 +4,8 @@ import { useAuth } from './AuthContext'
 import { reproducirAviso, instalarDesbloqueo } from '../lib/sonido'
 import { avisosDeFechas, iso } from '../lib/fechasEventos'
 import { horaDoble } from '../lib/masivos'
+import { cargarFaltasAsistencia, textoFalta } from '../lib/asistenciaFaltante'
+import { fechaHoraDoble } from '../lib/horasTurno'
 
 const DIAS_ALERTA_CONTENIDO = 14
 const Ctx = createContext(null)
@@ -106,6 +108,14 @@ export function NotificationsProvider({ children }) {
         })
       }
     } catch { /* sin masivos */ }
+
+    // Avisos de fichajes que faltan según el horario (solo admin y manager; los quitados por el admin no salen)
+    if (hasAnyRole(['admin', 'manager'])) {
+      try {
+        const { faltas } = await cargarFaltasAsistencia()
+        faltas.forEach((x) => lista.push({ key: 'asist:' + x.clave, tipo: 'pendiente', prioridad: 'alta', texto: `${x.nombre}: ${textoFalta(x, fechaHoraDoble)}`, ruta: '/', fecha: new Date(x.inicio).toISOString() }))
+      } catch { /* sin avisos de fichajes */ }
+    }
 
     try {
       const f = await datosFechas()

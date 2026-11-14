@@ -5,12 +5,13 @@ import { useAuth } from '../context/AuthContext'
 import { getExtrabajadorIds } from '../lib/roles'
 import { calcularFaltantes, DIAS_REVISION } from '../lib/reportesFaltantes'
 import { fechaHoraDoble } from '../lib/horasTurno'
+import { PERMISO_QUITAR_AVISOS } from '../lib/navigation'
 import { Panel } from './ui'
 
 // Aviso para admin y managers: turnos trabajados (entrada + salida) de los que el chatter no envió el reporte
 export default function ReportesFaltantes({ enlace = false }) {
-  const { hasAnyRole, hasRole, profile } = useAuth()
-  const esAdmin = hasRole('admin')
+  const { hasAnyRole, puedeVer, profile } = useAuth()
+  const esAdmin = puedeVer(PERMISO_QUITAR_AVISOS, ['admin']) // admin siempre; otros roles solo si se les da el permiso
   const aplica = hasAnyRole(['admin', 'manager'])
   const [faltan, setFaltan] = useState([])
   const [abierto, setAbierto] = useState(true)

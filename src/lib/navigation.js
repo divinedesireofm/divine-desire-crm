@@ -102,6 +102,7 @@ export const SECTIONS = [
 export const PERMISO_IG_CONTRASENAS = 'permiso:ig_contrasenas'
 export const PERMISO_IG_2FA = 'permiso:ig_2fa'
 export const PERMISO_IG_HISTORIAL = 'permiso:ig_historial'
+export const PERMISO_QUITAR_AVISOS = 'permiso:quitar_avisos_turno'
 export const permisoSeccionIG = (id) => `permiso:ig_seccion_${id}`
 // Quién ve cada dato de la tabla de Modelos (se decide en Equipo → Permisos)
 export const permisoModelos = (k) => `permiso:modelos_${k}`
@@ -123,6 +124,10 @@ export const PERMISOS_EXTRA = [
       { to: PERMISO_IG_2FA, label: 'Ver 2FA (código y QR) en Cuentas de Instagram', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: PERMISO_IG_HISTORIAL, label: 'Ver el historial y restaurar cambios en Cuentas de Instagram', roles: ['admin', 'ig_manager', 'ig_assistant'] },
     ],
+  },
+  {
+    id: 'avisos_turno', label: 'Avisos de turno',
+    items: [{ to: PERMISO_QUITAR_AVISOS, label: 'Quitar avisos de turno (reportes sin enviar y fichajes que faltan)', roles: ['admin'] }],
   },
   {
     id: 'modelos_info', label: 'Información de Modelos',
