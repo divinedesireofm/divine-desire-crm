@@ -9,6 +9,7 @@ import { progresoFicha } from '../lib/fichaModelo'
 import { ModelAvatar } from '../components/ModelAvatar'
 import { reducirImagen, refrescarFotosModelos } from '../lib/modelPhotos'
 import { readFunctionError } from '../lib/functions'
+import CeldaCopia from '../components/CeldaCopia'
 
 const STATUS_OPTIONS = ['en_preparacion', 'activa', 'pausada', 'baja']
 const STATUS_LABELS = { en_preparacion: 'En preparación', activa: 'Activa', pausada: 'Pausada', en_negociacion: 'En negociación', baja: 'Baja' }
@@ -268,7 +269,7 @@ export default function Models() {
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
             <Input
-              placeholder="Teléfono"
+              placeholder="Teléfono / Whatsapp / Telegram"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
             />
@@ -372,7 +373,7 @@ export default function Models() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {(canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono', 'Notas', 'Información privada', 'Ficha general', 'Proceso', 'Acceso', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', 'Ficha general', '']).map((col, i) => (
+                  {(canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono/Whatsapp/Telegram', 'Notas', 'Información privada', 'Ficha general', 'Proceso', 'Acceso', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', 'Ficha general', '']).map((col, i) => (
                     <th key={col + i} className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-muted)' }}>{col}</th>
                   ))}
                 </tr>
@@ -406,8 +407,8 @@ export default function Models() {
                 </Td>
                 <Td><StatusBadge status={m.status} /></Td>
                 <Td>{m.commission_percent ? `${m.commission_percent}%` : '—'}</Td>
-                {canEdit && <Td style={{ color: 'var(--text-muted)' }}>{privados[m.id]?.email || '—'}</Td>}
-                {canEdit && <Td style={{ color: 'var(--text-muted)' }}>{privados[m.id]?.phone || '—'}</Td>}
+                {canEdit && <Td><CeldaCopia completo muted titulo="Email" texto={privados[m.id]?.email} /></Td>}
+                {canEdit && <Td><CeldaCopia completo muted titulo="Teléfono / Whatsapp / Telegram" texto={privados[m.id]?.phone} /></Td>}
                 <Td style={{ color: 'var(--text-muted)' }}>{m.notes || '—'}</Td>
                 {canEdit && <Td style={{ color: 'var(--text-muted)', maxWidth: 280 }}><span className="block whitespace-pre-wrap text-xs" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{privados[m.id]?.notas || '—'}</span></Td>}
                 <Td>
