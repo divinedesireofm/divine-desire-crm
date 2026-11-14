@@ -103,6 +103,19 @@ export const PERMISO_IG_CONTRASENAS = 'permiso:ig_contrasenas'
 export const PERMISO_IG_2FA = 'permiso:ig_2fa'
 export const PERMISO_IG_HISTORIAL = 'permiso:ig_historial'
 export const permisoSeccionIG = (id) => `permiso:ig_seccion_${id}`
+// Quién ve cada dato de la tabla de Modelos (se decide en Equipo → Permisos)
+export const permisoModelos = (k) => `permiso:modelos_${k}`
+const ROLES_EQUIPO = ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant', 'planner', 'masivos']
+export const DATOS_MODELOS = [
+  { k: 'comision', label: 'Comisión', roles: ROLES_EQUIPO },
+  { k: 'notas', label: 'Notas', roles: ROLES_EQUIPO },
+  { k: 'ficha', label: 'Ficha general', roles: ROLES_EQUIPO },
+  { k: 'email', label: 'Email', roles: ['admin'] },
+  { k: 'telefono', label: 'Teléfono / Whatsapp / Telegram', roles: ['admin'] },
+  { k: 'privada', label: 'Información privada', roles: ['admin'] },
+  { k: 'proceso', label: 'Proceso', roles: ['admin'] },
+  { k: 'acceso', label: 'Estado del acceso (pendiente / con acceso / suspendido)', roles: ['admin'] },
+]
 export const PERMISOS_EXTRA = [
   {
     id: 'extra', label: 'Permisos adicionales',
@@ -110,6 +123,10 @@ export const PERMISOS_EXTRA = [
       { to: PERMISO_IG_2FA, label: 'Ver 2FA (código y QR) en Cuentas de Instagram', roles: ['admin', 'ig_manager', 'ig_assistant'] },
       { to: PERMISO_IG_HISTORIAL, label: 'Ver el historial y restaurar cambios en Cuentas de Instagram', roles: ['admin', 'ig_manager', 'ig_assistant'] },
     ],
+  },
+  {
+    id: 'modelos_info', label: 'Información de Modelos',
+    items: DATOS_MODELOS.map((d) => ({ to: permisoModelos(d.k), label: `Ver «${d.label}» en Modelos`, roles: d.roles })),
   },
   {
     id: 'ig_apartados', label: 'Apartados de Cuentas de Instagram',

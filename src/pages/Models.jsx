@@ -10,14 +10,20 @@ import { ModelAvatar } from '../components/ModelAvatar'
 import { reducirImagen, refrescarFotosModelos } from '../lib/modelPhotos'
 import { readFunctionError } from '../lib/functions'
 import CeldaCopia from '../components/CeldaCopia'
+import { DATOS_MODELOS, permisoModelos } from '../lib/navigation'
 
 const STATUS_OPTIONS = ['en_preparacion', 'activa', 'pausada', 'baja']
 const STATUS_LABELS = { en_preparacion: 'En preparación', activa: 'Activa', pausada: 'Pausada', en_negociacion: 'En negociación', baja: 'Baja' }
 const EMPTY_FORM = { stage_name: '', status: 'en_preparacion', commission_percent: '', email: '', phone: '', notes: '', notas_privadas: '' }
 
 export default function Models() {
-  const { hasRole } = useAuth()
+  const { hasRole, puedeVer, perms } = useAuth()
   const canEdit = hasRole('admin')
+  // Qué datos ve esta persona (el admin decide en Equipo → Permisos)
+  const ver = Object.fromEntries(DATOS_MODELOS.map((d) => [d.k, puedeVer(permisoModelos(d.k), d.roles)]))
+  const columnas = [['Nombre', true], ['Estado', true], ['Comisión', ver.comision], ['Email', ver.email], ['Teléfono/Whatsapp/Telegram', ver.telefono], ['Notas', ver.notas],
+    ['Información privada', ver.privada], ['Ficha general', ver.ficha], ['Proceso', ver.proceso], ['Acceso', ver.acceso], ['', canEdit]].filter(([, v]) => v).map(([n]) => n)
+  const nCols = columnas.length
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -112,17 +118,17 @@ export default function Models() {
     setLoading(true)
     const { data, error } = await supabase.from('models').select('*').order('created_at', { ascending: false })
     if (!error) setModels(data)
-    if (canEdit) {
+    if (ver.email || ver.telefono || ver.privada) {
       const { data: pv } = await supabase.from('model_private').select('*')
       setPrivados(Object.fromEntries((pv || []).map((r) => [r.model_id, r])))
     }
-    if (canEdit) {
+    if (ver.acceso) {
       let { data: pf, error: epf } = await supabase.from('profiles').select('id, active, primer_acceso')
       if (epf) ({ data: pf } = await supabase.from('profiles').select('id, active'))   // sin la migración 129 todos cuentan como que ya han entrado
       setActivos(Object.fromEntries((pf || []).map((x) => [x.id, x.active !== false])))
       setYaEntro(Object.fromEntries((pf || []).map((x) => [x.id, epf ? true : !!x.primer_acceso])))
     }
-    if (canEdit) {
+    if (ver.proceso) {
       const { data: mp } = await supabase.from('model_procesos').select('model_id, hecho_at')
       const pg = {}
       ;(mp || []).forEach((x) => { const o = pg[x.model_id] || (pg[x.model_id] = { total: 0, hechos: 0 }); o.total++; if (x.hecho_at) o.hechos++ })
@@ -133,7 +139,7 @@ export default function Models() {
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [perms]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function guardarFicha(modeloId, datos) {
     const { error: e } = await supabase.from('model_general').upsert({ model_id: modeloId, datos, updated_at: new Date().toISOString() }, { onConflict: 'model_id' })
@@ -373,14 +379,14 @@ export default function Models() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {(canEdit ? ['Nombre', 'Estado', 'Comisión', 'Email', 'Teléfono/Whatsapp/Telegram', 'Notas', 'Información privada', 'Ficha general', 'Proceso', 'Acceso', ''] : ['Nombre', 'Estado', 'Comisión', 'Notas', 'Ficha general', '']).map((col, i) => (
+                  {columnas.map((col, i) => (
                     <th key={col + i} className="text-left px-4 py-3 font-medium" style={{ color: 'var(--text-muted)' }}>{col}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {models.length === 0 ? (
-                  <tr><td colSpan={canEdit ? 11 : 6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay datos aquí.</td></tr>
+                  <tr><td colSpan={nCols} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay datos aquí.</td></tr>
                 ) : models.map((m) => {
                   const pr = progresoFicha(fichas[m.id])
                   const abierta = fichaAbierta === m.id
@@ -406,25 +412,27 @@ export default function Models() {
                   </div>
                 </Td>
                 <Td><StatusBadge status={m.status} /></Td>
-                <Td>{m.commission_percent ? `${m.commission_percent}%` : '—'}</Td>
-                {canEdit && <Td><CeldaCopia completo muted titulo="Email" texto={privados[m.id]?.email} /></Td>}
-                {canEdit && <Td><CeldaCopia completo muted titulo="Teléfono / Whatsapp / Telegram" texto={privados[m.id]?.phone} /></Td>}
-                <Td style={{ color: 'var(--text-muted)' }}>{m.notes || '—'}</Td>
-                {canEdit && <Td style={{ color: 'var(--text-muted)', maxWidth: 280 }}><span className="block whitespace-pre-wrap text-xs" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{privados[m.id]?.notas || '—'}</span></Td>}
+                {ver.comision && <Td>{m.commission_percent ? `${m.commission_percent}%` : '—'}</Td>}
+                {ver.email && <Td><CeldaCopia completo muted titulo="Email" texto={privados[m.id]?.email} /></Td>}
+                {ver.telefono && <Td><CeldaCopia completo muted titulo="Teléfono / Whatsapp / Telegram" texto={privados[m.id]?.phone} /></Td>}
+                {ver.notas && <Td style={{ color: 'var(--text-muted)' }}>{m.notes || '—'}</Td>}
+                {ver.privada && <Td style={{ color: 'var(--text-muted)', maxWidth: 280 }}><span className="block whitespace-pre-wrap text-xs" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{privados[m.id]?.notas || '—'}</span></Td>}
+                {ver.ficha && (
                 <Td>
                   <button onClick={() => alternarFicha(m.id)} className="text-xs px-3 py-1.5 rounded-md whitespace-nowrap" style={{ background: abierta && !fichaCerrando ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${abierta && !fichaCerrando ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--accent)' }}>
                     {abierta && !fichaCerrando ? '▲ Ocultar ficha' : '▼ Ver ficha'}{pr.hechos ? ` · ${pr.hechos}/${pr.total}` : ' · vacía'}
                   </button>
                 </Td>
-                {canEdit && (
+                )}
+                {ver.proceso && (
                   <Td>
-                    {(() => { const pg = progreso[m.id]; const ab = procAbierto?.id === m.id && !procCerrando; return (
+                    {!canEdit ? <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{progreso[m.id]?.total ? `${progreso[m.id].hechos}/${progreso[m.id].total}` : '—'}</span> : (() => { const pg = progreso[m.id]; const ab = procAbierto?.id === m.id && !procCerrando; return (
                       <button onClick={() => alternarProceso(m)} className="text-xs px-3 py-1.5 rounded-md whitespace-nowrap" style={{ background: ab ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${ab ? 'var(--accent)' : 'var(--border)'}`, color: 'var(--accent)' }}>
                         {ab ? '▲ Ocultar proceso' : '▼ Ver proceso'}{pg?.total ? ` · ${pg.hechos}/${pg.total}` : ' · vacío'}
                       </button>) })()}
                   </Td>
                 )}
-                {canEdit && (
+                {ver.acceso && (
                   <Td>
                     {m.user_id
                       ? <div className="flex items-center gap-2 whitespace-nowrap">
@@ -433,22 +441,22 @@ export default function Models() {
                             : yaEntro[m.user_id] === false
                               ? <span className="text-xs" data-pendiente style={{ color: '#F97316' }} title="Todavía no ha entrado por primera vez">🕒 Pendiente</span>
                               : <span className="text-xs" style={{ color: 'var(--success)' }}>✅ Con acceso</span>}
-                          <button onClick={() => abrirEditarAcceso(m)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar acceso</button>
+                          {canEdit && <button onClick={() => abrirEditarAcceso(m)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>Editar acceso</button>}
                         </div>
-                      : <button onClick={() => abrirAcceso(m)} className="text-xs px-3 py-1.5 rounded-md whitespace-nowrap" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--accent)' }}>🔑 Dar acceso</button>}
+                      : !canEdit ? <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Sin acceso</span> : <button onClick={() => abrirAcceso(m)} className="text-xs px-3 py-1.5 rounded-md whitespace-nowrap" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--accent)' }}>🔑 Dar acceso</button>}
                   </Td>
                 )}
-                <Td>
+                {canEdit && <Td>
                   {canEdit && (
                     <button onClick={() => startEdit(m)} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>
                       Editar
                     </button>
                   )}
-                </Td>
+                </Td>}
                       </tr>
                       {abierta && (
                         <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td colSpan={canEdit ? 11 : 6} style={{ padding: 0 }}>
+                          <td colSpan={nCols} style={{ padding: 0 }}>
                             <Desplegable abierto={!fichaCerrando} onCerrado={() => { setFichaAbierta(null); setFichaCerrando(false) }}>
                               <FichaModelo modelo={m} datos={fichas[m.id]} canEdit={canEdit} onGuardar={(d) => guardarFicha(m.id, d)} onCerrar={() => setFichaCerrando(true)} />
                             </Desplegable>
@@ -457,7 +465,7 @@ export default function Models() {
                       )}
                       {canEdit && procAbierto?.id === m.id && (
                         <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td colSpan={11} style={{ padding: 0 }}>
+                          <td colSpan={nCols} style={{ padding: 0 }}>
                             <Desplegable abierto={!procCerrando} onCerrado={() => { setProcAbierto(null); setProcCerrando(false) }}>
                               <ProcesoModelo modelo={m} onCambio={actualizarProgreso} />
                             </Desplegable>
