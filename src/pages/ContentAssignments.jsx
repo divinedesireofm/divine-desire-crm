@@ -12,7 +12,7 @@ export const TIPOS_CONTENIDO = [
   { id: 'sexting', n: 'Sexting', e: '💬' },
   { id: 'pack', n: 'Pack', e: '📦' },
 ]
-const tipoObj = (id) => TIPOS_CONTENIDO.find((t) => t.id === id)
+const slug = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 
 function diasDesde(fechaISO) {
   const d = new Date(fechaISO + 'T00:00:00')
@@ -21,7 +21,7 @@ function diasDesde(fechaISO) {
 function hoyISO() { return new Date().toISOString().slice(0, 10) }
 function fmt(iso) { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-'); return `${d}/${m}/${y}` }
 
-function Tarjeta({ r, alerta, desde, onRecordar, onBorrar, onEditar }) {
+function Tarjeta({ r, alerta, desde, onRecordar, onBorrar, onEditar, tipoObj }) {
   const t = tipoObj(r.tipo)
   const modelo = r.models?.stage_name || '—'
   return (
@@ -80,6 +80,35 @@ export default function ContentAssignments() {
   const [editId, setEditId] = useState(null)
   const [error, setError] = useState('')
   const [dragOver, setDragOver] = useState(null)
+  const [tipos, setTipos] = useState(TIPOS_CONTENIDO)
+  const [nuevoTipo, setNuevoTipo] = useState(null) // { e, n } mientras se crea
+  const [gestionar, setGestionar] = useState(false)
+  const tipoObj = (id) => tipos.find((t) => t.id === id) || (id ? { id, n: id, e: '🏷️' } : null)
+
+  async function loadTipos() {
+    const { data, error: er } = await supabase.from('content_tipos').select('*').eq('activo', true).order('orden').order('nombre')
+    if (!er && data && data.length) setTipos(data.map((t) => ({ id: t.id, n: t.nombre, e: t.emoji || '🏷️' })))
+  }
+  async function crearTipo() {
+    const n = (nuevoTipo?.n || '').trim()
+    if (!n) return
+    let id = slug(n) || 'tipo'
+    if (tipos.some((t) => t.id === id)) id += '_' + Math.random().toString(36).slice(2, 5)
+    const { error: er } = await supabase.from('content_tipos').insert([{ id, nombre: n, emoji: (nuevoTipo.e || '').trim() || '🏷️', orden: tipos.length + 1, activo: true }])
+    if (er) { alert('No se pudo crear el tipo. ¿Has ejecutado la migración 134 en Supabase?'); return }
+    setNuevoTipo(null); await loadTipos(); setForm((f) => (f ? { ...f, tipo: id } : f))
+  }
+  async function renombrarTipo(t, nombre) {
+    const n = nombre.trim()
+    if (!n || n === t.n) return
+    await supabase.from('content_tipos').update({ nombre: n }).eq('id', t.id); loadTipos()
+  }
+  async function borrarTipo(t) {
+    if (!confirm(`¿Eliminar el tipo «${t.n}»? Los contenidos que ya lo usan se quedan como están.`)) return
+    await supabase.from('content_tipos').delete().eq('id', t.id)
+    if (filtroTipo === t.id) setFiltroTipo('todos')
+    loadTipos()
+  }
 
   async function load() {
     const [{ data: m }, { data: r }] = await Promise.all([
@@ -90,7 +119,7 @@ export default function ContentAssignments() {
     setRows(r || [])
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); loadTipos() }, [])
 
   function abrirNuevo() {
     setError(''); setEditId(null)
@@ -157,7 +186,7 @@ export default function ContentAssignments() {
           </Select>
         </div>
         <div className="flex flex-wrap gap-2">
-          {[{ id: 'todos', n: 'Todos', e: '' }, ...TIPOS_CONTENIDO].map((t) => (
+          {[{ id: 'todos', n: 'Todos', e: '' }, ...tipos].map((t) => (
             <button key={t.id} onClick={() => setFiltroTipo(t.id)} className="px-3 py-1.5 rounded-full text-xs"
               style={{ background: filtroTipo === t.id ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${filtroTipo === t.id ? 'var(--accent)' : 'var(--border)'}`, color: filtroTipo === t.id ? 'var(--accent)' : 'var(--text)' }}>
               {t.e} {t.n}
@@ -186,7 +215,7 @@ export default function ContentAssignments() {
             </div>
             <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Tipo de contenido</label>
             <div className="flex flex-wrap gap-2 mb-3">
-              {TIPOS_CONTENIDO.map((t) => {
+              {tipos.map((t) => {
                 const on = form.tipo === t.id
                 return (
                   <button key={t.id} type="button" onClick={() => setForm({ ...form, tipo: t.id })} className="px-3 py-1.5 rounded-full text-sm"
@@ -196,6 +225,32 @@ export default function ContentAssignments() {
                 )
               })}
             </div>
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              {nuevoTipo ? (
+                <>
+                  <input value={nuevoTipo.e} onChange={(e) => setNuevoTipo({ ...nuevoTipo, e: e.target.value })} placeholder="🏷️" maxLength={4} className="px-2 py-1.5 rounded-md text-sm outline-none text-center" style={{ width: 52, background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+                  <input autoFocus value={nuevoTipo.n} onChange={(e) => setNuevoTipo({ ...nuevoTipo, n: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); crearTipo() } }} placeholder="Nombre del nuevo tipo" className="px-3 py-1.5 rounded-md text-sm outline-none" style={{ width: 200, background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+                  <Button type="button" onClick={crearTipo}>Crear tipo</Button>
+                  <Button type="button" variant="ghost" onClick={() => setNuevoTipo(null)}>Cancelar</Button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setNuevoTipo({ e: '', n: '' })} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>+ Crear un tipo nuevo</button>
+                  <button type="button" onClick={() => setGestionar((g) => !g)} className="text-xs hover:underline" style={{ color: 'var(--text-muted)' }}>{gestionar ? 'Ocultar gestión de tipos' : 'Gestionar tipos'}</button>
+                </>
+              )}
+            </div>
+            {gestionar && (
+              <div className="mb-4 p-3 rounded-md space-y-2" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                {tipos.map((t) => (
+                  <div key={t.id} className="flex items-center gap-2 text-sm">
+                    <span>{t.e}</span>
+                    <input defaultValue={t.n} onBlur={(e) => renombrarTipo(t, e.target.value)} className="px-2 py-1 rounded-md text-sm outline-none flex-1" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+                    <button type="button" onClick={() => borrarTipo(t)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Eliminar</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <label className="text-xs mb-1 block" style={{ color: 'var(--text-muted)' }}>Otras observaciones (opcional)</label>
             <textarea
               value={form.observaciones} onChange={(e) => setForm({ ...form, observaciones: e.target.value })} rows={3}
@@ -223,20 +278,20 @@ export default function ContentAssignments() {
           <Columna id="pendiente" titulo="🕒 Pendiente" contador={pendientes.length}
             vacio="Nada pendiente de enviar. Aquí caen los contenidos recién añadidos." colorBorde="var(--text-muted)"
             dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
-            {pendientes.map((r) => <Tarjeta key={r.id} r={r} alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} onEditar={editar} />)}
+            {pendientes.map((r) => <Tarjeta key={r.id} r={r} alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} onEditar={editar} tipoObj={tipoObj} />)}
           </Columna>
           <Columna id="enviado" titulo="📤 Enviado" contador={enviados.length}
             vacio="Arrastra aquí un pendiente cuando se lo mandes a la modelo." colorBorde="var(--accent)"
             dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
             {enviados.map((r) => {
               const desde = diasDesde(r.recordado_en || r.enviado_en)
-              return <Tarjeta key={r.id} r={r} alerta={desde >= DIAS_ALERTA} desde={desde} onRecordar={recordar} onBorrar={borrar} onEditar={editar} />
+              return <Tarjeta key={r.id} r={r} alerta={desde >= DIAS_ALERTA} desde={desde} onRecordar={recordar} onBorrar={borrar} onEditar={editar} tipoObj={tipoObj} />
             })}
           </Columna>
           <Columna id="hecho" titulo="✅ Hecho" contador={hechos.length}
             vacio="Arrastra aquí cuando la modelo entregue el contenido." colorBorde="var(--success)"
             dragOver={dragOver} setDragOver={setDragOver} onSoltar={soltarEn}>
-            {hechos.map((r) => <Tarjeta key={r.id} r={r} alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} onEditar={editar} />)}
+            {hechos.map((r) => <Tarjeta key={r.id} r={r} alerta={false} desde={0} onRecordar={recordar} onBorrar={borrar} onEditar={editar} tipoObj={tipoObj} />)}
           </Columna>
         </div>
       )}
