@@ -907,7 +907,7 @@ function PagosAdmin({ area = 'chatting' }) {
                         {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
                         <td className="px-3 py-2.5" style={lbl}>—</td>
                         <td className="px-3 py-2.5">
-                          <div className="leading-tight min-w-[150px]">{fila.lista.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(t.monto)}</span> {t.titulo} <span style={{ color: t.pagado_at ? 'var(--success)' : 'var(--gold)' }}>· {t.pagado_at ? '✓ pagada' : 'pendiente'}</span></span>)}</div>
+                          <div className="leading-tight min-w-[150px]">{fila.lista.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(t.monto)}</span> {t.titulo} <span style={{ color: 'var(--success)' }}>· {t.pagado_at ? '✓ pagada' : '✓ incluido en el Total'}</span></span>)}</div>
                         </td>
                         <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(sumaT(fila.lista))}</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Solo tareas</td>
@@ -923,7 +923,7 @@ function PagosAdmin({ area = 'chatting' }) {
                         <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(f.pr.pago)}</td>
                         {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{f.mg.full_name}</td>}
                         {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
-                        <td className="px-3 py-2.5">{celdaMgr(f)}</td>
+                        <td className="px-3 py-2.5">{celdaMgr(f, true)}</td>
                         <td className="px-3 py-2.5" style={lbl}>—</td>
                         <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(f.total)}</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Solo manager</td>
