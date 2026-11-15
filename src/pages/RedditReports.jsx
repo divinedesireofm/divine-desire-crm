@@ -5,6 +5,16 @@ import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { fmtF } from '../lib/excelImport'
 import { antiguedadDe } from '../lib/redditAntiguedad'
 
+// Hora de envío (zona de España). Si el reporte es de otro día distinto al del envío, también sale la fecha en que se mandó.
+const horaDe = (iso) => (iso ? new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' }) : '')
+const diaDe = (iso) => (iso ? new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Europe/Madrid' }) : '')
+function textoEnvio(r) {
+  if (!r.created_at) return ''
+  const otroDia = diaDe(r.created_at) !== r.fecha
+  let t = `Enviado ${otroDia ? `el ${fmtF(diaDe(r.created_at))} ` : ''}a las ${horaDe(r.created_at)}`
+  if (r.updated_at && Math.abs(new Date(r.updated_at) - new Date(r.created_at)) > 60000) t += ` · editado ${diaDe(r.updated_at) !== diaDe(r.created_at) ? `el ${fmtF(diaDe(r.updated_at))} ` : ''}a las ${horaDe(r.updated_at)}`
+  return t
+}
 const lbl = { color: 'var(--text-muted)' }
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const hoy = () => iso(new Date())
@@ -160,7 +170,7 @@ export default function RedditReports() {
           {(gestiona ? reportes : mios).map((r) => (
             <Panel key={r.id} className="p-4">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-                <p className="text-sm">{cuenta(r.account_id)?.username ? <a href={`https://www.reddit.com/user/${encodeURIComponent(cuenta(r.account_id).username)}`} target="_blank" rel="noopener noreferrer" className="font-semibold underline" style={{ color: 'var(--accent)' }} title="Abrir el perfil en Reddit">u/{cuenta(r.account_id).username} ↗</a> : <strong>u/—</strong>}{gestiona && <span className="ml-2 text-xs" style={lbl}>· {nombre(r.worker_id)}</span>}</p>
+                <p className="text-sm">{cuenta(r.account_id)?.username ? <a href={`https://www.reddit.com/user/${encodeURIComponent(cuenta(r.account_id).username)}`} target="_blank" rel="noopener noreferrer" className="font-semibold underline" style={{ color: 'var(--accent)' }} title="Abrir el perfil en Reddit">u/{cuenta(r.account_id).username} ↗</a> : <strong>u/—</strong>}{gestiona && <span className="ml-2 text-xs" style={lbl}>· {nombre(r.worker_id)}</span>}{textoEnvio(r) && <span className="ml-2 text-xs px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }} data-hora-reporte>🕐 {textoEnvio(r)}</span>}</p>
                 <div className="flex gap-3 text-xs">
                   {r.worker_id === profile?.id && <button className="underline" onClick={() => { setAbierto(true); elegirCuenta(r.account_id); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>Editar</button>}
                   {gestiona && <button className="underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(r)}>Borrar</button>}
