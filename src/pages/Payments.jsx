@@ -1324,7 +1324,7 @@ function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiert
       <div className="space-y-1.5 text-sm">
         {[
           ['Facturación neta', money(p.fact_neta)],
-          [`× Comisión ${Math.round(num(p.pct) * 100)}%`, money(num(p.fact_neta) * num(p.pct))],
+          [`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`, money(num(p.fact_neta) * num(p.pct))],
           ['+ Bonos', money(soloBonos)],
           ['+ Pago por tareas', money(sumT)],
           ['+ Adelanto', money(p.adelanto)],
@@ -1333,6 +1333,7 @@ function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiert
         ].filter(([, v], i) => i < 2 || v !== '$0.00').map(([k, v]) => (
           <div key={k} className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>{k}</span><strong>{v}</strong></div>
         ))}
+        <div className="flex justify-between pt-2 mt-1 text-base" style={{ borderTop: '1px solid var(--border)' }} data-total-final><span className="font-medium">Total final</span><strong className="gold-text tabular-nums">{money(calcPago(p))}</strong></div>
       </div>
       {notasCompletas(p, bonos, sanciones, cuotas) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones, cuotas)}</p>}
       <DesglosePago p={p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={pagos} abiertoInicial={abiertoInicial} />
@@ -1367,10 +1368,10 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
       <button type="button" onClick={() => setAbierto((v) => !v)} className="text-xs underline" style={{ color: 'var(--accent)' }}>{abierto ? '▾ Ocultar desglose' : '▸ Ver desglose detallado'}</button>
       {abierto && (
         <div className="mt-2 rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-          <Tit>Comisión</Tit>
+          <Tit>Pago base</Tit>
           {num(p.fact_bruta) > 0 && <Fila k="Facturación bruta" v={money(p.fact_bruta)} />}
           <Fila k="Facturación neta" v={money(p.fact_neta)} />
-          <Fila k={`Comisión ${Math.round(num(p.pct) * 100)}%`} v={money(num(p.fact_neta) * num(p.pct))} />
+          <Fila k={`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`} v={money(num(p.fact_neta) * num(p.pct))} />
           {(bs.length > 0 || otrosBonos > 0.009) && <Tit>Bonos (+)</Tit>}
           {bs.map((x) => <Fila key={x.id} k={x.nombre} sub={x.nota || `Cobro ${fmtF(x.fecha_cobro)}`} v={'+' + money(x.monto)} color="var(--success)" />)}
           {otrosBonos > 0.009 && <Fila k="Otros bonos" sub="Añadidos a mano en el pago" v={'+' + money(otrosBonos)} color="var(--success)" />}
@@ -1387,7 +1388,7 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
           {(ss.length > 0 || num(p.penalizacion) !== 0) && <Tit>Sanciones (−)</Tit>}
           {ss.map((x) => <Fila key={x.id} k={x.motivo || 'Sanción'} sub={x.fecha ? fmtF(x.fecha) : undefined} v={num(x.monto) ? '−' + money(Math.abs(num(x.monto))) : '—'} color="var(--danger)" />)}
           {ss.length === 0 && num(p.penalizacion) !== 0 && <Fila k="Sanciones" v={'−' + money(Math.abs(num(p.penalizacion)))} color="var(--danger)" />}
-          <div className="flex justify-between pt-3 mt-1"><span className="font-medium">Total del pago</span><strong className="gold-text tabular-nums">{money(calcPago(p))}</strong></div>
+          <div className="flex justify-between pt-3 mt-1"><span className="font-medium">Total final</span><strong className="gold-text tabular-nums text-base">{money(calcPago(p))}</strong></div>
           {p.notas && <p className="text-xs mt-2" style={lbl}>Nota: {p.notas}</p>}
         </div>
       )}
