@@ -180,6 +180,13 @@ function PagosAdmin({ area = 'chatting' }) {
   const [editId, setEditId] = useState(null)
   const [cform, setCform] = useState(null)     // formulario de cuenta
   const [msg, setMsg] = useState('')
+  const [verComoChatter, setVerComoChatter] = useState(null) // pago cuya vista de chatter se previsualiza
+  const [tareasPrev, setTareasPrev] = useState(null) // mismos datos de tareas que lee el chatter
+  async function abrirVistaChatter(p) {
+    setTareasPrev(null); setVerComoChatter(p)
+    const { data } = await supabase.from('pay_task_items').select('id, titulo, monto, aplicado_en, aplicado_tipo').not('aplicado_en', 'is', null)
+    setTareasPrev(data || [])
+  }
   const [vista, setVista] = useState('pagos')   // 'pagos' | 'bonos'
   const [bonos, setBonos] = useState([])
   const [sanciones, setSanciones] = useState([])
@@ -911,6 +918,7 @@ function PagosAdmin({ area = 'chatting' }) {
                       </td>
                       <td className="px-3 py-2.5 text-xs max-w-[320px]" style={lbl}>{notasDe(p)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                        <button onClick={() => abrirVistaChatter(p)} data-ver-como-chatter className="hover:underline mr-3" style={{ color: 'var(--accent)' }} title="Ver el desglose tal como lo verá el chatter">👁 Ver como chatter</button>
                         <button onClick={() => editarPago(p)} className="hover:underline mr-3" style={{ color: 'var(--accent)' }}>Editar</button>
                         <button onClick={() => borrarPago(p)} style={{ color: 'var(--danger)' }}>✕</button>
                       </td>
@@ -923,6 +931,15 @@ function PagosAdmin({ area = 'chatting' }) {
         )}
       </Panel>
       </>)}
+      {verComoChatter && (
+        <div onClick={() => setVerComoChatter(null)} className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.75)' }} data-vista-chatter>
+          <div className="w-full max-w-xl my-6" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm mb-3 text-center" style={{ color: '#fff' }}>👁 Así lo verá <strong>{cuentaDe(verComoChatter.account_id)?.nombre || 'el chatter'}</strong>{verComoChatter.estado !== 'Pagado' ? ' (este pago aún está pendiente)' : ''}</p>
+            <TarjetaPagoChatter p={verComoChatter} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareasPrev || tareas} pagos={pagos} abiertoInicial />
+            <div className="text-center"><Button variant="ghost" onClick={() => setVerComoChatter(null)} style={{ background: 'var(--panel)' }}>Cerrar</Button></div>
+          </div>
+        </div>
+      )}
       {qrGrande && (
         <div onClick={() => setQrGrande(null)} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.75)' }}>
           <div className="rounded-lg p-4 text-center" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
@@ -1294,9 +1311,38 @@ function BonosTab({ cuentas, bonos, pagos, onCambio, area }) {
   return <BonosCalculados area={area || 'chatting'} cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={onCambio} />
 }
 
+// La tarjeta de un pago tal como la ve el chatter (también se usa en la vista previa del admin)
+function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInicial = false }) {
+  const sumT = r2(tareas.filter((x) => x.aplicado_en === p.id && x.aplicado_tipo !== 'manager').reduce((t, x) => t + num(x.monto), 0))
+  const soloBonos = Math.max(0, r2(num(p.bonos) - sumT))
+  return (
+    <Panel className="p-5 mb-3">
+      <div className="flex justify-between items-center mb-3">
+        <strong>Pago del {fmtF(p.fecha)}</strong>
+        <span>{p.estado === 'Pagado' ? 'Pagado' : 'Pendiente'} · <strong className="gold-text">{money(calcPago(p))}</strong></span>
+      </div>
+      <div className="space-y-1.5 text-sm">
+        {[
+          ['Facturación neta', money(p.fact_neta)],
+          [`× Comisión ${Math.round(num(p.pct) * 100)}%`, money(num(p.fact_neta) * num(p.pct))],
+          ['+ Bonos', money(soloBonos)],
+          ['+ Pago por tareas', money(sumT)],
+          ['+ Adelanto', money(p.adelanto)],
+          ['− Sanciones', money(p.penalizacion)],
+          ['− Deuda / cuota de adelanto', money(p.deuda)],
+        ].filter(([, v], i) => i < 2 || v !== '$0.00').map(([k, v]) => (
+          <div key={k} className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>{k}</span><strong>{v}</strong></div>
+        ))}
+      </div>
+      {notasCompletas(p, bonos, sanciones, cuotas) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones, cuotas)}</p>}
+      <DesglosePago p={p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={pagos} abiertoInicial={abiertoInicial} />
+    </Panel>
+  )
+}
+
 // Desglose desplegable de un pago: cada concepto por separado
-function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos }) {
-  const [abierto, setAbierto] = useState(false)
+function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInicial = false }) {
+  const [abierto, setAbierto] = useState(abiertoInicial)
   const lbl = { color: 'var(--text-muted)' }
   const grp = (x) => x.origen_id || x.adelanto_id || x.id
   const totalAdel = (x) => r2(cuotas.filter((y) => grp(y) === grp(x)).reduce((t, y) => t + num(y.monto), 0))
@@ -1379,28 +1425,7 @@ function MisPagos() {
               <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Total cobrado</p>
               <p className="text-xl font-display font-semibold gold-text tabular-nums">{money(total)}</p>
             </Panel>
-            {filas.map((p) => (
-              <Panel key={p.id} className="p-5 mb-3">
-                <div className="flex justify-between items-center mb-3">
-                  <strong>Pago del {fmtF(p.fecha)}</strong>
-                  <span>{p.estado === 'Pagado' ? 'Pagado' : 'Pendiente'} · <strong className="gold-text">{money(calcPago(p))}</strong></span>
-                </div>
-                <div className="space-y-1.5 text-sm">
-                  {[
-                    ['Facturación neta', money(p.fact_neta)],
-                    [`× Comisión ${Math.round(num(p.pct) * 100)}%`, money(num(p.fact_neta) * num(p.pct))],
-                    ['+ Bonos', money(p.bonos)],
-                    ['+ Adelanto', money(p.adelanto)],
-                    ['− Sanciones', money(p.penalizacion)],
-                    ['− Deuda / cuota de adelanto', money(p.deuda)],
-                  ].filter(([, v], i) => i < 2 || v !== '$0.00').map(([k, v]) => (
-                    <div key={k} className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>{k}</span><strong>{v}</strong></div>
-                  ))}
-                </div>
-                {notasCompletas(p, bonos, sanciones, cuotas) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones, cuotas)}</p>}
-                <DesglosePago p={p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={filas} />
-              </Panel>
-            ))}
+            {filas.map((p) => <TarjetaPagoChatter key={p.id} p={p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={filas} />)}
           </>
         )}
     </div>
