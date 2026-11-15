@@ -1403,9 +1403,9 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
           {(descontadas.length > 0 || otrasDeudas > 0.009) && <Tit>Descuentos por deuda (−)</Tit>}
           {descontadas.map((x) => {
             const concedido = fechaPagoDe(x.origen_id || x.adelanto_id)
-            return <Fila key={x.id} k={`Adelanto ${money(totalAdel(x))} : cuota ${x.num}/${x.total}`} sub={[concedido ? `Adelanto concedido el ${fmtF(concedido)}` : '', x.fecha_prevista ? `cuota prevista ${fmtF(x.fecha_prevista)}` : ''].filter(Boolean).join(' · ') || undefined} v={'−' + money(x.monto)} color="var(--danger)" />
+            return <Fila key={x.id} k={concedido ? `Adelanto de ${money(totalAdel(x))} concedido el ${fmtF(concedido)}` : `Adelanto de ${money(totalAdel(x))}`} sub={`Cuota ${x.num}/${x.total}`} v={'−' + money(x.monto)} color="var(--danger)" />
           })}
-          {otrasDeudas > 0.009 && <Fila k="Otras deudas" sub={`Descontadas en este pago (${fmtF(p.fecha)}); sin adelanto enlazado`} v={'−' + money(otrasDeudas)} color="var(--danger)" />}
+          {otrasDeudas > 0.009 && <Fila k="Otras deudas" v={'−' + money(otrasDeudas)} color="var(--danger)" />}
           {(ss.length > 0 || num(p.penalizacion) !== 0) && <Tit>Sanciones (−)</Tit>}
           {ss.map((x) => <Fila key={x.id} k={x.motivo || 'Sanción'} sub={x.fecha ? fmtF(x.fecha) : undefined} v={num(x.monto) ? '−' + money(Math.abs(num(x.monto))) : '—'} color="var(--danger)" />)}
           {ss.length === 0 && num(p.penalizacion) !== 0 && <Fila k="Sanciones" v={'−' + money(Math.abs(num(p.penalizacion)))} color="var(--danger)" />}
