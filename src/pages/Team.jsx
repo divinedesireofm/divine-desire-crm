@@ -73,6 +73,7 @@ export default function Team() {
   const [rolesPorUsuario, setRolesPorUsuario] = useState({}) // { userId: ['chatter', 'manager'] }
   const [loading, setLoading] = useState(true)
   const [nuevo, setNuevo] = useState(null)
+  const [aviso, setAviso] = useState(null) // «Cuenta creada ✓…» tras dar de alta (sin ventana intermedia)
   const [editar, setEditar] = useState(null)
   const [resetU, setResetU] = useState(null)
   const [ficha, setFicha] = useState(null)
@@ -167,11 +168,17 @@ export default function Team() {
         </div>
       )}
 
+      {aviso && (
+        <div data-aviso-alta className="mb-4 rounded-lg px-4 py-2.5 text-sm flex items-start justify-between gap-3" style={{ background: 'color-mix(in srgb, var(--success) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--success) 35%, transparent)', color: 'var(--success)' }}>
+          <span>{aviso}</span>
+          <button type="button" onClick={() => setAviso(null)} aria-label="Cerrar aviso" className="text-xs underline whitespace-nowrap">Cerrar</button>
+        </div>
+      )}
       <div ref={panelRef}>
       {nuevo && (
         <NuevoUsuarioModal
           form={nuevo} setForm={setNuevo} asignables={asignables}
-          onClose={() => setNuevo(null)} onSaved={() => { setNuevo(null); load() }}
+          onClose={() => setNuevo(null)} onSaved={(m) => { setNuevo(null); if (m) setAviso(m); load() }}
         />
       )}
       {editar && (
@@ -379,7 +386,10 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
     setBusy(false)
     if (error) { setErr(await readFunctionError(error)); return }
     if (data?.error) { setErr(data.error); return }
-    setResultado({ modo: data.modo, tempPassword: data.tempPassword, email: f.email.trim() })
+    // sin ventana intermedia: se cierra el formulario y el nuevo miembro sale directamente en la tabla; el aviso queda arriba
+    onSaved(data.modo === 'invitacion'
+      ? `Cuenta creada ✓ para ${f.full_name.trim()}. Le hemos enviado un email a ${f.email.trim()} para que cree su contraseña y entre.`
+      : `Cuenta creada ✓ para ${f.full_name.trim()}. Su email es ${f.email.trim()} y su contraseña: ${data.tempPassword}`)
   }
 
   return (
