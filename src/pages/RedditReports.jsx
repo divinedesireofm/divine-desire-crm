@@ -160,7 +160,7 @@ export default function RedditReports() {
           {(gestiona ? reportes : mios).map((r) => (
             <Panel key={r.id} className="p-4">
               <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-                <p className="text-sm"><strong>u/{cuenta(r.account_id)?.username || '—'}</strong>{gestiona && <span className="ml-2 text-xs" style={lbl}>· {nombre(r.worker_id)}</span>}</p>
+                <p className="text-sm">{cuenta(r.account_id)?.username ? <a href={`https://www.reddit.com/user/${encodeURIComponent(cuenta(r.account_id).username)}`} target="_blank" rel="noopener noreferrer" className="font-semibold underline" style={{ color: 'var(--accent)' }} title="Abrir el perfil en Reddit">u/{cuenta(r.account_id).username} ↗</a> : <strong>u/—</strong>}{gestiona && <span className="ml-2 text-xs" style={lbl}>· {nombre(r.worker_id)}</span>}</p>
                 <div className="flex gap-3 text-xs">
                   {r.worker_id === profile?.id && <button className="underline" onClick={() => { setAbierto(true); elegirCuenta(r.account_id); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>Editar</button>}
                   {gestiona && <button className="underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(r)}>Borrar</button>}

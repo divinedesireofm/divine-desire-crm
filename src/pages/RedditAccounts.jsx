@@ -22,7 +22,11 @@ const ES = Object.fromEntries(ESTADOS.map((e) => [e.id, e]))
 const estadoDe = (c) => (c.estado && ES[c.estado] ? c.estado : c.activa ? 'activa' : 'inactiva')
 const lbl = { color: 'var(--text-muted)' }
 const VACIO = { username: '', link: '', model_id: '', responsable_id: '', activa: true, estado: 'activa', estado_baneo: 'ninguno', baneo_notas: '', comment_karma: '', post_karma: '', fecha_creacion: '', notas: '' }
-const urlDe = (c) => (c.link && c.link.trim()) || `https://www.reddit.com/user/${c.username}`
+// El perfil se abre siempre con el nombre de usuario; el link manual solo se usa si es un enlace de Reddit distinto (p. ej. old.reddit o /u/)
+const urlDe = (c) => {
+  const l = (c.link || '').trim()
+  return /reddit\.com\//i.test(l) ? (/^https?:\/\//i.test(l) ? l : `https://${l}`) : `https://www.reddit.com/user/${encodeURIComponent(c.username || '')}`
+}
 const edadDe = (c) => antiguedadDe(c.fecha_creacion) || c.antiguedad || ''
 
 const limpiarUsuario = (u) => String(u || '').trim().replace(/^https?:\/\/(www\.|old\.)?reddit\.com\/(user|u)\//i, '').replace(/^\/?u\//i, '').replace(/[\/?#].*$/, '').trim()
@@ -142,7 +146,8 @@ export default function RedditAccounts() {
           <p className="text-sm font-medium mb-3">{editId ? 'Editar cuenta' : 'Nueva cuenta de Reddit'}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
             <div><label className="text-xs mb-1 block" style={lbl}>Usuario (sin u/)</label><Input value={form.username} onChange={(e) => set('username', e.target.value)} placeholder="nombre_de_usuario" /></div>
-            <div className="sm:col-span-2 lg:col-span-1"><label className="text-xs mb-1 block" style={lbl}>Link directo de la cuenta</label><Input value={form.link} onChange={(e) => set('link', e.target.value)} placeholder="https://www.reddit.com/user/…" /></div>
+            <div className="sm:col-span-2 lg:col-span-1"><label className="text-xs mb-1 block" style={lbl}>Link de la cuenta (opcional)</label><Input value={form.link} onChange={(e) => set('link', e.target.value)} placeholder="Opcional: se genera solo con el nombre de usuario" />
+              <p className="text-xs mt-1" style={lbl}>No hace falta: al pulsar el nombre de la cuenta se abre su perfil automáticamente.</p></div>
             <div><label className="text-xs mb-1 block" style={lbl}>Modelo</label>
               <Select value={form.model_id} onChange={(e) => set('model_id', e.target.value)}>
                 <option value="">— Sin modelo —</option>
@@ -211,7 +216,7 @@ export default function RedditAccounts() {
                   return (
                     <tr key={c.id} style={{ borderBottom: '1px solid var(--border)', opacity: estadoDe(c) === 'inactiva' ? 0.6 : 1 }}>
                       <td className="px-3 py-2.5 whitespace-nowrap font-medium">
-                        <a href={urlDe(c)} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent)' }} title="Abrir la cuenta en una pestaña nueva">u/{c.username} ↗</a>
+                        <a href={urlDe(c)} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent)' }} title={`Abrir el perfil de u/${c.username} en Reddit`} data-perfil-reddit>u/{c.username} ↗</a>
                         {c.notas && <span className="block text-xs font-normal max-w-[220px] truncate" style={lbl} title={c.notas}>{c.notas}</span>}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">{nombreModelo(c.model_id) || <span style={lbl}>—</span>}</td>
