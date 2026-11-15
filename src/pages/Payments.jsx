@@ -1492,9 +1492,7 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
         <div className="mt-2 rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
           {!sintetico && <>
             <Tit>Pago base</Tit>
-            {num(p.fact_bruta) > 0 && <Fila k="Facturación bruta" v={money(p.fact_bruta)} color={COLOR_BRUTA} colorK={COLOR_BRUTA} />}
-            <Fila k="Facturación neta" v={money(p.fact_neta)} color={COLOR_NETA} colorK={COLOR_NETA} />
-            <Fila k={`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`} v={money(num(p.fact_neta) * num(p.pct))} />
+            <Fila k={`Facturación neta × ${Math.round(num(p.pct) * 100)}%`} sub={`${money(p.fact_neta)} × ${Math.round(num(p.pct) * 100)}%`} v={money(num(p.fact_neta) * num(p.pct))} colorK={COLOR_NETA} />
           </>}
           {(bs.length > 0 || otrosBonos > 0.009) && <Tit>Bonos (+)</Tit>}
           {bs.map((x) => <Fila key={x.id} k={x.nombre} sub={x.nota || `Cobro ${fmtF(x.fecha_cobro)}`} v={'+' + money(x.monto)} color="var(--success)" />)}
