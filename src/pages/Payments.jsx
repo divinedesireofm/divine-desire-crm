@@ -1396,13 +1396,16 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
           {ts.length > 0 && <Tit>Pago por tareas (+)</Tit>}
           {ts.map((x) => <Fila key={x.id} k={x.titulo || 'Tarea'} sub="Pago por tarea" v={'+' + money(x.monto)} color="var(--success)" />)}
           {(num(p.adelanto) > 0 || entregadas.length > 0) && <Tit>Adelanto entregado (+)</Tit>}
-          {num(p.adelanto) > 0 && <Fila k="Adelanto recibido" v={'+' + money(p.adelanto)} />}
+          {num(p.adelanto) > 0 && <Fila k="Adelanto recibido" sub={`Concedido el ${fmtF(p.fecha)}`} v={'+' + money(p.adelanto)} />}
           {entregadas.map((x) => (
             <Fila key={x.id} k={`Cuota ${x.num}/${x.total} a descontar`} sub={x.aplicado_en ? `Descontada en el pago del ${fmtF(fechaPagoDe(x.aplicado_en) || x.fecha_prevista)}` : `Prevista ${fmtF(x.fecha_prevista)}`} v={money(x.monto)} />
           ))}
           {(descontadas.length > 0 || otrasDeudas > 0.009) && <Tit>Descuentos por deuda (−)</Tit>}
-          {descontadas.map((x) => <Fila key={x.id} k={`Adelanto ${money(totalAdel(x))} : cuota ${x.num}/${x.total}`} v={'−' + money(x.monto)} color="var(--danger)" />)}
-          {otrasDeudas > 0.009 && <Fila k="Otras deudas" v={'−' + money(otrasDeudas)} color="var(--danger)" />}
+          {descontadas.map((x) => {
+            const concedido = fechaPagoDe(x.origen_id || x.adelanto_id)
+            return <Fila key={x.id} k={`Adelanto ${money(totalAdel(x))} : cuota ${x.num}/${x.total}`} sub={[concedido ? `Adelanto concedido el ${fmtF(concedido)}` : '', x.fecha_prevista ? `cuota prevista ${fmtF(x.fecha_prevista)}` : ''].filter(Boolean).join(' · ') || undefined} v={'−' + money(x.monto)} color="var(--danger)" />
+          })}
+          {otrasDeudas > 0.009 && <Fila k="Otras deudas" sub={`Descontadas en este pago (${fmtF(p.fecha)}); sin adelanto enlazado`} v={'−' + money(otrasDeudas)} color="var(--danger)" />}
           {(ss.length > 0 || num(p.penalizacion) !== 0) && <Tit>Sanciones (−)</Tit>}
           {ss.map((x) => <Fila key={x.id} k={x.motivo || 'Sanción'} sub={x.fecha ? fmtF(x.fecha) : undefined} v={num(x.monto) ? '−' + money(Math.abs(num(x.monto))) : '—'} color="var(--danger)" />)}
           {ss.length === 0 && num(p.penalizacion) !== 0 && <Fila k="Sanciones" v={'−' + money(Math.abs(num(p.penalizacion)))} color="var(--danger)" />}
