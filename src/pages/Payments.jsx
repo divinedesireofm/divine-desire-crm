@@ -911,9 +911,9 @@ function PagosAdmin({ area = 'chatting' }) {
         {cargando ? <p className="p-6 text-sm" style={lbl}>Cargando…</p> : filasTabla.length === 0 ? (
           <p className="p-6 text-sm text-center" style={lbl}>No hay pagos registrados{cuentaSel ? ' para esta cuenta' : ''}.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="tabla-pagos-scroll" data-tabla-pagos style={{ overflow: 'scroll', maxHeight: '60vh', minHeight: 320 }}>
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 z-10" style={{ background: 'var(--panel)' }}>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {['Fecha', ...(sel === 'todas' ? [IG ? 'Persona' : 'Chatter'] : []), 'Bruta', 'Neta', '%', 'Pago base', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Manager', 'Tareas', 'Total', 'Estado', 'Notas', ''].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={lbl}>{h}</th>
