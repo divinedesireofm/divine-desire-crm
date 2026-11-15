@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
@@ -192,6 +192,7 @@ function PagosAdmin({ area = 'chatting' }) {
   const [editId, setEditId] = useState(null)
   const [cform, setCform] = useState(null)     // formulario de cuenta
   const [msg, setMsg] = useState('')
+  const [notaAbierta, setNotaAbierta] = useState(null) // notas completas de un pago (modal «Ver más»)
   const [verComoChatter, setVerComoChatter] = useState(null) // pago cuya vista de chatter se previsualiza
   const [tareasPrev, setTareasPrev] = useState(null) // mismos datos de tareas que lee el chatter
   const resumenMgr = (f) => (f ? { base: f.c.base, descuento: f.c.descuento, dias: f.c.dias, trabajados: f.c.trabajados, tareas: f.sumaT, ajuste: f.ajuste, total: f.total, desde: f.pr.desde, hasta: f.pr.hasta } : null)
@@ -607,21 +608,35 @@ function PagosAdmin({ area = 'chatting' }) {
   const filaPagada = (fila) => (fila.tipo === 'tar' ? fila.lista.every((t) => t.pagado_at) : fila.tipo === 'mgr' ? !!fila.f.p : fila.p.estado === 'Pagado')
   const totalesDia = {}
   filasTabla.forEach((f) => { const t = (totalesDia[f.fecha] = totalesDia[f.fecha] || { total: 0, pagado: 0, n: 0, nPag: 0 }); const v = totalFila(f); t.total = r2(t.total + v); if (filaPagada(f)) { t.pagado = r2(t.pagado + v); t.nPag += 1 } t.n += 1 })
-  // Nube a la izquierda con lo que hay que pagar ese día (solo en la primera fila de cada fecha)
-  const nubeDia = (fila, idx) => {
+  // Barra de cabecera de cada fecha: total a pagar ese día, lo ya pagado y lo que queda (primera fila de cada fecha)
+  const cabeceraDia = (fila, idx) => {
     if (idx > 0 && filasTabla[idx - 1].fecha === fila.fecha) return null
     const t = totalesDia[fila.fecha]
     const pend = r2(t.total - t.pagado)
     const todo = t.n > 0 && t.nPag === t.n
     const verde = 'var(--success)'
     const col = todo ? verde : 'var(--accent)'
+    const pct = t.total > 0 ? Math.min(100, Math.round((t.pagado / t.total) * 100)) : todo ? 100 : 0
+    const Chip = ({ k, v, c, strong }) => <span className="inline-flex items-baseline gap-1.5 rounded-full px-3 py-1 text-xs" style={{ background: `color-mix(in srgb, ${c} 12%, transparent)`, color: c }}>{k}<strong className={`tabular-nums ${strong ? 'text-sm' : ''}`}>{v}</strong></span>
     return (
-      <span data-nube-dia data-nube-estado={todo ? 'pagado' : t.pagado > 0 ? 'parcial' : 'pendiente'} className="inline-block text-[11px] leading-tight rounded-2xl px-3 py-1.5 mb-1.5" style={{ background: `color-mix(in srgb, ${col} 14%, transparent)`, color: col, boxShadow: `0 2px 10px color-mix(in srgb, ${col} 22%, transparent)`, border: `1px solid color-mix(in srgb, ${col} 35%, transparent)` }}>
-        ☁ {todo ? '✓ Pagado' : 'Total a pagar'}<span className="block text-sm font-semibold tabular-nums gold-text">{money(t.total)}</span>
-        {!todo && t.pagado > 0 && <span className="block" style={{ color: verde }}>Pagado −{money(t.pagado)}</span>}
-        {!todo && t.pagado > 0 && <span className="block font-semibold" data-nube-pendiente>Pendiente {money(pend)}</span>}
-        <span style={{ opacity: 0.75 }}>{t.nPag} de {t.n} {t.n === 1 ? 'pagado' : 'pagados'}</span>
-      </span>
+      <tr data-nube-dia data-nube-estado={todo ? 'pagado' : t.pagado > 0 ? 'parcial' : 'pendiente'}>
+        <td colSpan={99} className="px-3 pt-4 pb-1.5">
+          <div className="flex items-center gap-3 flex-wrap rounded-xl px-4 py-2" style={{ background: `color-mix(in srgb, ${col} 8%, var(--panel))`, border: `1px solid color-mix(in srgb, ${col} 30%, transparent)` }}>
+            <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>☁ {fmtF(fila.fecha)}</span>
+            <Chip k="Total a pagar" v={money(t.total)} c="var(--accent)" strong />
+            {todo
+              ? <Chip k="✓" v="Pagado" c={verde} strong />
+              : <>
+                  {t.pagado > 0 && <Chip k="Pagado" v={'−' + money(t.pagado)} c={verde} />}
+                  <Chip k="Pendiente" v={money(pend)} c="var(--gold)" strong />
+                </>}
+            <span className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              {t.nPag} de {t.n} {t.n === 1 ? 'pagado' : 'pagados'}
+              <span className="inline-block w-24 h-1.5 rounded-full overflow-hidden" style={{ background: 'color-mix(in srgb, var(--text-muted) 25%, transparent)' }}><span className="block h-full" style={{ width: pct + '%', background: verde }} /></span>
+            </span>
+          </div>
+        </td>
+      </tr>
     )
   }
 
@@ -907,6 +922,8 @@ function PagosAdmin({ area = 'chatting' }) {
               </thead>
               <tbody>
                 {filasTabla.map((fila, idx) => {
+                  const cabDia = cabeceraDia(fila, idx)
+                  const filaEl = (() => {
                   const celda = (v) => (num(v) ? money(v) : <span style={lbl}>—</span>)
                   // la línea es algo más gruesa cuando el siguiente pago es de otra fecha
                   const sig = filasTabla[idx + 1]
@@ -935,7 +952,7 @@ function PagosAdmin({ area = 'chatting' }) {
                     const pagadas = fila.lista.every((t) => t.pagado_at)
                     return (
                       <tr key={'t' + fila.pid + fila.fecha} style={{ borderBottom: bordeFila, background: 'color-mix(in srgb, var(--gold) 5%, transparent)' }}>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{nubeDia(fila, idx)}{nubeDia(fila, idx) && <br />}{fmtF(fila.fecha)}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(fila.fecha)}</td>
                         {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{perfiles.find((x) => x.id === fila.pid)?.full_name || '—'}</td>}
                         {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
                         <td className="px-3 py-2.5" style={lbl}>—</td>
@@ -953,7 +970,7 @@ function PagosAdmin({ area = 'chatting' }) {
                     const f = fila.f
                     return (
                       <tr key={'m' + f.mg.id + f.pr.pago} style={{ borderBottom: bordeFila, background: 'color-mix(in srgb, var(--accent) 5%, transparent)' }}>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{nubeDia(fila, idx)}{nubeDia(fila, idx) && <br />}{fmtF(f.pr.pago)}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(f.pr.pago)}</td>
                         {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{f.mg.full_name}</td>}
                         {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
                         <td className="px-3 py-2.5">{celdaMgr(f, true)}</td>
@@ -974,7 +991,7 @@ function PagosAdmin({ area = 'chatting' }) {
                   const tPend = r2((ti ? sumaT(ti.pend) : 0) + sumaT(bExtra))
                   return (
                     <tr key={p.id} style={{ borderBottom: bordeFila }}>
-                      <td className="px-3 py-2.5 whitespace-nowrap">{nubeDia(fila, idx)}{nubeDia(fila, idx) && <br />}{fmtF(p.fecha)}{textoPeriodo(p) && <span className="block text-[11px]" style={lbl} data-periodo-tabla>{textoPeriodo(p)}</span>}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(p.fecha)}{textoPeriodo(p) && <span className="block text-[11px]" style={lbl} data-periodo-tabla>{textoPeriodo(p)}</span>}</td>
                       {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{cuentaDe(p.account_id)?.nombre}</td>}
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_bruta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
@@ -992,9 +1009,9 @@ function PagosAdmin({ area = 'chatting' }) {
                       <td className="px-3 py-2.5">
                         {p.estado === 'Pagado'
                           ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--success) 15%, transparent)', color: 'var(--success)' }}>Pagado</span>
-                          : <button onClick={() => marcarPagado(p)} title="Marcar como pagado" className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>Pendiente ✓</button>}
+                          : <button onClick={() => marcarPagado(p)} title="Marcar como pagado" className="text-xs px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>Pendiente ✓</button>}
                       </td>
-                      <td className="px-3 py-2.5 text-xs max-w-[320px]" style={lbl}>{notasDe(p)}</td>
+                      <td className="px-3 py-2.5 text-xs" style={lbl}>{(() => { const n = notasDe(p); if (!n) return null; return <span className="flex items-center gap-1.5 max-w-[240px]"><span className="truncate" title={n}>{n}</span>{n.length > 34 && <button type="button" data-notas-ver-mas onClick={() => setNotaAbierta({ titulo: `${cuentaDe(p.account_id)?.nombre || ''} · ${fmtF(p.fecha)}`, texto: n })} className="whitespace-nowrap hover:underline shrink-0" style={{ color: 'var(--accent)' }}>Ver más</button>}</span> })()}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs">
                         <button onClick={() => abrirVistaChatter(p)} data-ver-como-chatter className="hover:underline mr-3" style={{ color: 'var(--accent)' }} title="Ver el desglose tal como lo verá el chatter">Ver</button>
                         <button onClick={() => editarPago(p)} className="hover:underline mr-3" style={{ color: 'var(--accent)' }}>Editar</button>
@@ -1002,6 +1019,8 @@ function PagosAdmin({ area = 'chatting' }) {
                       </td>
                     </tr>
                   )
+                  })()
+                  return <Fragment key={idx + '|' + fila.fecha}>{cabDia}{filaEl}</Fragment>
                 })}
               </tbody>
             </table>
@@ -1009,6 +1028,15 @@ function PagosAdmin({ area = 'chatting' }) {
         )}
       </Panel>
       </>)}
+      {notaAbierta && (
+        <div onClick={() => setNotaAbierta(null)} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }} data-notas-modal>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg rounded-xl p-5" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
+            <p className="text-sm font-semibold mb-2">Notas · {notaAbierta.titulo}</p>
+            <ul className="text-sm space-y-1.5 max-h-[60vh] overflow-y-auto" style={{ color: 'var(--text)' }}>{notaAbierta.texto.split(' · ').map((t, i) => <li key={i}>{t}</li>)}</ul>
+            <div className="mt-4 text-right"><Button variant="ghost" onClick={() => setNotaAbierta(null)}>Cerrar</Button></div>
+          </div>
+        </div>
+      )}
       {verComoChatter && (
         <div onClick={() => setVerComoChatter(null)} className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.75)' }} data-vista-chatter>
           <div className="w-full max-w-xl my-6" onClick={(e) => e.stopPropagation()}>
