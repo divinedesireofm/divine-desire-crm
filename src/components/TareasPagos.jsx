@@ -24,6 +24,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
   const [tasks, setTasks] = useState([])
   const [items, setItems] = useState([])
   const [personas, setPersonas] = useState([])
+  const [idsChatter, setIdsChatter] = useState(null) // quién tiene el rol de chatter (solo ellos pueden recibir tareas en el área de chatting)
   const [form, setForm] = useState(null)
   const [msg, setMsg] = useState('')
   const [cargando, setCargando] = useState(true)
@@ -40,9 +41,15 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
     const pp = await supabase.from('pay_task_papelera').select('*').eq('area', area).order('eliminado_at', { ascending: false }).limit(200)
     setPapelera(pp.error ? [] : (pp.data || []))
     setPersonas((pr.data || []).filter((p) => p.active !== false && !p.extrabajador))
+    if (area === 'chatting') {
+      const ur = await supabase.from('user_roles').select('user_id').eq('role', 'chatter')
+      if (!ur.error) setIdsChatter(new Set((ur.data || []).map((r) => r.user_id)))
+    }
     setCargando(false)
   }
   useEffect(() => { cargar() }, [])
+  // En chatting, el responsable solo puede ser un chatter (se mantiene el actual al editar una tarea antigua)
+  const elegibles = personas.filter((p) => !idsChatter || idsChatter.has(p.id) || p.id === form?.responsable_id)
   const nombre = (id) => personas.find((p) => p.id === id)?.full_name || 'Sin responsable'
   const tareaDe = (id) => tasks.find((t) => t.id === id)
   const estadoItem = (i) => (i.aplicado_en ? 'incluido' : i.pagado_at ? 'pagado' : 'pendiente')
@@ -231,7 +238,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div><label className="text-xs block mb-1" style={lbl}>Tarea</label><Input value={form.titulo} onChange={(e) => set({ titulo: e.target.value })} placeholder="Ej.: Edición de reels de la semana" /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Responsable</label>
-                <Select value={form.responsable_id} onChange={(e) => set({ responsable_id: e.target.value })}><option value="">— elige —</option>{personas.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select></div>
+                <Select value={form.responsable_id} onChange={(e) => set({ responsable_id: e.target.value })}><option value="">— elige —</option>{elegibles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select>{area === 'chatting' && <p className="text-[11px] mt-1" style={lbl}>Solo aparecen los chatters.</p>}</div>
               <div><label className="text-xs block mb-1" style={lbl}>{form.tipo === 'puntual' ? 'Importe a pagar ($)' : form.tipo === 'quincenal' ? 'Coste mensual ($, se reparte entre los dos días de pago)' : 'Importe de cada pago ($, con todos los días trabajados)'}</label><MoneyInput value={form.monto} onChange={(e) => set({ monto: e.target.value })} />
                 {form.tipo === 'quincenal' && num(form.monto) > 0 && <p className="text-xs mt-1" style={{ color: 'var(--accent)' }} data-desglose-quincenal>Se pagará {money(r2(num(form.monto) / 2))} el día {form.q1 || '?'} y {money(r2(num(form.monto) / 2))} el día {form.q2 || '?'} de cada mes.</p>}</div>
               <div><label className="text-xs block mb-1" style={lbl}>Tipo</label>
