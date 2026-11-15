@@ -445,7 +445,7 @@ function PagosAdmin({ area = 'chatting' }) {
   async function pagarElResto(p) {
     try {
       const perfilId = cuentaDe(p.account_id)?.profile_id
-      const fm = perfilId ? filasMgr.find((f) => f.mg.id === perfilId && f.pr.pago === p.fecha) : null
+      const fm = perfilId ? mgrDe(perfilId, p.fecha) : null
       if (fm && !fm.p?.pagado) { const r = await registrarPagoManager(fm); if (r.error) setMsg('El pago se marcó, pero no el de manager: ' + r.error.message); else if (r.aviso) setMsg(r.aviso) }
       const pend = tareasInfo.porPago[p.id]?.pend || []
       if (pend.length) await supabase.from('pay_task_items').update({ pagado_at: new Date().toISOString() }).in('id', pend.map((t) => t.id))
@@ -526,7 +526,14 @@ function PagosAdmin({ area = 'chatting' }) {
   // Pagos de manager (fecha exacta + importe exacto). Solo se rellena para quien es manager; para el resto la celda queda bloqueada.
   const filasMgr = useMemo(() => (datosMgr ? unicasTareas(calcularFilasManagers(datosMgr, hoyISO())) : []), [datosMgr])
   const idsManager = useMemo(() => new Set((datosMgr?.managers || []).map((m) => m.id)), [datosMgr])
-  const mgrDe = (profileId, fecha) => (profileId ? filasMgr.find((f) => f.mg.id === profileId && f.pr.pago === fecha) : null)
+  // Pago de manager de ese día; si no hay uno exacto, el de los 14 días anteriores que no pertenezca a otro pago de esa persona
+  const mgrDe = (profileId, fecha) => {
+    if (!profileId) return null
+    const exacto = filasMgr.find((f) => f.mg.id === profileId && f.pr.pago === fecha)
+    if (exacto) return exacto
+    const ids = cuentas.filter((c) => c.profile_id === profileId).map((c) => c.id)
+    return filasMgr.filter((f) => f.mg.id === profileId && f.pr.pago < fecha && difDias(fecha, f.pr.pago) <= CICLO_DIAS && !pagos.some((q) => ids.includes(q.account_id) && q.fecha >= f.pr.pago && q.fecha < fecha)).sort((a, b) => b.pr.pago.localeCompare(a.pr.pago))[0] || null
+  }
   // ---------- columna «Tareas» ----------
   // Cobros de tareas por persona y día. Los de quien es manager van en su columna Manager (no se cuentan dos veces).
   const hoyS = hoyISO()
@@ -540,8 +547,14 @@ function PagosAdmin({ area = 'chatting' }) {
     items.forEach((t) => {
       if (t.aplicado_en && t.aplicado_tipo !== 'manager') { cae(t.aplicado_en).incl.push(t); return }
       if (t.aplicado_en) return
-      if (t.pagado_at) { if (t.fecha_pago >= sumarDias(hoyS, -120)) sueltas.push(t); return }
       const ids = cuentasDe(t.responsable_id)
+      if (t.pagado_at) {
+        // ya cobrada aparte: si cae dentro del ciclo de un pago registrado, cuenta como incluida en ese pago
+        const d = pagos.filter((x) => ids.includes(x.account_id) && x.fecha >= t.fecha_pago && difDias(x.fecha, t.fecha_pago) <= CICLO_DIAS).sort((a, b) => a.fecha.localeCompare(b.fecha))[0]
+        if (d) cae(d.id).pend.push(t)
+        else if (t.fecha_pago >= sumarDias(hoyS, -120)) sueltas.push(t)
+        return
+      }
       // un pago ya registrado ese mismo día (aunque esté Pagado) lo absorbe; si no, el siguiente pago pendiente
       const destino = pagos.filter((x) => ids.includes(x.account_id) && x.fecha >= t.fecha_pago && difDias(x.fecha, t.fecha_pago) <= CICLO_DIAS).sort((a, b) => a.fecha.localeCompare(b.fecha))[0] || pagos.filter((x) => ids.includes(x.account_id) && x.estado === 'Pendiente' && x.fecha >= t.fecha_pago).sort((a, b) => a.fecha.localeCompare(b.fecha))[0]
       if (destino) cae(destino.id).pend.push(t)
@@ -564,7 +577,7 @@ function PagosAdmin({ area = 'chatting' }) {
       const cs = cuentas.filter((c) => c.profile_id === f.mg.id)
       if (!cs.length && sel !== 'todas') return
       if (sel !== 'todas' && !cs.some((c) => c.id === sel)) return
-      const hay = pagos.some((x) => cs.some((c) => c.id === x.account_id) && x.fecha === f.pr.pago)
+      const hay = pagos.some((x) => cs.some((c) => c.id === x.account_id) && mgrDe(f.mg.id, x.fecha) === f)
       if (!hay) out.push({ tipo: 'mgr', fecha: f.pr.pago, f })
     })
     const grupos = {}
@@ -1579,8 +1592,10 @@ function MisPagos() {
   }
   const fechaMgr = (x) => x.fecha_pago_real || x.fecha_pago
   const mios = perMgr.filter((x) => !x.manager_id || x.manager_id === profile?.id)
-  const soloMgr = mios.filter((x) => !(filas || []).some((p) => p.fecha === fechaMgr(x)))
-  const lista = [...(filas || []).map((p) => ({ k: p.id, fecha: p.fecha, p, mgr: (() => { const x = mios.find((y) => fechaMgr(y) === p.fecha); return x ? mgrDeFila(x) : null })() })),
+  // pago de manager que le toca a un pago: el del mismo día o, si no, el de los 14 días anteriores que no sea de otro pago
+  const mgrDelPago = (p) => mios.find((y) => fechaMgr(y) === p.fecha) || mios.filter((y) => fechaMgr(y) < p.fecha && difDias(p.fecha, fechaMgr(y)) <= CICLO_DIAS && !(filas || []).some((q) => q.id !== p.id && q.fecha >= fechaMgr(y) && q.fecha < p.fecha)).sort((a, b) => String(fechaMgr(b)).localeCompare(String(fechaMgr(a))))[0]
+  const soloMgr = mios.filter((x) => !(filas || []).some((p) => mgrDelPago(p) === x))
+  const lista = [...(filas || []).map((p) => ({ k: p.id, fecha: p.fecha, p, mgr: (() => { const x = mgrDelPago(p); return x ? mgrDeFila(x) : null })() })),
     ...soloMgr.map((x) => ({ k: 'm' + x.id, fecha: fechaMgr(x), mgr: mgrDeFila(x), p: { id: 'mgr-' + x.id, fecha: fechaMgr(x), fact_neta: 0, pct: 0, bonos: 0, adelanto: 0, penalizacion: 0, deuda: 0, estado: 'Pagado' }, sintetico: true }))]
     .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
   // bonos creados después del pago con cobro ese mismo día: ya cuentan dentro del total
