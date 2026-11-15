@@ -603,16 +603,24 @@ function PagosAdmin({ area = 'chatting' }) {
     const fm = perfilId && idsManager.has(perfilId) ? mgrDe(perfilId, p.fecha) : null
     return r2(calcPago(p) + (fm ? fm.total : 0) + sumaT(tareasInfo.porPago[p.id]?.pend || []) + sumaT(bonosExtraDe(p)))
   }
+  // ¿esta fila ya está cobrada? (pago marcado como Pagado, pago de manager registrado o tareas ya cobradas)
+  const filaPagada = (fila) => (fila.tipo === 'tar' ? fila.lista.every((t) => t.pagado_at) : fila.tipo === 'mgr' ? !!fila.f.p : fila.p.estado === 'Pagado')
   const totalesDia = {}
-  filasTabla.forEach((f) => { const t = (totalesDia[f.fecha] = totalesDia[f.fecha] || { total: 0, n: 0 }); t.total = r2(t.total + totalFila(f)); t.n += 1 })
+  filasTabla.forEach((f) => { const t = (totalesDia[f.fecha] = totalesDia[f.fecha] || { total: 0, pagado: 0, n: 0, nPag: 0 }); const v = totalFila(f); t.total = r2(t.total + v); if (filaPagada(f)) { t.pagado = r2(t.pagado + v); t.nPag += 1 } t.n += 1 })
   // Nube a la izquierda con lo que hay que pagar ese día (solo en la primera fila de cada fecha)
   const nubeDia = (fila, idx) => {
     if (idx > 0 && filasTabla[idx - 1].fecha === fila.fecha) return null
     const t = totalesDia[fila.fecha]
+    const pend = r2(t.total - t.pagado)
+    const todo = t.n > 0 && t.nPag === t.n
+    const verde = 'var(--success)'
+    const col = todo ? verde : 'var(--accent)'
     return (
-      <span data-nube-dia className="inline-block text-[11px] leading-tight rounded-2xl px-3 py-1.5 mb-1.5" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', boxShadow: '0 2px 10px color-mix(in srgb, var(--accent) 22%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)' }}>
-        ☁ Total a pagar<span className="block text-sm font-semibold tabular-nums gold-text">{money(t.total)}</span>
-        <span style={{ opacity: 0.75 }}>{t.n} {t.n === 1 ? 'pago' : 'pagos'}</span>
+      <span data-nube-dia data-nube-estado={todo ? 'pagado' : t.pagado > 0 ? 'parcial' : 'pendiente'} className="inline-block text-[11px] leading-tight rounded-2xl px-3 py-1.5 mb-1.5" style={{ background: `color-mix(in srgb, ${col} 14%, transparent)`, color: col, boxShadow: `0 2px 10px color-mix(in srgb, ${col} 22%, transparent)`, border: `1px solid color-mix(in srgb, ${col} 35%, transparent)` }}>
+        ☁ {todo ? '✓ Pagado' : 'Total a pagar'}<span className="block text-sm font-semibold tabular-nums gold-text">{money(t.total)}</span>
+        {!todo && t.pagado > 0 && <span className="block" style={{ color: verde }}>Pagado −{money(t.pagado)}</span>}
+        {!todo && t.pagado > 0 && <span className="block font-semibold" data-nube-pendiente>Pendiente {money(pend)}</span>}
+        <span style={{ opacity: 0.75 }}>{t.nPag} de {t.n} {t.n === 1 ? 'pagado' : 'pagados'}</span>
       </span>
     )
   }
@@ -1147,9 +1155,12 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
   // ---- editar un adelanto junto con sus cuotas ----
   const [edit, setEdit] = useState(null) // { clave, fecha, nota, filas:[{id, monto, fecha, aplicado}], esPago }
   const [errEdit, setErrEdit] = useState('')
+  // una cuota está bloqueada si ya se descontó o si en su fecha ya hay un pago de esa persona marcado como Pagado
+  const fechaPagada = (x) => pagos.some((p) => p.account_id === x.account_id && p.fecha === x.fecha_prevista && p.estado === 'Pagado')
+  const fechaPagadaDe = (accountId, f) => pagos.some((p) => p.account_id === accountId && p.fecha === f && p.estado === 'Pagado')
   function abrirEdicion(g) {
     setErrEdit('')
-    setEdit({ clave: g.clave, esPago: !!g.o, fecha: g.fechaAdelanto || hoyISO(), nota: g.nota || '', filas: g.cs.map((x) => ({ id: x.id, monto: String(x.monto), fecha: x.fecha_prevista || '', aplicado: !!x.aplicado_en, num: x.num })) })
+    setEdit({ clave: g.clave, esPago: !!g.o, fecha: g.fechaAdelanto || hoyISO(), nota: g.nota || '', filas: g.cs.map((x) => ({ id: x.id, monto: String(x.monto), fecha: x.fecha_prevista || '', aplicado: !!x.aplicado_en || fechaPagada(x), motivo: x.aplicado_en ? 'Ya descontada' : 'Su fecha ya está pagada', num: x.num })) })
   }
   const setFilaEdit = (i, c) => setEdit((e) => ({ ...e, filas: e.filas.map((f, j) => (j === i ? { ...f, ...c } : f)) }))
   async function guardarEdicion(g) {
@@ -1157,6 +1168,8 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
     if (!edit.filas.length) { setErrEdit('El adelanto necesita al menos una cuota.'); return }
     if (edit.filas.some((f) => !f.fecha || !(num(f.monto) > 0))) { setErrEdit('Cada cuota necesita fecha e importe.'); return }
     if (!edit.esPago && !edit.fecha) { setErrEdit('Indica la fecha del adelanto.'); return }
+    const mala = edit.filas.find((f) => !f.aplicado && fechaPagadaDe(g.cs[0].account_id, f.fecha))
+    if (mala) { setErrEdit(`La fecha ${fmtF(mala.fecha)} ya está marcada como pagada: elige otra fecha para esa cuota.`); return }
     setGuardando(true)
     const T = supabase.from('payout_advance_installments')
     const base = g.cs[0]
@@ -1248,7 +1261,7 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
                   <div key={f.id || 'n' + i} className="flex items-center gap-2 py-1 flex-wrap text-sm">
                     <span className="w-16" style={lbl}>Cuota {i + 1}</span>
                     {f.aplicado
-                      ? <><span className="tabular-nums w-24">−{money(f.monto)}</span><span className="text-xs" style={{ color: 'var(--success)' }}>Ya descontada (no se puede cambiar)</span></>
+                      ? <><span className="tabular-nums w-24">−{money(f.monto)}</span><span className="text-xs" style={{ color: 'var(--success)' }}>{f.motivo || 'Ya descontada'} · no se puede cambiar</span></>
                       : <>
                           <div className="w-32"><MoneyInput value={f.monto} onChange={(e) => setFilaEdit(i, { monto: e.target.value })} /></div>
                           <input type="date" value={f.fecha} onChange={(e) => setFilaEdit(i, { fecha: e.target.value })} className="rounded px-1.5 py-1 text-xs" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }} />
@@ -1276,7 +1289,8 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
                     : <>
                         <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>Pendiente</span>
                         <span className="text-xs ml-auto flex items-center gap-1" style={lbl}>prevista
-                          <input type="date" value={x.fecha_prevista} onChange={(e) => cambiarFecha(x, e.target.value)} className="rounded px-1.5 py-0.5 text-xs" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+                          {fechaPagada(x) && <span className="text-xs" style={{ color: 'var(--success)' }}>🔒 fecha pagada</span>}
+                          <input type="date" disabled={fechaPagada(x)} value={x.fecha_prevista} onChange={(e) => { if (fechaPagadaDe(x.account_id, e.target.value)) { alert('Esa fecha ya está marcada como pagada. Elige otra.'); return } cambiarFecha(x, e.target.value) }} className="rounded px-1.5 py-0.5 text-xs" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)' }} />
                         </span>
                       </>}
                 </div>
