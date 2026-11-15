@@ -17,6 +17,8 @@ import { cargarDatosManagers, calcularFilasManagers, unicasTareas, registrarPago
 // ---------- utilidades ----------
 const r2 = (n) => Math.round(n * 100) / 100
 // colores propios para facturación bruta y neta (que no se confundan con los pagos)
+// «Periodo: 26/10/26 → 08/11/26» (vacío si el pago no lo tiene)
+const textoPeriodo = (p) => (p && p.periodo_desde && p.periodo_hasta ? `${fmtF(p.periodo_desde)} → ${fmtF(p.periodo_hasta)}` : p && (p.periodo_desde || p.periodo_hasta) ? fmtF(p.periodo_desde || p.periodo_hasta) : '')
 const COLOR_BRUTA = '#38bdf8'
 const COLOR_NETA = '#a78bfa'
 const money = (n) => (n < 0 ? '−' : '') + '$' + Math.abs(num(n)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -29,7 +31,8 @@ export function calcPago(p) {
   return r2(num(p.fact_neta) * num(p.pct) + num(p.bonos) + num(p.adelanto) + num(p.penalizacion) + num(p.deuda))
 }
 
-const VACIO = { account_id: '', fecha: hoyISO(), bruta: '', neta: '', pct: '', bonos: '', adelanto: '', penalizacion: '', deuda: '', notas: '', estado: 'Pendiente', cuotasN: 2, cuotasFilas: [], adelantoOriginal: 0, selC: [] }
+const periodoPorDefecto = (fecha) => (fecha ? { periodo_desde: sumarDias(fecha, -14), periodo_hasta: sumarDias(fecha, -1) } : { periodo_desde: '', periodo_hasta: '' })
+const VACIO = { account_id: '', fecha: hoyISO(), bruta: '', neta: '', pct: '', bonos: '', adelanto: '', penalizacion: '', deuda: '', notas: '', periodo_desde: '', periodo_hasta: '', estado: 'Pendiente', cuotasN: 2, cuotasFilas: [], adelantoOriginal: 0, selC: [] }
 
 // ---------- calendario de cobros ----------
 // Pago de nómina: un lunes sí y otro no (cada 14 días a partir del último lunes de pago registrado).
@@ -309,7 +312,7 @@ function PagosAdmin({ area = 'chatting' }) {
     const c = cuentaId ? cuentaDe(cuentaId) : sel !== 'todas' ? cuentaDe(sel) : cuentas.find((x) => x.activa !== false) || cuentas[0]
     const fecha = fechaIni || hoyISO()
     setEditId(null)
-    setForm({ ...VACIO, fecha, account_id: c?.id || '', pct: c?.pct_defecto ?? 0.15, ...(c ? seleccionPorDefecto(c.id, fecha) : { selB: [], selS: [], selC: [], selT: [] }) })
+    setForm({ ...VACIO, ...periodoPorDefecto(fecha), fecha, account_id: c?.id || '', pct: c?.pct_defecto ?? 0.15, ...(c ? seleccionPorDefecto(c.id, fecha) : { selB: [], selS: [], selC: [], selT: [] }) })
     setVista('pagos')
   }
   function editarPago(p) {
@@ -317,7 +320,7 @@ function PagosAdmin({ area = 'chatting' }) {
     setForm({
       account_id: p.account_id, fecha: p.fecha, bruta: p.fact_bruta != null ? fmtNum(p.fact_bruta) : '', neta: p.fact_neta != null ? fmtNum(p.fact_neta) : '', pct: p.pct ?? '',
       bonos: Math.max(0, r2(num(p.bonos) - sumTAplicadas(p.id))) ? fmtNum(Math.max(0, r2(num(p.bonos) - sumTAplicadas(p.id)))) : '', adelanto: p.adelanto ? fmtNum(p.adelanto) : '', penalizacion: Math.abs(num(p.penalizacion)) ? fmtNum(Math.abs(num(p.penalizacion))) : '', deuda: Math.abs(num(p.deuda)) ? fmtNum(Math.abs(num(p.deuda))) : '',
-      notas: p.notas || '', estado: p.estado,
+      notas: p.notas || '', periodo_desde: p.periodo_desde || '', periodo_hasta: p.periodo_hasta || '', estado: p.estado,
       selB: bonos.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
       selS: sanciones.filter((x) => x.payout_id === p.id).map((x) => x.id),
       selC: cuotas.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
@@ -337,7 +340,8 @@ function PagosAdmin({ area = 'chatting' }) {
     setF({ account_id: id, pct: c?.pct_defecto ?? form.pct, ...(editId ? { selB: [], selS: [], selC: [], selT: [] } : seleccionPorDefecto(id, form.fecha)) })
   }
   function alCambiarFecha(fecha) {
-    setF({ fecha, ...(editId ? {} : seleccionPorDefecto(form.account_id, fecha)) })
+    const eraDefecto = !form.periodo_desde || (form.periodo_desde === periodoPorDefecto(form.fecha).periodo_desde && form.periodo_hasta === periodoPorDefecto(form.fecha).periodo_hasta)
+    setF({ fecha, ...(eraDefecto && !editId ? periodoPorDefecto(fecha) : {}), ...(editId ? {} : seleccionPorDefecto(form.account_id, fecha)) })
   }
   // Al marcar/desmarcar un bono o sanción, el importe se suma/resta del campo correspondiente
   function alternarBono(b) {
@@ -375,11 +379,12 @@ function PagosAdmin({ area = 'chatting' }) {
       pct: form.pct === '' ? null : num(form.pct), bonos: r2(num(form.bonos) + sumTSel(form)), adelanto: num(form.adelanto),
       penalizacion: -Math.abs(num(form.penalizacion)), deuda: -Math.abs(num(form.deuda)),
       notas: form.notas.trim() || null, estado: form.estado,
+      ...((form.periodo_desde || form.periodo_hasta || (editId && pagos.find((x) => x.id === editId)?.periodo_desde !== undefined)) ? { periodo_desde: form.periodo_desde || null, periodo_hasta: form.periodo_hasta || null } : {}),
     }
     const { data: guardado, error } = editId
       ? await supabase.from('chatter_payouts').update(payload).eq('id', editId).select().single()
       : await supabase.from('chatter_payouts').insert([payload]).select().single()
-    if (error) { setMsg(error.code === '23505' ? 'Ya existe un pago de esa cuenta en esa fecha. Edítalo o cambia la fecha.' : 'No se pudo guardar: ' + error.message); return }
+    if (error) { setMsg(/periodo_(desde|hasta)/.test(error.message || '') ? 'Falta ejecutar la migración 137 en Supabase (periodo del pago).' : error.code === '23505' ? 'Ya existe un pago de esa cuenta en esa fecha. Edítalo o cambia la fecha.' : 'No se pudo guardar: ' + error.message); return }
     // enlaces: libera lo que antes estaba en este pago y ya no está marcado, y enlaza lo marcado
     const pid = guardado.id
     const prevB = bonos.filter((x) => x.aplicado_en === pid).map((x) => x.id)
@@ -738,6 +743,8 @@ function PagosAdmin({ area = 'chatting' }) {
                   {cuentas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </Select></div>
               <div><label className="text-xs block mb-1" style={lbl}>Fecha del pago</label><Input type="date" value={form.fecha} onChange={(e) => alCambiarFecha(e.target.value)} required /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Periodo desde</label><Input data-periodo-desde type="date" value={form.periodo_desde || ''} onChange={(e) => setF({ periodo_desde: e.target.value })} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>Periodo hasta</label><Input data-periodo-hasta type="date" value={form.periodo_hasta || ''} min={form.periodo_desde || undefined} onChange={(e) => setF({ periodo_hasta: e.target.value })} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Facturación bruta ($)</label><MoneyInput value={form.bruta} onChange={(e) => alCambiarBruta(e.target.value)} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Facturación neta ($) · bruta −20 %</label><MoneyInput value={form.neta} onChange={(e) => alCambiarNeta(e.target.value)} /></div>
               <div><label className="text-xs block mb-1" style={lbl}>% para el chatter (0.15)</label><Input type="number" step="0.01" value={form.pct} onChange={(e) => setF({ pct: e.target.value })} /></div>
@@ -909,7 +916,7 @@ function PagosAdmin({ area = 'chatting' }) {
                   const tPend = ti ? sumaT(ti.pend) : 0
                   return (
                     <tr key={p.id} style={{ borderBottom: bordeFila }}>
-                      <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(p.fecha)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(p.fecha)}{textoPeriodo(p) && <span className="block text-[11px]" style={lbl} data-periodo-tabla>{textoPeriodo(p)}</span>}</td>
                       {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{cuentaDe(p.account_id)?.nombre}</td>}
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_bruta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
@@ -1445,7 +1452,7 @@ function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiert
   return (
     <Panel className="p-5 mb-3">
       <div className="flex justify-between items-center mb-3">
-        <strong>{sintetico ? 'Pago de manager del' : 'Pago del'} {fmtF(p.fecha)}</strong>
+        <strong>{sintetico ? 'Pago de manager del' : 'Pago del'} {fmtF(p.fecha)}{!sintetico && textoPeriodo(p) && <span className="block text-xs font-normal" style={{ color: 'var(--text-muted)' }} data-periodo-tarjeta>Periodo: {textoPeriodo(p)}</span>}</strong>
         <span>{p.estado === 'Pagado' ? 'Pagado' : 'Pendiente'} · <strong className="gold-text">{money(totalFinal)}</strong></span>
       </div>
       <div className="space-y-1.5 text-sm">
@@ -1492,6 +1499,7 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
         <div className="mt-2 rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
           {!sintetico && <>
             <Tit>Pago base</Tit>
+            {textoPeriodo(p) && <Fila k="Periodo del pago" v={textoPeriodo(p)} />}
             <Fila k={`Facturación neta × ${Math.round(num(p.pct) * 100)}%`} sub={`${money(p.fact_neta)} × ${Math.round(num(p.pct) * 100)}%`} v={money(num(p.fact_neta) * num(p.pct))} colorK={COLOR_NETA} />
           </>}
           {(bs.length > 0 || otrosBonos > 0.009) && <Tit>Bonos (+)</Tit>}
