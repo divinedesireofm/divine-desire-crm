@@ -16,6 +16,9 @@ import { cargarDatosManagers, calcularFilasManagers, unicasTareas, registrarPago
 
 // ---------- utilidades ----------
 const r2 = (n) => Math.round(n * 100) / 100
+// colores propios para facturación bruta y neta (que no se confundan con los pagos)
+const COLOR_BRUTA = '#38bdf8'
+const COLOR_NETA = '#a78bfa'
 const money = (n) => (n < 0 ? '−' : '') + '$' + Math.abs(num(n)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmtF = (iso) => { if (!iso) return ''; const [y, m, d] = iso.slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}` }
 const hoyISO = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') }
@@ -1428,7 +1431,8 @@ function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiert
   const sumPend = r2(tareasPend.reduce((t, x) => t + num(x.monto), 0))
   const totalFinal = r2(calcPago(p) + num(mgr?.total) + sumPend)
   const filas = [
-    ['Facturación neta', money(p.fact_neta), !sintetico],
+    ['Facturación bruta', money(p.fact_bruta), !sintetico && num(p.fact_bruta) > 0, COLOR_BRUTA],
+    ['Facturación neta', money(p.fact_neta), !sintetico, COLOR_NETA],
     [`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`, money(num(p.fact_neta) * num(p.pct)), !sintetico],
     ['+ Bonos', money(soloBonos)],
     ['+ Pago por tareas', money(sumT)],
@@ -1445,8 +1449,8 @@ function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiert
         <span>{p.estado === 'Pagado' ? 'Pagado' : 'Pendiente'} · <strong className="gold-text">{money(totalFinal)}</strong></span>
       </div>
       <div className="space-y-1.5 text-sm">
-        {filas.filter(([, v, fijo]) => (fijo === true) || (fijo === undefined && v !== '$0.00')).map(([k, v]) => (
-          <div key={k} className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>{k}</span><strong>{v}</strong></div>
+        {filas.filter(([, v, fijo]) => (fijo === true) || (fijo === undefined && v !== '$0.00')).map(([k, v, , color]) => (
+          <div key={k} className="flex justify-between"><span style={{ color: color || 'var(--text-muted)' }}>{k}</span><strong style={color ? { color } : undefined}>{v}</strong></div>
         ))}
         <div className="flex justify-between pt-2 mt-1 text-base" style={{ borderTop: '1px solid var(--border)' }} data-total-final><span className="font-medium">Total final</span><strong className="gold-text tabular-nums">{money(totalFinal)}</strong></div>
       </div>
@@ -1474,9 +1478,9 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
   // Adelantos que se le dieron antes (o en este mismo pago): sirven para decir de cuándo es la deuda aunque la cuota no esté enlazada
   const adelantosPrevios = adelantosDeCuenta(p.account_id, p.fecha, cuotas, pagos)
   const textoAdelantos = adelantosPrevios.slice(0, 4).map((x) => `${money(x.monto)} el ${fmtF(x.fecha)}`).join(' · ')
-  const Fila = ({ k, v, sub, color }) => (
+  const Fila = ({ k, v, sub, color, colorK }) => (
     <div className="flex justify-between gap-3 py-1" style={{ borderBottom: '1px solid var(--border)' }}>
-      <span>{k}{sub && <span className="block text-[11px]" style={lbl}>{sub}</span>}</span>
+      <span style={colorK ? { color: colorK } : undefined}>{k}{sub && <span className="block text-[11px]" style={lbl}>{sub}</span>}</span>
       <strong className="tabular-nums whitespace-nowrap" style={color ? { color } : undefined}>{v}</strong>
     </div>
   )
@@ -1488,8 +1492,8 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
         <div className="mt-2 rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
           {!sintetico && <>
             <Tit>Pago base</Tit>
-            {num(p.fact_bruta) > 0 && <Fila k="Facturación bruta" v={money(p.fact_bruta)} />}
-            <Fila k="Facturación neta" v={money(p.fact_neta)} />
+            {num(p.fact_bruta) > 0 && <Fila k="Facturación bruta" v={money(p.fact_bruta)} color={COLOR_BRUTA} colorK={COLOR_BRUTA} />}
+            <Fila k="Facturación neta" v={money(p.fact_neta)} color={COLOR_NETA} colorK={COLOR_NETA} />
             <Fila k={`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`} v={money(num(p.fact_neta) * num(p.pct))} />
           </>}
           {(bs.length > 0 || otrosBonos > 0.009) && <Tit>Bonos (+)</Tit>}
