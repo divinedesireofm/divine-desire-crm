@@ -19,6 +19,12 @@ const r2 = (n) => Math.round(n * 100) / 100
 // colores propios para facturación bruta y neta (que no se confundan con los pagos)
 // «Periodo: 26/10/26 → 08/11/26» (vacío si el pago no lo tiene)
 const textoPeriodo = (p) => (p && p.periodo_desde && p.periodo_hasta ? `${fmtF(p.periodo_desde)} → ${fmtF(p.periodo_hasta)}` : p && (p.periodo_desde || p.periodo_hasta) ? fmtF(p.periodo_desde || p.periodo_hasta) : '')
+// Un extra (tarea, bono…) con fecha d entra en el primer pago de esa persona que sea del mismo día o posterior, si está a no más de 14 días (un ciclo)
+const CICLO_DIAS = 14
+function esDeEstePago(p, d, pagos) {
+  if (!d || !p.account_id || d > p.fecha || difDias(p.fecha, d) > CICLO_DIAS) return false
+  return !pagos.some((q) => q.account_id === p.account_id && q.id !== p.id && q.fecha >= d && q.fecha < p.fecha)
+}
 const COLOR_BRUTA = '#38bdf8'
 const COLOR_NETA = '#a78bfa'
 const money = (n) => (n < 0 ? '−' : '') + '$' + Math.abs(num(n)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -537,7 +543,7 @@ function PagosAdmin({ area = 'chatting' }) {
       if (t.pagado_at) { if (t.fecha_pago >= sumarDias(hoyS, -120)) sueltas.push(t); return }
       const ids = cuentasDe(t.responsable_id)
       // un pago ya registrado ese mismo día (aunque esté Pagado) lo absorbe; si no, el siguiente pago pendiente
-      const destino = pagos.find((x) => ids.includes(x.account_id) && x.fecha === t.fecha_pago) || pagos.filter((x) => ids.includes(x.account_id) && x.estado === 'Pendiente' && x.fecha >= t.fecha_pago).sort((a, b) => a.fecha.localeCompare(b.fecha))[0]
+      const destino = pagos.filter((x) => ids.includes(x.account_id) && x.fecha >= t.fecha_pago && difDias(x.fecha, t.fecha_pago) <= CICLO_DIAS).sort((a, b) => a.fecha.localeCompare(b.fecha))[0] || pagos.filter((x) => ids.includes(x.account_id) && x.estado === 'Pendiente' && x.fecha >= t.fecha_pago).sort((a, b) => a.fecha.localeCompare(b.fecha))[0]
       if (destino) cae(destino.id).pend.push(t)
       else if (t.fecha_pago <= sumarDias(hoyS, 20)) sueltas.push(t)
     })
@@ -545,7 +551,7 @@ function PagosAdmin({ area = 'chatting' }) {
   }, [tareas, filasMgr, cuentas, pagos, hoyS])
   const sumaT = (l) => r2(l.reduce((a, t) => a + num(t.monto), 0))
   // Bonos creados después de registrar el pago pero con cobro ese mismo día: cuentan ya dentro del Total
-  const bonosExtraDe = (p) => (p.account_id ? bonos.filter((x) => x.account_id === p.account_id && !x.aplicado_en && x.fecha_cobro === p.fecha) : [])
+  const bonosExtraDe = (p) => (p.account_id ? bonos.filter((x) => x.account_id === p.account_id && !x.aplicado_en && esDeEstePago(p, x.fecha_cobro, pagos)) : [])
   // Todo lo extra que entra en el Total sin estar guardado en el pago: tareas del día + bonos del día
   const extrasDe = (p) => [...(tareasInfo.porPago[p.id]?.pend || []), ...bonosExtraDe(p).map((b) => ({ id: 'b' + b.id, titulo: b.nombre, monto: b.monto, esBono: true, fecha_cobro: b.fecha_cobro }))]
 
@@ -1578,7 +1584,7 @@ function MisPagos() {
     ...soloMgr.map((x) => ({ k: 'm' + x.id, fecha: fechaMgr(x), mgr: mgrDeFila(x), p: { id: 'mgr-' + x.id, fecha: fechaMgr(x), fact_neta: 0, pct: 0, bonos: 0, adelanto: 0, penalizacion: 0, deuda: 0, estado: 'Pagado' }, sintetico: true }))]
     .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
   // bonos creados después del pago con cobro ese mismo día: ya cuentan dentro del total
-  const extrasBonos = (p) => (p.account_id ? bonos.filter((x) => x.account_id === p.account_id && !x.aplicado_en && x.fecha_cobro === p.fecha).map((b) => ({ id: 'b' + b.id, titulo: b.nombre, monto: b.monto, esBono: true, fecha_cobro: b.fecha_cobro })) : [])
+  const extrasBonos = (p) => (p.account_id ? bonos.filter((x) => x.account_id === p.account_id && !x.aplicado_en && esDeEstePago(p, x.fecha_cobro, filas || [])).map((b) => ({ id: 'b' + b.id, titulo: b.nombre, monto: b.monto, esBono: true, fecha_cobro: b.fecha_cobro })) : [])
   const total = r2((filas || []).filter((p) => p.estado === 'Pagado').reduce((s, p) => s + calcPago(p) + extrasBonos(p).reduce((t, x) => t + num(x.monto), 0), 0) + mios.reduce((s, x) => s + num(x.importe_pagado), 0))
   return (
     <div>
