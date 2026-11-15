@@ -1184,11 +1184,14 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
   const [edit, setEdit] = useState(null) // { clave, fecha, nota, filas:[{id, monto, fecha, aplicado}], esPago }
   const [errEdit, setErrEdit] = useState('')
   // una cuota está bloqueada si ya se descontó o si en su fecha ya hay un pago de esa persona marcado como Pagado
+  // Bloqueada: su fecha ya tiene un pago Pagado; o ya está descontada en un pago que ya está Pagado. Si está descontada en un pago aún pendiente, se puede editar.
+  const pagoDe = (id) => pagos.find((p) => p.id === id)
+  const cuotaBloqueada = (x) => (x.aplicado_en ? (pagoDe(x.aplicado_en)?.estado !== 'Pendiente') : fechaPagada(x))
   const fechaPagada = (x) => pagos.some((p) => p.account_id === x.account_id && p.fecha === x.fecha_prevista && p.estado === 'Pagado')
   const fechaPagadaDe = (accountId, f) => pagos.some((p) => p.account_id === accountId && p.fecha === f && p.estado === 'Pagado')
   function abrirEdicion(g) {
     setErrEdit('')
-    setEdit({ clave: g.clave, esPago: !!g.o, fecha: g.fechaAdelanto || hoyISO(), nota: g.nota || '', filas: g.cs.map((x) => ({ id: x.id, monto: String(x.monto), fecha: x.fecha_prevista || '', aplicado: !!x.aplicado_en || fechaPagada(x), motivo: x.aplicado_en ? 'Ya descontada' : 'Su fecha ya está pagada', num: x.num })) })
+    setEdit({ clave: g.clave, esPago: !!g.o, fecha: g.fechaAdelanto || hoyISO(), nota: g.nota || '', filas: g.cs.map((x) => ({ id: x.id, monto: String(x.monto), fecha: x.fecha_prevista || '', aplicado: cuotaBloqueada(x), aplicadoEn: x.aplicado_en || null, montoOrig: num(x.monto), motivo: x.aplicado_en ? 'Descontada en un pago ya pagado' : 'Su fecha ya está pagada', num: x.num })) })
   }
   const setFilaEdit = (i, c) => setEdit((e) => ({ ...e, filas: e.filas.map((f, j) => (j === i ? { ...f, ...c } : f)) }))
   async function guardarEdicion(g) {
@@ -1196,7 +1199,7 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
     if (!edit.filas.length) { setErrEdit('El adelanto necesita al menos una cuota.'); return }
     if (edit.filas.some((f) => !f.fecha || !(num(f.monto) > 0))) { setErrEdit('Cada cuota necesita fecha e importe.'); return }
     if (!edit.esPago && !edit.fecha) { setErrEdit('Indica la fecha del adelanto.'); return }
-    const mala = edit.filas.find((f) => !f.aplicado && fechaPagadaDe(g.cs[0].account_id, f.fecha))
+    const mala = edit.filas.find((f) => !f.aplicado && !f.aplicadoEn && fechaPagadaDe(g.cs[0].account_id, f.fecha))
     if (mala) { setErrEdit(`La fecha ${fmtF(mala.fecha)} ya está marcada como pagada: elige otra fecha para esa cuota.`); return }
     setGuardando(true)
     const T = supabase.from('payout_advance_installments')
@@ -1208,7 +1211,12 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
     const orden = [...fijas, ...pend]
     const total = orden.length
     const idsFinales = new Set(orden.filter((f) => f.id).map((f) => f.id))
-    const borrar = g.cs.filter((x) => !x.aplicado_en && !idsFinales.has(x.id)).map((x) => x.id)
+    const borrarCs = g.cs.filter((x) => !cuotaBloqueada(x) && !idsFinales.has(x.id))
+    const borrar = borrarCs.map((x) => x.id)
+    // cuotas ya descontadas en un pago aún pendiente: lo que cambie hay que reflejarlo en la «Deuda» de ese pago
+    const deltas = {}
+    borrarCs.filter((x) => x.aplicado_en).forEach((x) => { deltas[x.aplicado_en] = r2((deltas[x.aplicado_en] || 0) - num(x.monto)) })
+    orden.filter((f) => f.id && f.aplicadoEn && !f.aplicado).forEach((f) => { const d = r2(num(f.monto) - f.montoOrig); if (d) deltas[f.aplicadoEn] = r2((deltas[f.aplicadoEn] || 0) + d) })
     let res = []
     if (borrar.length) res.push(await T.delete().in('id', borrar))
     for (let i = 0; i < orden.length; i++) {
@@ -1220,6 +1228,10 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
       } else {
         res.push(await T.insert({ account_id: base.account_id, origen_id: base.origen_id || null, adelanto_id: base.adelanto_id || null, ...comunes, num: i + 1, total, monto: num(f.monto), fecha_prevista: f.fecha }))
       }
+    }
+    for (const [pid, d] of Object.entries(deltas)) {
+      const pg = pagoDe(pid); if (!pg || !d) continue
+      res.push(await supabase.from('chatter_payouts').update({ deuda: -Math.max(0, r2(Math.abs(num(pg.deuda)) + d)) }).eq('id', pid))
     }
     setGuardando(false)
     const fallo = res.find((r) => r && r.error)
@@ -1294,6 +1306,7 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
                           <div className="w-32"><MoneyInput value={f.monto} onChange={(e) => setFilaEdit(i, { monto: e.target.value })} /></div>
                           <input type="date" value={f.fecha} onChange={(e) => setFilaEdit(i, { fecha: e.target.value })} className="rounded px-1.5 py-1 text-xs" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }} />
                           <button type="button" onClick={() => setEdit({ ...edit, filas: edit.filas.filter((_, j) => j !== i) })} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar</button>
+                          {f.aplicadoEn && <span className="text-xs" style={lbl}>descontada en el pago del {fmtF(pagoDe(f.aplicadoEn)?.fecha)} (aún sin pagar) · se ajusta su «Deuda»</span>}
                         </>}
                   </div>
                 ))}
