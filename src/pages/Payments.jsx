@@ -1084,6 +1084,47 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
     await (g.cs[0].origen_id ? q.eq('origen_id', g.cs[0].origen_id) : g.cs[0].adelanto_id ? q.eq('adelanto_id', g.cs[0].adelanto_id) : q.eq('id', g.cs[0].id))
     onCambio()
   }
+  // ---- editar un adelanto junto con sus cuotas ----
+  const [edit, setEdit] = useState(null) // { clave, fecha, nota, filas:[{id, monto, fecha, aplicado}], esPago }
+  const [errEdit, setErrEdit] = useState('')
+  function abrirEdicion(g) {
+    setErrEdit('')
+    setEdit({ clave: g.clave, esPago: !!g.o, fecha: g.fechaAdelanto || hoyISO(), nota: g.nota || '', filas: g.cs.map((x) => ({ id: x.id, monto: String(x.monto), fecha: x.fecha_prevista || '', aplicado: !!x.aplicado_en, num: x.num })) })
+  }
+  const setFilaEdit = (i, c) => setEdit((e) => ({ ...e, filas: e.filas.map((f, j) => (j === i ? { ...f, ...c } : f)) }))
+  async function guardarEdicion(g) {
+    setErrEdit('')
+    if (!edit.filas.length) { setErrEdit('El adelanto necesita al menos una cuota.'); return }
+    if (edit.filas.some((f) => !f.fecha || !(num(f.monto) > 0))) { setErrEdit('Cada cuota necesita fecha e importe.'); return }
+    if (!edit.esPago && !edit.fecha) { setErrEdit('Indica la fecha del adelanto.'); return }
+    setGuardando(true)
+    const T = supabase.from('payout_advance_installments')
+    const base = g.cs[0]
+    const comunes = { fecha_adelanto: edit.esPago ? (g.o?.fecha || edit.fecha) : edit.fecha, nota: edit.nota.trim() || null }
+    // orden final: las ya descontadas primero (por su nº), después las pendientes por fecha
+    const fijas = edit.filas.filter((f) => f.aplicado).sort((a, b) => a.num - b.num)
+    const pend = edit.filas.filter((f) => !f.aplicado).sort((a, b) => a.fecha.localeCompare(b.fecha))
+    const orden = [...fijas, ...pend]
+    const total = orden.length
+    const idsFinales = new Set(orden.filter((f) => f.id).map((f) => f.id))
+    const borrar = g.cs.filter((x) => !x.aplicado_en && !idsFinales.has(x.id)).map((x) => x.id)
+    let res = []
+    if (borrar.length) res.push(await T.delete().in('id', borrar))
+    for (let i = 0; i < orden.length; i++) {
+      const f = orden[i]
+      if (f.id) {
+        const cambios = { ...comunes, num: i + 1, total }
+        if (!f.aplicado) { cambios.monto = num(f.monto); cambios.fecha_prevista = f.fecha }
+        res.push(await T.update(cambios).eq('id', f.id))
+      } else {
+        res.push(await T.insert({ account_id: base.account_id, origen_id: base.origen_id || null, adelanto_id: base.adelanto_id || null, ...comunes, num: i + 1, total, monto: num(f.monto), fecha_prevista: f.fecha }))
+      }
+    }
+    setGuardando(false)
+    const fallo = res.find((r) => r && r.error)
+    if (fallo) { setErrEdit(/adelanto_id|fecha_adelanto|nota|origen_id/.test(fallo.error.message || '') ? 'Falta ejecutar la migración 62 en Supabase.' : 'No se pudo guardar: ' + fallo.error.message); onCambio(); return }
+    setEdit(null); onCambio()
+  }
   async function cambiarFecha(x, fecha) {
     if (!fecha) return
     await supabase.from('payout_advance_installments').update({ fecha_prevista: fecha }).eq('id', x.id)
@@ -1131,8 +1172,39 @@ function AdelantosTab({ cuentas, cuotas, pagos, onCambio }) {
           <Panel key={g.clave} className="p-4 mb-3">
             <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
               <p className="text-sm"><strong>{cuentaDe(g.cs[0].account_id)?.nombre}</strong> · adelanto de <strong className="tabular-nums">{money(g.total)}</strong> {g.fechaAdelanto ? <span style={lbl}>el {fmtF(g.fechaAdelanto)}</span> : null}{g.nota ? <span style={lbl}> · {g.nota}</span> : null}</p>
-              {pend > 0 && <button onClick={() => cancelarPendientes(g)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Cancelar cuotas pendientes</button>}
+              <div className="flex items-center gap-3">
+                <button data-editar-adelanto onClick={() => (edit?.clave === g.clave ? setEdit(null) : abrirEdicion(g))} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>{edit?.clave === g.clave ? 'Cerrar edición' : 'Editar adelanto y cuotas'}</button>
+                {pend > 0 && <button onClick={() => cancelarPendientes(g)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Cancelar cuotas pendientes</button>}
+              </div>
             </div>
+            {edit?.clave === g.clave && (
+              <div data-form-editar-adelanto className="rounded-md p-3 mb-2" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div><label className="text-xs block mb-1" style={lbl}>Fecha del adelanto{edit.esPago ? ' (la del pago donde se entregó)' : ''}</label>
+                    <Input type="date" value={edit.fecha} disabled={edit.esPago} onChange={(e) => setEdit({ ...edit, fecha: e.target.value })} /></div>
+                  <div><label className="text-xs block mb-1" style={lbl}>Motivo / nota</label><Input value={edit.nota} onChange={(e) => setEdit({ ...edit, nota: e.target.value })} /></div>
+                </div>
+                {edit.filas.map((f, i) => (
+                  <div key={f.id || 'n' + i} className="flex items-center gap-2 py-1 flex-wrap text-sm">
+                    <span className="w-16" style={lbl}>Cuota {i + 1}</span>
+                    {f.aplicado
+                      ? <><span className="tabular-nums w-24">−{money(f.monto)}</span><span className="text-xs" style={{ color: 'var(--success)' }}>Ya descontada (no se puede cambiar)</span></>
+                      : <>
+                          <div className="w-32"><MoneyInput value={f.monto} onChange={(e) => setFilaEdit(i, { monto: e.target.value })} /></div>
+                          <input type="date" value={f.fecha} onChange={(e) => setFilaEdit(i, { fecha: e.target.value })} className="rounded px-1.5 py-1 text-xs" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }} />
+                          <button type="button" onClick={() => setEdit({ ...edit, filas: edit.filas.filter((_, j) => j !== i) })} className="text-xs hover:underline" style={{ color: 'var(--danger)' }}>Quitar</button>
+                        </>}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between flex-wrap gap-2 mt-2">
+                  <button type="button" onClick={() => setEdit({ ...edit, filas: [...edit.filas, { id: null, monto: '', fecha: sumarDias(edit.filas.map((f) => f.fecha).filter(Boolean).sort().pop() || hoyISO(), 14), aplicado: false, num: 99 }] })} className="text-xs hover:underline" style={{ color: 'var(--accent)' }}>+ Añadir cuota</button>
+                  <p className="text-sm">Total del adelanto: <strong className="tabular-nums gold-text">{money(r2(edit.filas.reduce((t, f) => t + num(f.monto), 0)))}</strong></p>
+                </div>
+                {edit.esPago && <p className="text-xs mt-2" style={lbl}>Este adelanto se entregó en un pago: si cambias el importe total, recuerda ajustar también el «Adelanto» de ese pago.</p>}
+                {errEdit && <p className="text-sm mt-2" style={{ color: 'var(--danger)' }}>{errEdit}</p>}
+                <div className="mt-3 flex gap-2"><Button data-guardar-edicion-adelanto onClick={() => guardarEdicion(g)} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar cambios'}</Button><Button type="button" variant="ghost" onClick={() => setEdit(null)}>Cancelar</Button></div>
+              </div>
+            )}
             {g.cs.map((x) => {
               const ap = x.aplicado_en ? pagos.find((p) => p.id === x.aplicado_en) : null
               return (
@@ -1299,13 +1371,28 @@ function CalendarioTab({ cuentas, pagos, bonos, cuotas, onRegistrar, onVerPagos 
 }
 
 // Notas del pago = notas escritas + bonos aplicados + sanciones aplicadas
+// Fecha en que se concedió el adelanto al que pertenece una cuota: pago donde se entregó, o fecha guardada en el adelanto manual
+function fechaConcedido(x, cuotas, pagos) {
+  const k = x.origen_id || x.adelanto_id
+  const dePago = k ? (pagos || []).find((y) => y.id === k)?.fecha : null
+  if (dePago) return dePago
+  if (x.fecha_adelanto) return x.fecha_adelanto
+  const hermana = (cuotas || []).find((y) => (y.origen_id || y.adelanto_id) === k && y.fecha_adelanto)
+  return hermana?.fecha_adelanto || (x.created_at ? String(x.created_at).slice(0, 10) : null)
+}
+// Todos los adelantos dados a una persona hasta una fecha (en pagos y creados a mano)
+function adelantosDeCuenta(accountId, hasta, cuotas, pagos) {
+  if (!accountId) return []
+  const out = (pagos || []).filter((x) => x.account_id === accountId && num(x.adelanto) > 0 && x.fecha <= hasta).map((x) => ({ fecha: x.fecha, monto: num(x.adelanto) }))
+  const m = {}
+  ;(cuotas || []).filter((x) => x.account_id === accountId && !x.origen_id && x.adelanto_id).forEach((x) => { (m[x.adelanto_id] = m[x.adelanto_id] || []).push(x) })
+  Object.values(m).forEach((cs) => { const f = fechaConcedido(cs[0], cuotas, pagos); if (f && f <= hasta) out.push({ fecha: f, monto: r2(cs.reduce((t, y) => t + num(y.monto), 0)) }) })
+  return out.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
+}
 // Fechas en que se le dieron los adelantos que se están descontando en este pago (por las cuotas enlazadas; si no las hay, por los adelantos anteriores de esa persona)
 function fechasAdelanto(p, cuotas, pagos) {
-  const lista = pagos || []
-  const dePagos = (id) => lista.find((x) => x.id === id)?.fecha
-  const enlazadas = (cuotas || []).filter((x) => x.aplicado_en === p.id).map((x) => dePagos(x.origen_id || x.adelanto_id)).filter(Boolean)
-  let fechas = enlazadas
-  if (!fechas.length && num(p.deuda) !== 0 && p.account_id) fechas = lista.filter((x) => x.account_id === p.account_id && num(x.adelanto) > 0 && x.fecha <= p.fecha).map((x) => x.fecha)
+  let fechas = (cuotas || []).filter((x) => x.aplicado_en === p.id).map((x) => fechaConcedido(x, cuotas, pagos)).filter(Boolean)
+  if (!fechas.length && num(p.deuda) !== 0) fechas = adelantosDeCuenta(p.account_id, p.fecha, cuotas, pagos).map((x) => x.fecha)
   return [...new Set(fechas)].sort()
 }
 const textoFechasAdelanto = (f) => (f.length ? (f.length === 1 ? `adelanto del ${fmtF(f[0])}` : `adelantos del ${f.slice(0, 4).map(fmtF).join(', ')}`) : '')
@@ -1320,8 +1407,8 @@ function notasCompletas(p, bonos, sanciones, cuotas, pagos) {
   const c = (cuotas || []).filter((x) => x.aplicado_en === p.id)
   if (c.length) {
     const totalAdel = (x) => { const k = x.origen_id || x.adelanto_id || x.id; return r2((cuotas || []).filter((y) => (y.origen_id || y.adelanto_id || y.id) === k).reduce((t, y) => t + num(y.monto), 0)) }
-    const fechaDe = (x) => (pagos || []).find((y) => y.id === (x.origen_id || x.adelanto_id))?.fecha
-    partes.push(c.map((x) => `Adelanto ${money(totalAdel(x))}${fechaDe(x) ? ` concedido el ${fmtF(fechaDe(x))}` : ''} : cuota ${x.num}/${x.total} (−${money(x.monto)})`).join(' · '))
+    const fechaDe = (x) => fechaConcedido(x, cuotas, pagos)
+    partes.push(c.map((x) => `Adelanto ${money(totalAdel(x))}${fechaDe(x) ? ` concedido el ${fmtF(fechaDe(x))}` : ''}${x.nota ? ` (${x.nota})` : ''} : cuota ${x.num}/${x.total} (−${money(x.monto)})`).join(' · '))
   }
   return partes.join(' · ')
 }
@@ -1385,8 +1472,8 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
   const otrasDeudas = r2(Math.abs(num(p.deuda)) - descontadas.reduce((t, x) => t + num(x.monto), 0))
   const fechaPagoDe = (id) => pagos.find((x) => x.id === id)?.fecha
   // Adelantos que se le dieron antes (o en este mismo pago): sirven para decir de cuándo es la deuda aunque la cuota no esté enlazada
-  const adelantosPrevios = pagos.filter((x) => p.account_id && x.account_id === p.account_id && num(x.adelanto) > 0 && x.fecha <= p.fecha).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
-  const textoAdelantos = adelantosPrevios.slice(0, 4).map((x) => `${money(x.adelanto)} el ${fmtF(x.fecha)}`).join(' · ')
+  const adelantosPrevios = adelantosDeCuenta(p.account_id, p.fecha, cuotas, pagos)
+  const textoAdelantos = adelantosPrevios.slice(0, 4).map((x) => `${money(x.monto)} el ${fmtF(x.fecha)}`).join(' · ')
   const Fila = ({ k, v, sub, color }) => (
     <div className="flex justify-between gap-3 py-1" style={{ borderBottom: '1px solid var(--border)' }}>
       <span>{k}{sub && <span className="block text-[11px]" style={lbl}>{sub}</span>}</span>
@@ -1417,8 +1504,8 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
           ))}
           {(descontadas.length > 0 || otrasDeudas > 0.009) && <Tit>Descuentos por deuda (−)</Tit>}
           {descontadas.map((x) => {
-            const concedido = fechaPagoDe(x.origen_id || x.adelanto_id) || (adelantosPrevios.length === 1 ? adelantosPrevios[0].fecha : null)
-            return <Fila key={x.id} k={concedido ? `Adelanto de ${money(totalAdel(x))} concedido el ${fmtF(concedido)}` : `Adelanto de ${money(totalAdel(x))}`} sub={`Cuota ${x.num}/${x.total}${!concedido && textoAdelantos ? ` · adelantos concedidos: ${textoAdelantos}` : ''}`} v={'−' + money(x.monto)} color="var(--danger)" />
+            const concedido = fechaConcedido(x, cuotas, pagos) || (adelantosPrevios.length === 1 ? adelantosPrevios[0].fecha : null)
+            return <Fila key={x.id} k={concedido ? `Adelanto de ${money(totalAdel(x))} concedido el ${fmtF(concedido)}` : `Adelanto de ${money(totalAdel(x))}`} sub={`Cuota ${x.num}/${x.total}${x.nota ? ` · ${x.nota}` : ''}${!concedido && textoAdelantos ? ` · adelantos concedidos: ${textoAdelantos}` : ''}`} v={'−' + money(x.monto)} color="var(--danger)" />
           })}
           {otrasDeudas > 0.009 && <Fila k={adelantosPrevios.length ? 'Deuda por adelanto' : 'Otras deudas'} sub={adelantosPrevios.length ? `Adelanto concedido: ${textoAdelantos}` : undefined} v={'−' + money(otrasDeudas)} color="var(--danger)" />}
           {(ss.length > 0 || num(p.penalizacion) !== 0) && <Tit>Sanciones (−)</Tit>}
