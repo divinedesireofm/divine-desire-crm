@@ -12,8 +12,16 @@ const BANEOS = [
   { id: 'baneada', n: 'Baneada', c: 'var(--danger)' },
 ]
 const BN = Object.fromEntries(BANEOS.map((b) => [b.id, b]))
+// Estado de la cuenta: activa / en reposo / inactiva. «activa» (booleano) solo es true cuando está activa, así el resto del CRM (reportes…) no cuenta las que descansan.
+const ESTADOS = [
+  { id: 'activa', n: 'Activa', c: 'var(--success)' },
+  { id: 'en_reposo', n: 'En reposo', c: 'var(--gold)' },
+  { id: 'inactiva', n: 'Inactiva', c: 'var(--text-muted)' },
+]
+const ES = Object.fromEntries(ESTADOS.map((e) => [e.id, e]))
+const estadoDe = (c) => (c.estado && ES[c.estado] ? c.estado : c.activa ? 'activa' : 'inactiva')
 const lbl = { color: 'var(--text-muted)' }
-const VACIO = { username: '', link: '', model_id: '', responsable_id: '', activa: true, estado_baneo: 'ninguno', baneo_notas: '', comment_karma: '', post_karma: '', fecha_creacion: '', notas: '' }
+const VACIO = { username: '', link: '', model_id: '', responsable_id: '', activa: true, estado: 'activa', estado_baneo: 'ninguno', baneo_notas: '', comment_karma: '', post_karma: '', fecha_creacion: '', notas: '' }
 const urlDe = (c) => (c.link && c.link.trim()) || `https://www.reddit.com/user/${c.username}`
 const edadDe = (c) => antiguedadDe(c.fecha_creacion) || c.antiguedad || ''
 
@@ -58,8 +66,9 @@ export default function RedditAccounts() {
   const visibles = useMemo(() => cuentas.filter((c) => {
     if (q && !c.username.toLowerCase().includes(q.trim().toLowerCase())) return false
     if (fModelo !== 'todos' && (fModelo === 'sin' ? c.model_id : c.model_id !== fModelo)) return false
-    if (fEstado === 'activas' && !c.activa) return false
-    if (fEstado === 'inactivas' && c.activa) return false
+    if (fEstado === 'activas' && estadoDe(c) !== 'activa') return false
+    if (fEstado === 'reposo' && estadoDe(c) !== 'en_reposo') return false
+    if (fEstado === 'inactivas' && estadoDe(c) !== 'inactiva') return false
     if (fBaneo === 'ninguno' && c.estado_baneo !== 'ninguno') return false
     if (fBaneo === 'problemas' && c.estado_baneo === 'ninguno') return false
     return true
@@ -67,8 +76,9 @@ export default function RedditAccounts() {
 
   const resumen = {
     total: cuentas.length,
-    activas: cuentas.filter((c) => c.activa).length,
-    inactivas: cuentas.filter((c) => !c.activa).length,
+    activas: cuentas.filter((c) => estadoDe(c) === 'activa').length,
+    reposo: cuentas.filter((c) => estadoDe(c) === 'en_reposo').length,
+    inactivas: cuentas.filter((c) => estadoDe(c) === 'inactiva').length,
     baneo: cuentas.filter((c) => c.estado_baneo !== 'ninguno').length,
   }
 
@@ -76,7 +86,7 @@ export default function RedditAccounts() {
   function editar(c) {
     setEditId(c.id); setErr('')
     setForm({
-      username: c.username, link: c.link || '', model_id: c.model_id || '', responsable_id: c.responsable_id || '', activa: !!c.activa, estado_baneo: c.estado_baneo || 'ninguno',
+      username: c.username, link: c.link || '', model_id: c.model_id || '', responsable_id: c.responsable_id || '', activa: !!c.activa, estado: estadoDe(c), estado_baneo: c.estado_baneo || 'ninguno',
       baneo_notas: c.baneo_notas || '', comment_karma: c.comment_karma ?? '', post_karma: c.post_karma ?? '', fecha_creacion: c.fecha_creacion || '', notas: c.notas || '',
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -86,7 +96,7 @@ export default function RedditAccounts() {
     const link = form.link.trim() ? (/^https?:\/\//i.test(form.link.trim()) ? form.link.trim() : `https://${form.link.trim()}`) : null
     if (!username) { setErr('Escribe el nombre de usuario de la cuenta.'); return }
     const payload = {
-      username, link, model_id: form.model_id || null, responsable_id: form.responsable_id || null, activa: !!form.activa, estado_baneo: form.estado_baneo,
+      username, link, model_id: form.model_id || null, responsable_id: form.responsable_id || null, activa: form.estado === 'activa', estado: form.estado, estado_baneo: form.estado_baneo,
       baneo_notas: form.baneo_notas.trim() || null, comment_karma: aNum(form.comment_karma), post_karma: aNum(form.post_karma),
       fecha_creacion: form.fecha_creacion || null, notas: form.notas.trim() || null, updated_at: new Date().toISOString(),
     }
@@ -95,8 +105,19 @@ export default function RedditAccounts() {
       ? await supabase.from('reddit_accounts').update(payload).eq('id', editId)
       : await supabase.from('reddit_accounts').insert(payload)
     setGuardando(false)
-    if (error) { setErr(/duplicate|unique/i.test(error.message) ? `La cuenta u/${username} ya está registrada.` : error.message); return }
+    if (error) { setErr(/estado/.test(error.message) && !/baneo/.test(error.message) ? 'Falta ejecutar la migración 138 en Supabase (estado «En reposo»).' : /duplicate|unique/i.test(error.message) ? `La cuenta u/${username} ya está registrada.` : error.message); return }
     setForm(null); setEditId(null); setErr(''); cargar()
+  }
+  // Cambia el estado desde la tabla, sin abrir la edición
+  async function cambiarEstado(c, nuevo) {
+    const anterior = estadoDe(c)
+    if (nuevo === anterior) return
+    setCuentas((l) => l.map((x) => (x.id === c.id ? { ...x, estado: nuevo, activa: nuevo === 'activa' } : x)))
+    const { error } = await supabase.from('reddit_accounts').update({ estado: nuevo, activa: nuevo === 'activa', updated_at: new Date().toISOString() }).eq('id', c.id)
+    if (error) {
+      setCuentas((l) => l.map((x) => (x.id === c.id ? { ...x, estado: c.estado, activa: c.activa } : x)))
+      setErr(/estado/.test(error.message) ? 'Falta ejecutar la migración 138 en Supabase (estado «En reposo»).' : error.message)
+    } else setErr('')
   }
   async function borrar(c) {
     if (!window.confirm(`¿Eliminar la cuenta u/${c.username} y todos sus reportes del día? No se puede deshacer.`)) return
@@ -133,8 +154,8 @@ export default function RedditAccounts() {
                 {personal.map((x) => <option key={x.id} value={x.id}>{x.full_name}</option>)}
               </Select></div>
             <div><label className="text-xs mb-1 block" style={lbl}>Estado</label>
-              <Select value={form.activa ? '1' : '0'} onChange={(e) => set('activa', e.target.value === '1')}>
-                <option value="1">Activa</option><option value="0">Inactiva</option>
+              <Select value={form.estado} onChange={(e) => { set('estado', e.target.value); set('activa', e.target.value === 'activa') }}>
+                {ESTADOS.map((e) => <option key={e.id} value={e.id}>{e.n}</option>)}
               </Select></div>
             <div><label className="text-xs mb-1 block" style={lbl}>Baneo / suspensión</label>
               <Select value={form.estado_baneo} onChange={(e) => set('estado_baneo', e.target.value)}>
@@ -153,9 +174,9 @@ export default function RedditAccounts() {
         </Panel>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        {[['Cuentas', resumen.total], ['Activas', resumen.activas], ['Inactivas', resumen.inactivas], ['Con baneo / suspensión', resumen.baneo]].map(([t, v], i) => (
-          <Panel key={t} className="p-4"><p className="text-xs mb-1" style={lbl}>{t}</p><p className="text-xl font-display font-semibold tabular-nums" style={i === 3 && v ? { color: 'var(--danger)' } : undefined}>{v}</p></Panel>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+        {[['Cuentas', resumen.total], ['Activas', resumen.activas], ['En reposo', resumen.reposo], ['Inactivas', resumen.inactivas], ['Con baneo / suspensión', resumen.baneo]].map(([t, v], i) => (
+          <Panel key={t} className="p-4"><p className="text-xs mb-1" style={lbl}>{t}</p><p className="text-xl font-display font-semibold tabular-nums" style={i === 4 && v ? { color: 'var(--danger)' } : i === 2 && v ? { color: 'var(--gold)' } : undefined}>{v}</p></Panel>
         ))}
       </div>
 
@@ -166,7 +187,7 @@ export default function RedditAccounts() {
           {modelos.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}
         </Select>
         <Select value={fEstado} onChange={(e) => setFEstado(e.target.value)}>
-          <option value="todas">Activas e inactivas</option><option value="activas">Solo activas</option><option value="inactivas">Solo inactivas</option>
+          <option value="todas">Todos los estados</option><option value="activas">Solo activas</option><option value="reposo">Solo en reposo</option><option value="inactivas">Solo inactivas</option>
         </Select>
         <Select value={fBaneo} onChange={(e) => setFBaneo(e.target.value)}>
           <option value="todos">Con o sin baneo</option><option value="ninguno">Sin baneo</option><option value="problemas">Con baneo / suspensión</option>
@@ -188,14 +209,20 @@ export default function RedditAccounts() {
                 {visibles.map((c) => {
                   const b = BN[c.estado_baneo] || BN.ninguno
                   return (
-                    <tr key={c.id} style={{ borderBottom: '1px solid var(--border)', opacity: c.activa ? 1 : 0.6 }}>
+                    <tr key={c.id} style={{ borderBottom: '1px solid var(--border)', opacity: estadoDe(c) === 'inactiva' ? 0.6 : 1 }}>
                       <td className="px-3 py-2.5 whitespace-nowrap font-medium">
                         <a href={urlDe(c)} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent)' }} title="Abrir la cuenta en una pestaña nueva">u/{c.username} ↗</a>
                         {c.notas && <span className="block text-xs font-normal max-w-[220px] truncate" style={lbl} title={c.notas}>{c.notas}</span>}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap">{nombreModelo(c.model_id) || <span style={lbl}>—</span>}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">{nombrePersona(c.responsable_id) || <span style={lbl}>—</span>}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap"><span style={{ color: c.activa ? 'var(--success)' : 'var(--text-muted)' }}>{c.activa ? 'Activa' : 'Inactiva'}</span></td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        {gestiona
+                          ? <select data-estado-cuenta value={estadoDe(c)} onChange={(e) => cambiarEstado(c, e.target.value)} title="Cambiar el estado de la cuenta" className="text-xs rounded-full px-2.5 py-1 outline-none cursor-pointer" style={{ background: `color-mix(in srgb, ${ES[estadoDe(c)].c} 16%, var(--panel))`, color: ES[estadoDe(c)].c, border: `1px solid color-mix(in srgb, ${ES[estadoDe(c)].c} 40%, transparent)` }}>
+                              {ESTADOS.map((e) => <option key={e.id} value={e.id} style={{ color: 'var(--text)', background: 'var(--panel)' }}>{e.n}</option>)}
+                            </select>
+                          : <span style={{ color: ES[estadoDe(c)].c }}>{ES[estadoDe(c)].n}</span>}
+                      </td>
                       <td className="px-3 py-2.5">
                         <span className="text-xs px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: `color-mix(in srgb, ${b.c} 16%, transparent)`, color: b.c }}>{b.n}</span>
                         {c.baneo_notas && <span className="block text-xs mt-1 max-w-[220px]" style={lbl}>{c.baneo_notas}</span>}
