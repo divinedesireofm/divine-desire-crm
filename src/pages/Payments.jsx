@@ -813,7 +813,7 @@ function PagosAdmin({ area = 'chatting' }) {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Fecha', ...(sel === 'todas' ? [IG ? 'Persona' : 'Chatter'] : []), 'Bruta', 'Neta', '%', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Manager', 'Tareas', 'Total', 'Estado', 'Notas', ''].map((h) => (
+                  {['Fecha', ...(sel === 'todas' ? [IG ? 'Persona' : 'Chatter'] : []), 'Bruta', 'Neta', '%', 'Pago base', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Manager', 'Tareas', 'Total', 'Estado', 'Notas', ''].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={lbl}>{h}</th>
                   ))}
                 </tr>
@@ -850,7 +850,7 @@ function PagosAdmin({ area = 'chatting' }) {
                       <tr key={'t' + fila.pid + fila.fecha} style={{ borderBottom: bordeFila, background: 'color-mix(in srgb, var(--gold) 5%, transparent)' }}>
                         <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(fila.fecha)}</td>
                         {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{perfiles.find((x) => x.id === fila.pid)?.full_name || '—'}</td>}
-                        {Array.from({ length: 7 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
+                        {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
                         <td className="px-3 py-2.5" style={lbl}>—</td>
                         <td className="px-3 py-2.5">
                           <div className="leading-tight min-w-[150px]">{fila.lista.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(t.monto)}</span> {t.titulo} <span style={{ color: t.pagado_at ? 'var(--success)' : 'var(--gold)' }}>· {t.pagado_at ? '✓ pagada' : 'pendiente'}</span></span>)}</div>
@@ -868,7 +868,7 @@ function PagosAdmin({ area = 'chatting' }) {
                       <tr key={'m' + f.mg.id + f.pr.pago} style={{ borderBottom: bordeFila, background: 'color-mix(in srgb, var(--accent) 5%, transparent)' }}>
                         <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(f.pr.pago)}</td>
                         {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{f.mg.full_name}</td>}
-                        {Array.from({ length: 7 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
+                        {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
                         <td className="px-3 py-2.5">{celdaMgr(f)}</td>
                         <td className="px-3 py-2.5" style={lbl}>—</td>
                         <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(f.total)}</td>
@@ -891,6 +891,7 @@ function PagosAdmin({ area = 'chatting' }) {
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_bruta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{p.pct != null ? Math.round(num(p.pct) * 100) + '%' : '—'}</td>
+                      <td className="px-3 py-2.5 tabular-nums" title="Facturación neta × porcentaje">{p.pct != null && p.fact_neta != null ? money(r2(num(p.fact_neta) * num(p.pct))) : <span style={lbl}>—</span>}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.bonos)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.adelanto)}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.penalizacion) ? 'var(--danger)' : undefined }}>{celda(p.penalizacion)}</td>
@@ -964,7 +965,7 @@ function ExtrabajadoresTab({ cuentas, pagos, sel, setSel, notasDe }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Fecha', ...(sel === 'todas' ? ['Extrabajador'] : []), 'Bruta', 'Neta', '%', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Pago', 'Estado', 'Notas'].map((h) => (
+                {['Fecha', ...(sel === 'todas' ? ['Extrabajador'] : []), 'Bruta', 'Neta', '%', 'Pago base', 'Bonos', 'Adelanto', 'Sanciones', 'Deuda', 'Pago', 'Estado', 'Notas'].map((h) => (
                   <th key={h} className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap" style={lbl}>{h}</th>
                 ))}
               </tr></thead>
@@ -979,6 +980,7 @@ function ExtrabajadoresTab({ cuentas, pagos, sel, setSel, notasDe }) {
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_bruta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{p.pct != null ? Math.round(num(p.pct) * 100) + '%' : '—'}</td>
+                      <td className="px-3 py-2.5 tabular-nums" title="Facturación neta × porcentaje">{p.pct != null && p.fact_neta != null ? money(r2(num(p.fact_neta) * num(p.pct))) : <span style={lbl}>—</span>}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.bonos)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.adelanto)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.penalizacion)}</td>
