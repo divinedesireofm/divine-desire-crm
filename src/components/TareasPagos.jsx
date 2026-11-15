@@ -53,7 +53,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
     const f = form
     if (!f.titulo.trim()) return setMsg('Pon un nombre a la tarea.')
     if (!f.responsable_id) return setMsg('Elige al responsable.')
-    if (!(num(f.monto) > 0)) return setMsg('Pon el importe a pagar.')
+    if (!(num(f.monto) > 0)) return setMsg(f.tipo === 'quincenal' ? 'Pon el coste mensual.' : 'Pon el importe a pagar.')
     if (f.tipo === 'puntual' && !f.fecha_pago) return setMsg('Pon el día del pago.')
     const dia = Math.round(num(f.dia_pago))
     if (f.tipo === 'mensual' && (dia < 1 || dia > 28)) return setMsg('El día del mes debe estar entre 1 y 28.')
@@ -67,7 +67,7 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
       if (!dp.length || dp.some((d) => d < 1 || d > 28)) return setMsg('Escribe los días del mes separados por comas (entre el 1 y el 28). Ej.: 5, 12, 20')
     }
     const payload = {
-      area, titulo: f.titulo.trim(), descripcion: f.descripcion.trim() || null, responsable_id: f.responsable_id, monto: r2(num(f.monto)), tipo: f.tipo,
+      area, titulo: f.titulo.trim(), descripcion: f.descripcion.trim() || null, responsable_id: f.responsable_id, monto: f.tipo === 'quincenal' ? r2(num(f.monto) / 2) : r2(num(f.monto)), tipo: f.tipo, // quincenal: el coste mensual se reparte a partes iguales entre los dos días
       fecha_pago: f.tipo === 'puntual' ? f.fecha_pago : null, dia_pago: f.tipo === 'mensual' ? dia : null, dias_pago: dp, desde: f.tipo !== 'puntual' ? (f.desde || hoyISO()) : null,
     }
     if (f.id) {
@@ -232,7 +232,8 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
               <div><label className="text-xs block mb-1" style={lbl}>Tarea</label><Input value={form.titulo} onChange={(e) => set({ titulo: e.target.value })} placeholder="Ej.: Edición de reels de la semana" /></div>
               <div><label className="text-xs block mb-1" style={lbl}>Responsable</label>
                 <Select value={form.responsable_id} onChange={(e) => set({ responsable_id: e.target.value })}><option value="">— elige —</option>{personas.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}</Select></div>
-              <div><label className="text-xs block mb-1" style={lbl}>{form.tipo === 'puntual' ? 'Importe a pagar ($)' : 'Importe de cada pago ($, con todos los días trabajados)'}</label><MoneyInput value={form.monto} onChange={(e) => set({ monto: e.target.value })} /></div>
+              <div><label className="text-xs block mb-1" style={lbl}>{form.tipo === 'puntual' ? 'Importe a pagar ($)' : form.tipo === 'quincenal' ? 'Coste mensual ($, se reparte entre los dos días de pago)' : 'Importe de cada pago ($, con todos los días trabajados)'}</label><MoneyInput value={form.monto} onChange={(e) => set({ monto: e.target.value })} />
+                {form.tipo === 'quincenal' && num(form.monto) > 0 && <p className="text-xs mt-1" style={{ color: 'var(--accent)' }} data-desglose-quincenal>Se pagará {money(r2(num(form.monto) / 2))} el día {form.q1 || '?'} y {money(r2(num(form.monto) / 2))} el día {form.q2 || '?'} de cada mes.</p>}</div>
               <div><label className="text-xs block mb-1" style={lbl}>Tipo</label>
                 <div className="flex gap-2 flex-wrap">{[['puntual', 'Puntual (una vez)'], ['mensual', 'Mensual'], ['quincenal', 'Quincenal'], ['dias', 'Días concretos del mes']].map(([k, t]) => (
                   <button key={k} type="button" onClick={() => set({ tipo: k })} className="px-3 py-1.5 rounded-md text-sm" style={{ background: form.tipo === k ? 'var(--accent)' : 'var(--panel-alt)', color: form.tipo === k ? '#000' : 'var(--text)', border: '1px solid ' + (form.tipo === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>))}</div></div>
@@ -289,11 +290,11 @@ export default function TareasPagos({ onCambio, area = 'chatting' }) {
               <tr key={t.id} style={{ borderBottom: '1px solid var(--border)', opacity: t.activa ? 1 : 0.55 }}>
                 <td className="px-3 py-3"><strong>{t.titulo}</strong>{t.descripcion && <span className="block text-xs" style={lbl}>{t.descripcion}</span>}</td>
                 <td className="px-3 py-3 whitespace-nowrap">{nombre(t.responsable_id)}</td>
-                <td className="px-3 py-3 tabular-nums font-semibold">{money(t.monto)}</td>
+                <td className="px-3 py-3 tabular-nums font-semibold">{money(t.monto)}{t.tipo === 'quincenal' && <span className="block text-[11px] font-normal" style={lbl}>cada quincena · {money(r2(num(t.monto) * 2))} al mes</span>}</td>
                 <td className="px-3 py-3 whitespace-nowrap">{cuando(t)}</td>
                 <td className="px-3 py-3 whitespace-nowrap">{t.activa ? <span style={{ color: 'var(--success)' }}>Activa</span> : <span style={lbl}>Pausada</span>}</td>
                 <td className="px-3 py-3 whitespace-nowrap space-x-3">
-                  <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => setForm({ id: t.id, titulo: t.titulo, descripcion: t.descripcion || '', responsable_id: t.responsable_id, monto: String(t.monto), tipo: t.tipo, fecha_pago: t.fecha_pago || hoyISO(), dia_pago: String(t.dia_pago || 5), desde: t.desde || hoyISO(), q1: String(t.tipo === 'quincenal' ? diasPagoDe(t)[0] : 1), q2: String(t.tipo === 'quincenal' ? diasPagoDe(t)[1] : 16), lista: t.tipo === 'dias' ? diasPagoDe(t).join(', ') : '5, 12, 20' })}>Editar</button>
+                  <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => setForm({ id: t.id, titulo: t.titulo, descripcion: t.descripcion || '', responsable_id: t.responsable_id, monto: String(t.tipo === 'quincenal' ? r2(num(t.monto) * 2) : t.monto), tipo: t.tipo, fecha_pago: t.fecha_pago || hoyISO(), dia_pago: String(t.dia_pago || 5), desde: t.desde || hoyISO(), q1: String(t.tipo === 'quincenal' ? diasPagoDe(t)[0] : 1), q2: String(t.tipo === 'quincenal' ? diasPagoDe(t)[1] : 16), lista: t.tipo === 'dias' ? diasPagoDe(t).join(', ') : '5, 12, 20' })}>Editar</button>
                   {esRecurrente(t) && <button className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => setFaltas({ id: t.id, d1: '', d2: '' })}>Faltas{(t.faltas || []).length ? ` (${t.faltas.length})` : ''}</button>}
                   <button className="text-xs underline" style={lbl} onClick={() => alternarActiva(t)}>{t.activa ? 'Pausar' : 'Reactivar'}</button>
                   <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(t)}>Eliminar</button>

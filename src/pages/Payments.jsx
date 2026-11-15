@@ -281,7 +281,7 @@ function PagosAdmin({ area = 'chatting' }) {
     const sumC = r2(pd.cuotas.reduce((t, x) => t + num(x.monto), 0))
     const selT = pd.tareas.map((x) => x.id)
     const sumT = r2(pd.tareas.reduce((t, x) => t + num(x.monto), 0))
-    return { selB, selS, selC, selT, bonos: r2(sumB + sumT) || '', penalizacion: sumS || '', deuda: sumC || '' }
+    return { selB, selS, selC, selT, bonos: sumB || '', penalizacion: sumS || '', deuda: sumC || '' }
   }
 
   // ---------- pago ----------
@@ -296,7 +296,7 @@ function PagosAdmin({ area = 'chatting' }) {
     setEditId(p.id)
     setForm({
       account_id: p.account_id, fecha: p.fecha, bruta: p.fact_bruta != null ? fmtNum(p.fact_bruta) : '', neta: p.fact_neta != null ? fmtNum(p.fact_neta) : '', pct: p.pct ?? '',
-      bonos: p.bonos ? fmtNum(p.bonos) : '', adelanto: p.adelanto ? fmtNum(p.adelanto) : '', penalizacion: Math.abs(num(p.penalizacion)) ? fmtNum(Math.abs(num(p.penalizacion))) : '', deuda: Math.abs(num(p.deuda)) ? fmtNum(Math.abs(num(p.deuda))) : '',
+      bonos: Math.max(0, r2(num(p.bonos) - sumTAplicadas(p.id))) ? fmtNum(Math.max(0, r2(num(p.bonos) - sumTAplicadas(p.id)))) : '', adelanto: p.adelanto ? fmtNum(p.adelanto) : '', penalizacion: Math.abs(num(p.penalizacion)) ? fmtNum(Math.abs(num(p.penalizacion))) : '', deuda: Math.abs(num(p.deuda)) ? fmtNum(Math.abs(num(p.deuda))) : '',
       notas: p.notas || '', estado: p.estado,
       selB: bonos.filter((x) => x.aplicado_en === p.id).map((x) => x.id),
       selS: sanciones.filter((x) => x.payout_id === p.id).map((x) => x.id),
@@ -307,6 +307,8 @@ function PagosAdmin({ area = 'chatting' }) {
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+  // Lo guardado en el pago como «bonos» incluye los cobros de tareas enlazados (para que el Total cuadre); aquí se separan para mostrarlos
+  const sumTAplicadas = (pid) => r2(tareas.filter((x) => x.aplicado_en === pid && x.aplicado_tipo !== 'manager').reduce((t, x) => t + num(x.monto), 0))
   function setF(patch) { setForm((f) => ({ ...f, ...patch })) }
   function alCambiarBruta(v) { setF({ bruta: v, neta: v === '' ? '' : fmtNum(r2(num(v) * OF_NETO)) }) }
   function alCambiarNeta(v) { setF({ neta: v, bruta: v === '' ? '' : fmtNum(r2(num(v) / OF_NETO)) }) }
@@ -329,7 +331,7 @@ function PagosAdmin({ area = 'chatting' }) {
 
   function alternarTarea(x) {
     const on = form.selT.includes(x.id)
-    setF({ selT: on ? form.selT.filter((i) => i !== x.id) : [...form.selT, x.id], bonos: r2(num(form.bonos) + (on ? -1 : 1) * num(x.monto)) || '' })
+    setF({ selT: on ? form.selT.filter((i) => i !== x.id) : [...form.selT, x.id] }) // el pago por tareas va en su columna, no en Bonos
   }
 
   function alternarCuota(x) {
@@ -337,7 +339,8 @@ function PagosAdmin({ area = 'chatting' }) {
     setF({ selC: on ? form.selC.filter((i) => i !== x.id) : [...form.selC, x.id], deuda: r2(Math.max(0, num(form.deuda) + (on ? -1 : 1) * num(x.monto))) || '' })
   }
 
-  const previo = form ? calcPago({ fact_neta: form.neta, pct: form.pct, bonos: form.bonos, adelanto: form.adelanto, penalizacion: -Math.abs(num(form.penalizacion)), deuda: -Math.abs(num(form.deuda)) }) : 0
+  const sumTSel = (f) => r2(tareas.filter((x) => (f.selT || []).includes(x.id)).reduce((t, x) => t + num(x.monto), 0))
+  const previo = form ? calcPago({ fact_neta: form.neta, pct: form.pct, bonos: r2(num(form.bonos) + sumTSel(form)), adelanto: form.adelanto, penalizacion: -Math.abs(num(form.penalizacion)), deuda: -Math.abs(num(form.deuda)) }) : 0
 
   async function guardarPago(e) {
     e.preventDefault()
@@ -349,7 +352,7 @@ function PagosAdmin({ area = 'chatting' }) {
     const payload = {
       account_id: form.account_id, fecha: form.fecha,
       fact_bruta: form.bruta === '' ? null : num(form.bruta), fact_neta: form.neta === '' ? null : num(form.neta),
-      pct: form.pct === '' ? null : num(form.pct), bonos: num(form.bonos), adelanto: num(form.adelanto),
+      pct: form.pct === '' ? null : num(form.pct), bonos: r2(num(form.bonos) + sumTSel(form)), adelanto: num(form.adelanto),
       penalizacion: -Math.abs(num(form.penalizacion)), deuda: -Math.abs(num(form.deuda)),
       notas: form.notas.trim() || null, estado: form.estado,
     }
@@ -562,7 +565,7 @@ function PagosAdmin({ area = 'chatting' }) {
       ) : vista === 'managers' ? (
         <ManagerPayments roles={rolesManager} area={area} onCambio={refrescarMgr} />
       ) : vista === 'extrabajadores' ? (
-        <ExtrabajadoresTab cuentas={cuentasEx} pagos={pagosEx} sel={selEx} setSel={setSelEx} notasDe={notasDe} />
+        <ExtrabajadoresTab sumTAplicadas={sumTAplicadas} cuentas={cuentasEx} pagos={pagosEx} sel={selEx} setSel={setSelEx} notasDe={notasDe} />
       ) : vista === 'bonos' ? (
         <BonosTab cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={cargar} area={area} />
       ) : vista === 'adelantos' ? (
@@ -751,7 +754,7 @@ function PagosAdmin({ area = 'chatting' }) {
                   )}
                   {pd.tareas.length > 0 && (
                     <div className="rounded-md p-3" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-                      <p className="text-xs font-medium mb-2" style={{ color: 'var(--accent)' }}>Pago por tareas (se suma a los bonos)</p>
+                      <p className="text-xs font-medium mb-2" style={{ color: 'var(--accent)' }}>Pago por tareas (va en su columna «Tareas» y se suma al total, no a los bonos)</p>
                       {pd.tareas.map((x) => (
                         <label key={x.id} className="flex items-center gap-2 text-sm py-0.5 cursor-pointer">
                           <input type="checkbox" checked={(form.selT || []).includes(x.id)} onChange={() => alternarTarea(x)} />
@@ -840,7 +843,7 @@ function PagosAdmin({ area = 'chatting' }) {
                     return (
                       <div className="leading-tight min-w-[150px]">
                         {info.pend.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(t.monto)}</span> {t.titulo} <span style={{ color: 'var(--gold)' }}>· pendiente</span></span>)}
-                        {info.incl.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums">{money(t.monto)}</span> {t.titulo} <span style={{ color: 'var(--success)' }}>· ✓ ya en Bonos</span></span>)}
+                        {info.incl.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums">{money(t.monto)}</span> {t.titulo} <span style={{ color: 'var(--success)' }}>· ✓ incluido en el Total</span></span>)}
                       </div>
                     )
                   }
@@ -892,7 +895,7 @@ function PagosAdmin({ area = 'chatting' }) {
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{p.pct != null ? Math.round(num(p.pct) * 100) + '%' : '—'}</td>
                       <td className="px-3 py-2.5 tabular-nums" title="Facturación neta × porcentaje">{p.pct != null && p.fact_neta != null ? money(r2(num(p.fact_neta) * num(p.pct))) : <span style={lbl}>—</span>}</td>
-                      <td className="px-3 py-2.5 tabular-nums">{celda(p.bonos)}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(Math.max(0, r2(num(p.bonos) - sumTAplicadas(p.id))))}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.adelanto)}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.penalizacion) ? 'var(--danger)' : undefined }}>{celda(p.penalizacion)}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.deuda) ? 'var(--danger)' : undefined }}>{celda(p.deuda)}</td>
@@ -936,7 +939,7 @@ function PagosAdmin({ area = 'chatting' }) {
 // =====================================================================================
 // PAGOS DE EXTRABAJADORES: histórico de quienes se han dado de baja en Equipo (solo lectura)
 // =====================================================================================
-function ExtrabajadoresTab({ cuentas, pagos, sel, setSel, notasDe }) {
+function ExtrabajadoresTab({ cuentas, pagos, sel, setSel, notasDe, sumTAplicadas = () => 0 }) {
   const lbl = { color: 'var(--text-muted)' }
   const cuentaDe = (id) => cuentas.find((c) => c.id === id)
   const lista = pagos.filter((p) => sel === 'todas' || p.account_id === sel)
@@ -981,7 +984,7 @@ function ExtrabajadoresTab({ cuentas, pagos, sel, setSel, notasDe }) {
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{p.pct != null ? Math.round(num(p.pct) * 100) + '%' : '—'}</td>
                       <td className="px-3 py-2.5 tabular-nums" title="Facturación neta × porcentaje">{p.pct != null && p.fact_neta != null ? money(r2(num(p.fact_neta) * num(p.pct))) : <span style={lbl}>—</span>}</td>
-                      <td className="px-3 py-2.5 tabular-nums">{celda(p.bonos)}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(Math.max(0, r2(num(p.bonos) - sumTAplicadas(p.id))))}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.adelanto)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.penalizacion)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.deuda)}</td>
@@ -1322,10 +1325,11 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos }) {
           {num(p.fact_bruta) > 0 && <Fila k="Facturación bruta" v={money(p.fact_bruta)} />}
           <Fila k="Facturación neta" v={money(p.fact_neta)} />
           <Fila k={`Comisión ${Math.round(num(p.pct) * 100)}%`} v={money(num(p.fact_neta) * num(p.pct))} />
-          {(bs.length > 0 || ts.length > 0 || otrosBonos > 0.009) && <Tit>Bonos (+)</Tit>}
+          {(bs.length > 0 || otrosBonos > 0.009) && <Tit>Bonos (+)</Tit>}
           {bs.map((x) => <Fila key={x.id} k={x.nombre} sub={x.nota || `Cobro ${fmtF(x.fecha_cobro)}`} v={'+' + money(x.monto)} color="var(--success)" />)}
-          {ts.map((x) => <Fila key={x.id} k={x.titulo || 'Tarea'} sub="Pago por tarea" v={'+' + money(x.monto)} color="var(--success)" />)}
           {otrosBonos > 0.009 && <Fila k="Otros bonos" sub="Añadidos a mano en el pago" v={'+' + money(otrosBonos)} color="var(--success)" />}
+          {ts.length > 0 && <Tit>Pago por tareas (+)</Tit>}
+          {ts.map((x) => <Fila key={x.id} k={x.titulo || 'Tarea'} sub="Pago por tarea" v={'+' + money(x.monto)} color="var(--success)" />)}
           {(num(p.adelanto) > 0 || entregadas.length > 0) && <Tit>Adelanto entregado (+)</Tit>}
           {num(p.adelanto) > 0 && <Fila k="Adelanto recibido" v={'+' + money(p.adelanto)} />}
           {entregadas.map((x) => (
