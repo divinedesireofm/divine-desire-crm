@@ -918,7 +918,7 @@ function PagosAdmin({ area = 'chatting' }) {
                       </td>
                       <td className="px-3 py-2.5 text-xs max-w-[320px]" style={lbl}>{notasDe(p)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                        <button onClick={() => abrirVistaChatter(p)} data-ver-como-chatter className="hover:underline mr-3" style={{ color: 'var(--accent)' }} title="Ver el desglose tal como lo verá el chatter">👁 Ver como chatter</button>
+                        <button onClick={() => abrirVistaChatter(p)} data-ver-como-chatter className="hover:underline mr-3" style={{ color: 'var(--accent)' }} title="Ver el desglose tal como lo verá el chatter">Ver</button>
                         <button onClick={() => editarPago(p)} className="hover:underline mr-3" style={{ color: 'var(--accent)' }}>Editar</button>
                         <button onClick={() => borrarPago(p)} style={{ color: 'var(--danger)' }}>✕</button>
                       </td>
