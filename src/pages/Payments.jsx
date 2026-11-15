@@ -196,9 +196,12 @@ function PagosAdmin({ area = 'chatting' }) {
   const [tareasPrev, setTareasPrev] = useState(null) // mismos datos de tareas que lee el chatter
   const resumenMgr = (f) => (f ? { base: f.c.base, descuento: f.c.descuento, dias: f.c.dias, trabajados: f.c.trabajados, tareas: f.sumaT, ajuste: f.ajuste, total: f.total, desde: f.pr.desde, hasta: f.pr.hasta } : null)
   // Abre la vista previa de un pago (o, si p es null, de un pago de manager sin pago de chatter ese día: fm)
-  async function abrirVistaChatter(p, fmSolo = null) {
+  async function abrirVistaChatter(p, fmSolo = null, grupoT = null) {
     setTareasPrev(null)
-    if (fmSolo) {
+    if (grupoT) {
+      const vacio = { id: 'tar-' + grupoT.pid + grupoT.fecha, account_id: null, fecha: grupoT.fecha, fact_neta: 0, pct: 0, bonos: 0, adelanto: 0, penalizacion: 0, deuda: 0, estado: grupoT.lista.every((t) => t.pagado_at) ? 'Pagado' : 'Pendiente' }
+      setVerComoChatter({ p: vacio, mgr: null, tareasPend: grupoT.lista, sintetico: true, nombre: perfiles.find((x) => x.id === grupoT.pid)?.full_name })
+    } else if (fmSolo) {
       const vacio = { id: 'mgr-' + fmSolo.mg.id + fmSolo.pr.pago, account_id: null, fecha: fmSolo.pr.pago, fact_neta: 0, pct: 0, bonos: 0, adelanto: 0, penalizacion: 0, deuda: 0, estado: fmSolo.p ? 'Pagado' : 'Pendiente' }
       setVerComoChatter({ p: vacio, mgr: resumenMgr(fmSolo), tareasPend: [], sintetico: true, nombre: fmSolo.mg.full_name })
     } else {
@@ -591,6 +594,28 @@ function PagosAdmin({ area = 'chatting' }) {
     return out.sort((a, b) => b.fecha.localeCompare(a.fecha))
   }, [visibles, filasMgr, cuentas, pagos, sel, tareasInfo])
   const lbl = { color: 'var(--text-muted)' }
+  // Total que entra en cada fila de la tabla (pago + manager + extras incluidos)
+  const totalFila = (fila) => {
+    if (fila.tipo === 'tar') return sumaT(fila.lista)
+    if (fila.tipo === 'mgr') return num(fila.f.total)
+    const p = fila.p
+    const perfilId = cuentaDe(p.account_id)?.profile_id
+    const fm = perfilId && idsManager.has(perfilId) ? mgrDe(perfilId, p.fecha) : null
+    return r2(calcPago(p) + (fm ? fm.total : 0) + sumaT(tareasInfo.porPago[p.id]?.pend || []) + sumaT(bonosExtraDe(p)))
+  }
+  const totalesDia = {}
+  filasTabla.forEach((f) => { const t = (totalesDia[f.fecha] = totalesDia[f.fecha] || { total: 0, n: 0 }); t.total = r2(t.total + totalFila(f)); t.n += 1 })
+  // Nube a la izquierda con lo que hay que pagar ese día (solo en la primera fila de cada fecha)
+  const nubeDia = (fila, idx) => {
+    if (idx > 0 && filasTabla[idx - 1].fecha === fila.fecha) return null
+    const t = totalesDia[fila.fecha]
+    return (
+      <span data-nube-dia className="inline-block text-[11px] leading-tight rounded-2xl px-3 py-1.5 mb-1.5" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', boxShadow: '0 2px 10px color-mix(in srgb, var(--accent) 22%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 35%, transparent)' }}>
+        ☁ Total a pagar<span className="block text-sm font-semibold tabular-nums gold-text">{money(t.total)}</span>
+        <span style={{ opacity: 0.75 }}>{t.n} {t.n === 1 ? 'pago' : 'pagos'}</span>
+      </span>
+    )
+  }
 
   return (
     <div>
@@ -902,7 +927,7 @@ function PagosAdmin({ area = 'chatting' }) {
                     const pagadas = fila.lista.every((t) => t.pagado_at)
                     return (
                       <tr key={'t' + fila.pid + fila.fecha} style={{ borderBottom: bordeFila, background: 'color-mix(in srgb, var(--gold) 5%, transparent)' }}>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(fila.fecha)}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{nubeDia(fila, idx)}{nubeDia(fila, idx) && <br />}{fmtF(fila.fecha)}</td>
                         {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{perfiles.find((x) => x.id === fila.pid)?.full_name || '—'}</td>}
                         {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
                         <td className="px-3 py-2.5" style={lbl}>—</td>
@@ -912,7 +937,7 @@ function PagosAdmin({ area = 'chatting' }) {
                         <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(sumaT(fila.lista))}</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Solo tareas</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Se gestiona en «Pago por tareas»</td>
-                        <td className="px-3 py-2.5"></td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-xs"><button onClick={() => abrirVistaChatter(null, null, fila)} data-ver-como-chatter className="hover:underline" style={{ color: 'var(--accent)' }}>Ver</button></td>
                       </tr>
                     )
                   }
@@ -920,7 +945,7 @@ function PagosAdmin({ area = 'chatting' }) {
                     const f = fila.f
                     return (
                       <tr key={'m' + f.mg.id + f.pr.pago} style={{ borderBottom: bordeFila, background: 'color-mix(in srgb, var(--accent) 5%, transparent)' }}>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(f.pr.pago)}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{nubeDia(fila, idx)}{nubeDia(fila, idx) && <br />}{fmtF(f.pr.pago)}</td>
                         {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{f.mg.full_name}</td>}
                         {Array.from({ length: 8 }, (_, i) => <td key={i} className="px-3 py-2.5" style={lbl}>—</td>)}
                         <td className="px-3 py-2.5">{celdaMgr(f, true)}</td>
@@ -941,7 +966,7 @@ function PagosAdmin({ area = 'chatting' }) {
                   const tPend = r2((ti ? sumaT(ti.pend) : 0) + sumaT(bExtra))
                   return (
                     <tr key={p.id} style={{ borderBottom: bordeFila }}>
-                      <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(p.fecha)}{textoPeriodo(p) && <span className="block text-[11px]" style={lbl} data-periodo-tabla>{textoPeriodo(p)}</span>}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">{nubeDia(fila, idx)}{nubeDia(fila, idx) && <br />}{fmtF(p.fecha)}{textoPeriodo(p) && <span className="block text-[11px]" style={lbl} data-periodo-tabla>{textoPeriodo(p)}</span>}</td>
                       {sel === 'todas' && <td className="px-3 py-2.5 whitespace-nowrap">{cuentaDe(p.account_id)?.nombre}</td>}
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_bruta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
@@ -1477,7 +1502,7 @@ function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiert
   return (
     <Panel className="p-5 mb-3">
       <div className="flex justify-between items-center mb-3">
-        <strong>{sintetico ? 'Pago de manager del' : 'Pago del'} {fmtF(p.fecha)}{!sintetico && textoPeriodo(p) && <span className="block text-xs font-normal" style={{ color: 'var(--text-muted)' }} data-periodo-tarjeta>Periodo: {textoPeriodo(p)}</span>}</strong>
+        <strong>{String(p.id).startsWith('tar-') ? 'Pago por tareas del' : sintetico ? 'Pago de manager del' : 'Pago del'} {fmtF(p.fecha)}{!sintetico && textoPeriodo(p) && <span className="block text-xs font-normal" style={{ color: 'var(--text-muted)' }} data-periodo-tarjeta>Periodo: {textoPeriodo(p)}</span>}</strong>
         <span>{p.estado === 'Pagado' ? 'Pagado' : 'Pendiente'} · <strong className="gold-text">{money(totalFinal)}</strong></span>
       </div>
       <div className="space-y-1.5 text-sm">
