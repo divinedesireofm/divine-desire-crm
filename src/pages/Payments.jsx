@@ -504,7 +504,7 @@ function PagosAdmin({ area = 'chatting' }) {
   }
 
   // Notas del pago = lo escrito a mano + bonos aplicados + sanciones aplicadas (con su motivo)
-  const notasDe = (p) => notasCompletas(p, bonos, sanciones, cuotas)
+  const notasDe = (p) => notasCompletas(p, bonos, sanciones, cuotas, pagos)
 
   const cuentaSel = sel !== 'todas' ? cuentaDe(sel) : null
 
@@ -1299,7 +1299,18 @@ function CalendarioTab({ cuentas, pagos, bonos, cuotas, onRegistrar, onVerPagos 
 }
 
 // Notas del pago = notas escritas + bonos aplicados + sanciones aplicadas
-function notasCompletas(p, bonos, sanciones, cuotas) {
+// Fechas en que se le dieron los adelantos que se están descontando en este pago (por las cuotas enlazadas; si no las hay, por los adelantos anteriores de esa persona)
+function fechasAdelanto(p, cuotas, pagos) {
+  const lista = pagos || []
+  const dePagos = (id) => lista.find((x) => x.id === id)?.fecha
+  const enlazadas = (cuotas || []).filter((x) => x.aplicado_en === p.id).map((x) => dePagos(x.origen_id || x.adelanto_id)).filter(Boolean)
+  let fechas = enlazadas
+  if (!fechas.length && num(p.deuda) !== 0 && p.account_id) fechas = lista.filter((x) => x.account_id === p.account_id && num(x.adelanto) > 0 && x.fecha <= p.fecha).map((x) => x.fecha)
+  return [...new Set(fechas)].sort()
+}
+const textoFechasAdelanto = (f) => (f.length ? (f.length === 1 ? `adelanto del ${fmtF(f[0])}` : `adelantos del ${f.slice(0, 4).map(fmtF).join(', ')}`) : '')
+
+function notasCompletas(p, bonos, sanciones, cuotas, pagos) {
   const partes = []
   if (p.notas) partes.push(p.notas)
   const b = (bonos || []).filter((x) => x.aplicado_en === p.id)
@@ -1309,7 +1320,8 @@ function notasCompletas(p, bonos, sanciones, cuotas) {
   const c = (cuotas || []).filter((x) => x.aplicado_en === p.id)
   if (c.length) {
     const totalAdel = (x) => { const k = x.origen_id || x.adelanto_id || x.id; return r2((cuotas || []).filter((y) => (y.origen_id || y.adelanto_id || y.id) === k).reduce((t, y) => t + num(y.monto), 0)) }
-    partes.push(c.map((x) => `Adelanto ${money(totalAdel(x))} : cuota ${x.num}/${x.total} (−${money(x.monto)})`).join(' · '))
+    const fechaDe = (x) => (pagos || []).find((y) => y.id === (x.origen_id || x.adelanto_id))?.fecha
+    partes.push(c.map((x) => `Adelanto ${money(totalAdel(x))}${fechaDe(x) ? ` concedido el ${fmtF(fechaDe(x))}` : ''} : cuota ${x.num}/${x.total} (−${money(x.monto)})`).join(' · '))
   }
   return partes.join(' · ')
 }
@@ -1336,7 +1348,7 @@ function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiert
     ['+ Tareas pendientes de cobro', money(sumPend)],
     ['+ Adelanto', money(p.adelanto)],
     ['− Sanciones', money(p.penalizacion)],
-    ['− Deuda / cuota de adelanto', money(p.deuda)],
+    [`− Deuda / cuota de adelanto${textoFechasAdelanto(fechasAdelanto(p, cuotas, pagos)) ? ' (' + textoFechasAdelanto(fechasAdelanto(p, cuotas, pagos)) + ')' : ''}`, money(p.deuda)],
     ['+ Pago de manager', money(mgr?.total), !!mgr],
   ]
   return (
@@ -1351,7 +1363,7 @@ function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiert
         ))}
         <div className="flex justify-between pt-2 mt-1 text-base" style={{ borderTop: '1px solid var(--border)' }} data-total-final><span className="font-medium">Total final</span><strong className="gold-text tabular-nums">{money(totalFinal)}</strong></div>
       </div>
-      {!sintetico && notasCompletas(p, bonos, sanciones, cuotas) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones, cuotas)}</p>}
+      {!sintetico && notasCompletas(p, bonos, sanciones, cuotas, pagos) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones, cuotas, pagos)}</p>}
       <DesglosePago p={p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={pagos} abiertoInicial={abiertoInicial} mgr={mgr} tareasPend={tareasPend} sintetico={sintetico} totalFinal={totalFinal} />
     </Panel>
   )
