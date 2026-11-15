@@ -182,8 +182,18 @@ function PagosAdmin({ area = 'chatting' }) {
   const [msg, setMsg] = useState('')
   const [verComoChatter, setVerComoChatter] = useState(null) // pago cuya vista de chatter se previsualiza
   const [tareasPrev, setTareasPrev] = useState(null) // mismos datos de tareas que lee el chatter
-  async function abrirVistaChatter(p) {
-    setTareasPrev(null); setVerComoChatter(p)
+  const resumenMgr = (f) => (f ? { base: f.c.base, descuento: f.c.descuento, dias: f.c.dias, trabajados: f.c.trabajados, tareas: f.sumaT, ajuste: f.ajuste, total: f.total, desde: f.pr.desde, hasta: f.pr.hasta } : null)
+  // Abre la vista previa de un pago (o, si p es null, de un pago de manager sin pago de chatter ese día: fm)
+  async function abrirVistaChatter(p, fmSolo = null) {
+    setTareasPrev(null)
+    if (fmSolo) {
+      const vacio = { id: 'mgr-' + fmSolo.mg.id + fmSolo.pr.pago, account_id: null, fecha: fmSolo.pr.pago, fact_neta: 0, pct: 0, bonos: 0, adelanto: 0, penalizacion: 0, deuda: 0, estado: fmSolo.p ? 'Pagado' : 'Pendiente' }
+      setVerComoChatter({ p: vacio, mgr: resumenMgr(fmSolo), tareasPend: [], sintetico: true, nombre: fmSolo.mg.full_name })
+    } else {
+      const perfilId = cuentaDe(p.account_id)?.profile_id
+      const fm = perfilId && idsManager.has(perfilId) ? mgrDe(perfilId, p.fecha) : null
+      setVerComoChatter({ p, mgr: resumenMgr(fm), tareasPend: tareasInfo.porPago[p.id]?.pend || [], sintetico: false, nombre: cuentaDe(p.account_id)?.nombre })
+    }
     const { data } = await supabase.from('pay_task_items').select('id, titulo, monto, aplicado_en, aplicado_tipo').not('aplicado_en', 'is', null)
     setTareasPrev(data || [])
   }
@@ -884,7 +894,7 @@ function PagosAdmin({ area = 'chatting' }) {
                         <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap">{money(f.total)}</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Solo manager</td>
                         <td className="px-3 py-2.5 text-xs" style={lbl}>Se gestiona en «Pago de managers»</td>
-                        <td className="px-3 py-2.5"></td>
+                        <td className="px-3 py-2.5 whitespace-nowrap text-xs"><button onClick={() => abrirVistaChatter(null, f)} data-ver-como-chatter className="hover:underline" style={{ color: 'var(--accent)' }}>Ver</button></td>
                       </tr>
                     )
                   }
@@ -934,8 +944,8 @@ function PagosAdmin({ area = 'chatting' }) {
       {verComoChatter && (
         <div onClick={() => setVerComoChatter(null)} className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto" style={{ background: 'rgba(0,0,0,0.75)' }} data-vista-chatter>
           <div className="w-full max-w-xl my-6" onClick={(e) => e.stopPropagation()}>
-            <p className="text-sm mb-3 text-center" style={{ color: '#fff' }}>👁 Así lo verá <strong>{cuentaDe(verComoChatter.account_id)?.nombre || 'el chatter'}</strong>{verComoChatter.estado !== 'Pagado' ? ' (este pago aún está pendiente)' : ''}</p>
-            <TarjetaPagoChatter p={verComoChatter} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareasPrev || tareas} pagos={pagos} abiertoInicial />
+            <p className="text-sm mb-3 text-center" style={{ color: '#fff' }}>👁 Así lo verá <strong>{verComoChatter.nombre || 'el chatter'}</strong>{verComoChatter.p.estado !== 'Pagado' ? ' (este pago aún está pendiente)' : ''}</p>
+            <TarjetaPagoChatter p={verComoChatter.p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareasPrev || tareas} pagos={pagos} abiertoInicial mgr={verComoChatter.mgr} tareasPend={verComoChatter.tareasPend} sintetico={verComoChatter.sintetico} />
             <div className="text-center"><Button variant="ghost" onClick={() => setVerComoChatter(null)} style={{ background: 'var(--panel)' }}>Cerrar</Button></div>
           </div>
         </div>
@@ -1311,38 +1321,44 @@ function BonosTab({ cuentas, bonos, pagos, onCambio, area }) {
   return <BonosCalculados area={area || 'chatting'} cuentas={cuentas} bonos={bonos} pagos={pagos} onCambio={onCambio} />
 }
 
-// La tarjeta de un pago tal como la ve el chatter (también se usa en la vista previa del admin)
-function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInicial = false }) {
+// La tarjeta de un pago tal como la ve el chatter (también se usa en la vista previa del admin).
+// mgr: pago de manager de ese día { base, dias, trabajados, descuento, tareas, ajuste, total, desde, hasta } · tareasPend: tareas pendientes que se pagan con él · sintetico: solo hay pago de manager (sin pago de chatter ese día)
+function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInicial = false, mgr = null, tareasPend = [], sintetico = false }) {
   const sumT = r2(tareas.filter((x) => x.aplicado_en === p.id && x.aplicado_tipo !== 'manager').reduce((t, x) => t + num(x.monto), 0))
   const soloBonos = Math.max(0, r2(num(p.bonos) - sumT))
+  const sumPend = r2(tareasPend.reduce((t, x) => t + num(x.monto), 0))
+  const totalFinal = r2(calcPago(p) + num(mgr?.total) + sumPend)
+  const filas = [
+    ['Facturación neta', money(p.fact_neta), !sintetico],
+    [`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`, money(num(p.fact_neta) * num(p.pct)), !sintetico],
+    ['+ Bonos', money(soloBonos)],
+    ['+ Pago por tareas', money(sumT)],
+    ['+ Tareas pendientes de cobro', money(sumPend)],
+    ['+ Adelanto', money(p.adelanto)],
+    ['− Sanciones', money(p.penalizacion)],
+    ['− Deuda / cuota de adelanto', money(p.deuda)],
+    ['+ Pago de manager', money(mgr?.total), !!mgr],
+  ]
   return (
     <Panel className="p-5 mb-3">
       <div className="flex justify-between items-center mb-3">
-        <strong>Pago del {fmtF(p.fecha)}</strong>
-        <span>{p.estado === 'Pagado' ? 'Pagado' : 'Pendiente'} · <strong className="gold-text">{money(calcPago(p))}</strong></span>
+        <strong>{sintetico ? 'Pago de manager del' : 'Pago del'} {fmtF(p.fecha)}</strong>
+        <span>{p.estado === 'Pagado' ? 'Pagado' : 'Pendiente'} · <strong className="gold-text">{money(totalFinal)}</strong></span>
       </div>
       <div className="space-y-1.5 text-sm">
-        {[
-          ['Facturación neta', money(p.fact_neta)],
-          [`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`, money(num(p.fact_neta) * num(p.pct))],
-          ['+ Bonos', money(soloBonos)],
-          ['+ Pago por tareas', money(sumT)],
-          ['+ Adelanto', money(p.adelanto)],
-          ['− Sanciones', money(p.penalizacion)],
-          ['− Deuda / cuota de adelanto', money(p.deuda)],
-        ].filter(([, v], i) => i < 2 || v !== '$0.00').map(([k, v]) => (
+        {filas.filter(([, v, fijo]) => (fijo === true) || (fijo === undefined && v !== '$0.00')).map(([k, v]) => (
           <div key={k} className="flex justify-between"><span style={{ color: 'var(--text-muted)' }}>{k}</span><strong>{v}</strong></div>
         ))}
-        <div className="flex justify-between pt-2 mt-1 text-base" style={{ borderTop: '1px solid var(--border)' }} data-total-final><span className="font-medium">Total final</span><strong className="gold-text tabular-nums">{money(calcPago(p))}</strong></div>
+        <div className="flex justify-between pt-2 mt-1 text-base" style={{ borderTop: '1px solid var(--border)' }} data-total-final><span className="font-medium">Total final</span><strong className="gold-text tabular-nums">{money(totalFinal)}</strong></div>
       </div>
-      {notasCompletas(p, bonos, sanciones, cuotas) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones, cuotas)}</p>}
-      <DesglosePago p={p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={pagos} abiertoInicial={abiertoInicial} />
+      {!sintetico && notasCompletas(p, bonos, sanciones, cuotas) && <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>{notasCompletas(p, bonos, sanciones, cuotas)}</p>}
+      <DesglosePago p={p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={pagos} abiertoInicial={abiertoInicial} mgr={mgr} tareasPend={tareasPend} sintetico={sintetico} totalFinal={totalFinal} />
     </Panel>
   )
 }
 
 // Desglose desplegable de un pago: cada concepto por separado
-function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInicial = false }) {
+function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInicial = false, mgr = null, tareasPend = [], sintetico = false, totalFinal = null }) {
   const [abierto, setAbierto] = useState(abiertoInicial)
   const lbl = { color: 'var(--text-muted)' }
   const grp = (x) => x.origen_id || x.adelanto_id || x.id
@@ -1368,10 +1384,12 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
       <button type="button" onClick={() => setAbierto((v) => !v)} className="text-xs underline" style={{ color: 'var(--accent)' }}>{abierto ? '▾ Ocultar desglose' : '▸ Ver desglose detallado'}</button>
       {abierto && (
         <div className="mt-2 rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
-          <Tit>Pago base</Tit>
-          {num(p.fact_bruta) > 0 && <Fila k="Facturación bruta" v={money(p.fact_bruta)} />}
-          <Fila k="Facturación neta" v={money(p.fact_neta)} />
-          <Fila k={`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`} v={money(num(p.fact_neta) * num(p.pct))} />
+          {!sintetico && <>
+            <Tit>Pago base</Tit>
+            {num(p.fact_bruta) > 0 && <Fila k="Facturación bruta" v={money(p.fact_bruta)} />}
+            <Fila k="Facturación neta" v={money(p.fact_neta)} />
+            <Fila k={`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`} v={money(num(p.fact_neta) * num(p.pct))} />
+          </>}
           {(bs.length > 0 || otrosBonos > 0.009) && <Tit>Bonos (+)</Tit>}
           {bs.map((x) => <Fila key={x.id} k={x.nombre} sub={x.nota || `Cobro ${fmtF(x.fecha_cobro)}`} v={'+' + money(x.monto)} color="var(--success)" />)}
           {otrosBonos > 0.009 && <Fila k="Otros bonos" sub="Añadidos a mano en el pago" v={'+' + money(otrosBonos)} color="var(--success)" />}
@@ -1388,7 +1406,16 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
           {(ss.length > 0 || num(p.penalizacion) !== 0) && <Tit>Sanciones (−)</Tit>}
           {ss.map((x) => <Fila key={x.id} k={x.motivo || 'Sanción'} sub={x.fecha ? fmtF(x.fecha) : undefined} v={num(x.monto) ? '−' + money(Math.abs(num(x.monto))) : '—'} color="var(--danger)" />)}
           {ss.length === 0 && num(p.penalizacion) !== 0 && <Fila k="Sanciones" v={'−' + money(Math.abs(num(p.penalizacion)))} color="var(--danger)" />}
-          <div className="flex justify-between pt-3 mt-1"><span className="font-medium">Total final</span><strong className="gold-text tabular-nums text-base">{money(calcPago(p))}</strong></div>
+          {tareasPend.length > 0 && <Tit>Tareas pendientes de cobro (+)</Tit>}
+          {tareasPend.map((x) => <Fila key={x.id} k={x.titulo || 'Tarea'} sub={x.fecha_pago ? `Día de pago ${fmtF(x.fecha_pago)}` : 'Pago por tarea'} v={'+' + money(x.monto)} color="var(--success)" />)}
+          {mgr && <Tit>Pago de manager (+)</Tit>}
+          {mgr && mgr.desde && <Fila k="Periodo" v={`${fmtF(mgr.desde)} → ${fmtF(mgr.hasta)}`} />}
+          {mgr && <Fila k="Sueldo del periodo" v={money(mgr.base)} />}
+          {mgr && num(mgr.descuento) > 0 && <Fila k="Días no trabajados" sub={mgr.dias ? `${mgr.trabajados} de ${mgr.dias} días trabajados` : undefined} v={'−' + money(mgr.descuento)} color="var(--danger)" />}
+          {mgr && num(mgr.tareas) > 0 && <Fila k="Pago por tareas" v={'+' + money(mgr.tareas)} color="var(--success)" />}
+          {mgr && num(mgr.ajuste) !== 0 && <Fila k="Ajuste" v={(num(mgr.ajuste) > 0 ? '+' : '−') + money(Math.abs(num(mgr.ajuste)))} />}
+          {mgr && <Fila k="Total pago de manager" v={money(mgr.total)} />}
+          <div className="flex justify-between pt-3 mt-1"><span className="font-medium">Total final</span><strong className="gold-text tabular-nums text-base">{money(totalFinal ?? calcPago(p))}</strong></div>
           {p.notas && <p className="text-xs mt-2" style={lbl}>Nota: {p.notas}</p>}
         </div>
       )}
@@ -1400,6 +1427,8 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
 // CHATTER / MANAGER: solo ve sus propios pagos
 // =====================================================================================
 function MisPagos() {
+  const { profile } = useAuth()
+  const [perMgr, setPerMgr] = useState([]) // mis pagos de manager (sueldo), ya registrados
   const [filas, setFilas] = useState(null)
   const [bonos, setBonos] = useState([])
   const [sanciones, setSanciones] = useState([])
@@ -1412,21 +1441,34 @@ function MisPagos() {
       supabase.from('sanctions').select('id, motivo, monto, fecha, payout_id').not('payout_id', 'is', null),
       supabase.from('payout_advance_installments').select('*'),
       supabase.from('pay_task_items').select('id, titulo, monto, aplicado_en, aplicado_tipo').not('aplicado_en', 'is', null),
-    ]).then(([{ data: p }, { data: b }, { data: s }, { data: c }, { data: t }]) => { setFilas(p || []); setBonos(b || []); setSanciones(s || []); setCuotas(c || []); setTareas(t || []) })
+      supabase.from('manager_pay_periods').select('*').limit(2000),
+    ]).then(([{ data: p }, { data: b }, { data: s }, { data: c }, { data: t }, pm]) => { setFilas(p || []); setBonos(b || []); setSanciones(s || []); setCuotas(c || []); setTareas(t || []); setPerMgr(pm?.error ? [] : (pm?.data || [])) })
   }, [])
-  const total = (filas || []).filter((p) => p.estado === 'Pagado').reduce((s, p) => s + calcPago(p), 0)
+  // Pago de manager registrado como un resumen listo para mostrar
+  const mgrDeFila = (x) => {
+    const desde = x.periodo_desde, hasta = x.periodo_hasta
+    const dias = desde && hasta ? difDias(hasta, desde) + 1 : 0
+    return { base: num(x.importe_base), descuento: num(x.descuento), dias, trabajados: dias - num(x.dias_descontados), tareas: num(x.importe_tareas), ajuste: num(x.ajuste), total: num(x.importe_pagado), desde, hasta }
+  }
+  const fechaMgr = (x) => x.fecha_pago_real || x.fecha_pago
+  const mios = perMgr.filter((x) => !x.manager_id || x.manager_id === profile?.id)
+  const soloMgr = mios.filter((x) => !(filas || []).some((p) => p.fecha === fechaMgr(x)))
+  const lista = [...(filas || []).map((p) => ({ k: p.id, fecha: p.fecha, p, mgr: (() => { const x = mios.find((y) => fechaMgr(y) === p.fecha); return x ? mgrDeFila(x) : null })() })),
+    ...soloMgr.map((x) => ({ k: 'm' + x.id, fecha: fechaMgr(x), mgr: mgrDeFila(x), p: { id: 'mgr-' + x.id, fecha: fechaMgr(x), fact_neta: 0, pct: 0, bonos: 0, adelanto: 0, penalizacion: 0, deuda: 0, estado: 'Pagado' }, sintetico: true }))]
+    .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
+  const total = r2((filas || []).filter((p) => p.estado === 'Pagado').reduce((s, p) => s + calcPago(p), 0) + mios.reduce((s, x) => s + num(x.importe_pagado), 0))
   return (
     <div>
       <PageHeader title="Mis pagos" subtitle="El detalle de lo que has cobrado en cada pago." />
       {filas === null ? <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
-        : filas.length === 0 ? <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Todavía no tienes pagos registrados.</p>
+        : lista.length === 0 ? <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Todavía no tienes pagos registrados.</p>
         : (
           <>
             <Panel className="p-4 mb-4 inline-block min-w-[220px]">
               <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Total cobrado</p>
               <p className="text-xl font-display font-semibold gold-text tabular-nums">{money(total)}</p>
             </Panel>
-            {filas.map((p) => <TarjetaPagoChatter key={p.id} p={p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={filas} />)}
+            {lista.map((it) => <TarjetaPagoChatter key={it.k} p={it.p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={filas} mgr={it.mgr} sintetico={!!it.sintetico} />)}
           </>
         )}
     </div>
