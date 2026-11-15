@@ -1372,6 +1372,9 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
   const otrosBonos = r2(num(p.bonos) - sumBs)
   const otrasDeudas = r2(Math.abs(num(p.deuda)) - descontadas.reduce((t, x) => t + num(x.monto), 0))
   const fechaPagoDe = (id) => pagos.find((x) => x.id === id)?.fecha
+  // Adelantos que se le dieron antes (o en este mismo pago): sirven para decir de cuándo es la deuda aunque la cuota no esté enlazada
+  const adelantosPrevios = pagos.filter((x) => p.account_id && x.account_id === p.account_id && num(x.adelanto) > 0 && x.fecha <= p.fecha).sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
+  const textoAdelantos = adelantosPrevios.slice(0, 4).map((x) => `${money(x.adelanto)} el ${fmtF(x.fecha)}`).join(' · ')
   const Fila = ({ k, v, sub, color }) => (
     <div className="flex justify-between gap-3 py-1" style={{ borderBottom: '1px solid var(--border)' }}>
       <span>{k}{sub && <span className="block text-[11px]" style={lbl}>{sub}</span>}</span>
@@ -1402,10 +1405,10 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
           ))}
           {(descontadas.length > 0 || otrasDeudas > 0.009) && <Tit>Descuentos por deuda (−)</Tit>}
           {descontadas.map((x) => {
-            const concedido = fechaPagoDe(x.origen_id || x.adelanto_id)
-            return <Fila key={x.id} k={concedido ? `Adelanto de ${money(totalAdel(x))} concedido el ${fmtF(concedido)}` : `Adelanto de ${money(totalAdel(x))}`} sub={`Cuota ${x.num}/${x.total}`} v={'−' + money(x.monto)} color="var(--danger)" />
+            const concedido = fechaPagoDe(x.origen_id || x.adelanto_id) || (adelantosPrevios.length === 1 ? adelantosPrevios[0].fecha : null)
+            return <Fila key={x.id} k={concedido ? `Adelanto de ${money(totalAdel(x))} concedido el ${fmtF(concedido)}` : `Adelanto de ${money(totalAdel(x))}`} sub={`Cuota ${x.num}/${x.total}${!concedido && textoAdelantos ? ` · adelantos concedidos: ${textoAdelantos}` : ''}`} v={'−' + money(x.monto)} color="var(--danger)" />
           })}
-          {otrasDeudas > 0.009 && <Fila k="Otras deudas" v={'−' + money(otrasDeudas)} color="var(--danger)" />}
+          {otrasDeudas > 0.009 && <Fila k={adelantosPrevios.length ? 'Deuda por adelanto' : 'Otras deudas'} sub={adelantosPrevios.length ? `Adelanto concedido: ${textoAdelantos}` : undefined} v={'−' + money(otrasDeudas)} color="var(--danger)" />}
           {(ss.length > 0 || num(p.penalizacion) !== 0) && <Tit>Sanciones (−)</Tit>}
           {ss.map((x) => <Fila key={x.id} k={x.motivo || 'Sanción'} sub={x.fecha ? fmtF(x.fecha) : undefined} v={num(x.monto) ? '−' + money(Math.abs(num(x.monto))) : '—'} color="var(--danger)" />)}
           {ss.length === 0 && num(p.penalizacion) !== 0 && <Fila k="Sanciones" v={'−' + money(Math.abs(num(p.penalizacion)))} color="var(--danger)" />}
