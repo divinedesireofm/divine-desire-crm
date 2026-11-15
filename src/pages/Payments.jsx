@@ -198,7 +198,7 @@ function PagosAdmin({ area = 'chatting' }) {
     } else {
       const perfilId = cuentaDe(p.account_id)?.profile_id
       const fm = perfilId && idsManager.has(perfilId) ? mgrDe(perfilId, p.fecha) : null
-      setVerComoChatter({ p, mgr: resumenMgr(fm), tareasPend: tareasInfo.porPago[p.id]?.pend || [], sintetico: false, nombre: cuentaDe(p.account_id)?.nombre })
+      setVerComoChatter({ p, mgr: resumenMgr(fm), tareasPend: extrasDe(p), sintetico: false, nombre: cuentaDe(p.account_id)?.nombre })
     }
     const { data } = await supabase.from('pay_task_items').select('id, titulo, monto, aplicado_en, aplicado_tipo').not('aplicado_en', 'is', null)
     setTareasPrev(data || [])
@@ -536,13 +536,18 @@ function PagosAdmin({ area = 'chatting' }) {
       if (t.aplicado_en) return
       if (t.pagado_at) { if (t.fecha_pago >= sumarDias(hoyS, -120)) sueltas.push(t); return }
       const ids = cuentasDe(t.responsable_id)
-      const destino = pagos.filter((x) => ids.includes(x.account_id) && x.estado === 'Pendiente' && x.fecha >= t.fecha_pago).sort((a, b) => a.fecha.localeCompare(b.fecha))[0]
+      // un pago ya registrado ese mismo día (aunque esté Pagado) lo absorbe; si no, el siguiente pago pendiente
+      const destino = pagos.find((x) => ids.includes(x.account_id) && x.fecha === t.fecha_pago) || pagos.filter((x) => ids.includes(x.account_id) && x.estado === 'Pendiente' && x.fecha >= t.fecha_pago).sort((a, b) => a.fecha.localeCompare(b.fecha))[0]
       if (destino) cae(destino.id).pend.push(t)
       else if (t.fecha_pago <= sumarDias(hoyS, 20)) sueltas.push(t)
     })
     return { porPago, sueltas }
   }, [tareas, filasMgr, cuentas, pagos, hoyS])
   const sumaT = (l) => r2(l.reduce((a, t) => a + num(t.monto), 0))
+  // Bonos creados después de registrar el pago pero con cobro ese mismo día: cuentan ya dentro del Total
+  const bonosExtraDe = (p) => (p.account_id ? bonos.filter((x) => x.account_id === p.account_id && !x.aplicado_en && x.fecha_cobro === p.fecha) : [])
+  // Todo lo extra que entra en el Total sin estar guardado en el pago: tareas del día + bonos del día
+  const extrasDe = (p) => [...(tareasInfo.porPago[p.id]?.pend || []), ...bonosExtraDe(p).map((b) => ({ id: 'b' + b.id, titulo: b.nombre, monto: b.monto, esBono: true, fecha_cobro: b.fecha_cobro }))]
 
   // Pagos de manager y de tareas que no coinciden con ningún pago registrado de esa persona ese día: salen como fila propia
   const filasTabla = useMemo(() => {
@@ -855,13 +860,13 @@ function PagosAdmin({ area = 'chatting' }) {
                   const sig = filasTabla[idx + 1]
                   const cambiaFecha = !!sig && sig.fecha !== fila.fecha
                   const bordeFila = cambiaFecha ? '3px solid color-mix(in srgb, var(--text-muted) 55%, var(--border))' : '1px solid var(--border)'
-                  const celdaMgr = (f) => {
+                  const celdaMgr = (f, enPago = false) => {
                     if (!f) return <span style={lbl}>—</span>
                     return (
                       <div className="leading-tight min-w-[150px]" title={`Periodo ${fmtF(f.pr.desde)} → ${fmtF(f.pr.hasta)}`}>
                         <span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(f.total)}</span>
                         <span className="block text-[11px]" style={lbl}>{fmtF(f.pr.desde)} → {fmtF(f.pr.hasta)}{f.sumaT ? ` · +${money(f.sumaT)} tareas` : ''}</span>
-                        <span className="block text-[11px]" style={{ color: f.p ? 'var(--success)' : 'var(--gold)' }}>{f.p ? '✓ pagado' : 'pendiente'}</span>
+                        <span className="block text-[11px]" style={{ color: f.p || enPago ? 'var(--success)' : 'var(--gold)' }}>{f.p ? '✓ pagado' : enPago ? '✓ incluido en el Total' : 'pendiente'}</span>
                       </div>
                     )
                   }
@@ -869,7 +874,7 @@ function PagosAdmin({ area = 'chatting' }) {
                     if (!info || (!info.incl.length && !info.pend.length)) return <span style={lbl}>—</span>
                     return (
                       <div className="leading-tight min-w-[150px]">
-                        {info.pend.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums" style={{ color: 'var(--accent)' }}>{money(t.monto)}</span> {t.titulo} <span style={{ color: 'var(--gold)' }}>· pendiente</span></span>)}
+                        {info.pend.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums">{money(t.monto)}</span> {t.titulo} <span style={{ color: 'var(--success)' }}>· ✓ incluido en el Total</span></span>)}
                         {info.incl.map((t) => <span key={t.id} className="block text-[11px]"><span className="font-semibold tabular-nums">{money(t.monto)}</span> {t.titulo} <span style={{ color: 'var(--success)' }}>· ✓ incluido en el Total</span></span>)}
                       </div>
                     )
@@ -913,7 +918,8 @@ function PagosAdmin({ area = 'chatting' }) {
                   const esMgr = !!perfilId && idsManager.has(perfilId)
                   const fm = esMgr ? mgrDe(perfilId, p.fecha) : null
                   const ti = tareasInfo.porPago[p.id]
-                  const tPend = ti ? sumaT(ti.pend) : 0
+                  const bExtra = bonosExtraDe(p)
+                  const tPend = r2((ti ? sumaT(ti.pend) : 0) + sumaT(bExtra))
                   return (
                     <tr key={p.id} style={{ borderBottom: bordeFila }}>
                       <td className="px-3 py-2.5 whitespace-nowrap">{fmtF(p.fecha)}{textoPeriodo(p) && <span className="block text-[11px]" style={lbl} data-periodo-tabla>{textoPeriodo(p)}</span>}</td>
@@ -922,12 +928,12 @@ function PagosAdmin({ area = 'chatting' }) {
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.fact_neta)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{p.pct != null ? Math.round(num(p.pct) * 100) + '%' : '—'}</td>
                       <td className="px-3 py-2.5 tabular-nums" title="Facturación neta × porcentaje">{p.pct != null && p.fact_neta != null ? money(r2(num(p.fact_neta) * num(p.pct))) : <span style={lbl}>—</span>}</td>
-                      <td className="px-3 py-2.5 tabular-nums">{celda(Math.max(0, r2(num(p.bonos) - sumTAplicadas(p.id))))}</td>
+                      <td className="px-3 py-2.5 tabular-nums">{celda(Math.max(0, r2(num(p.bonos) - sumTAplicadas(p.id))))}{bExtra.map((b) => <span key={b.id} className="block text-[11px]"><span className="font-semibold">+{money(b.monto)}</span> {b.nombre} <span style={{ color: 'var(--success)' }}>· ✓ incluido en el Total</span></span>)}</td>
                       <td className="px-3 py-2.5 tabular-nums">{celda(p.adelanto)}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.penalizacion) ? 'var(--danger)' : undefined }}>{celda(p.penalizacion)}</td>
                       <td className="px-3 py-2.5 tabular-nums" style={{ color: num(p.deuda) ? 'var(--danger)' : undefined }}>{celda(p.deuda)}</td>
                       <td className="px-3 py-2.5" style={esMgr ? undefined : { background: 'color-mix(in srgb, var(--text-muted) 8%, transparent)' }} title={esMgr ? undefined : 'Esta persona no es manager'}>
-                        {esMgr ? celdaMgr(fm) : <span style={{ ...lbl, opacity: 0.5 }}>🔒</span>}
+                        {esMgr ? celdaMgr(fm, true) : <span style={{ ...lbl, opacity: 0.5 }}>🔒</span>}
                       </td>
                       <td className="px-3 py-2.5">{celdaTar(ti)}</td>
                       <td className="px-3 py-2.5 tabular-nums font-semibold gold-text whitespace-nowrap" title={`Pago ${money(calcPago(p))}${fm ? ` + manager ${money(fm.total)}` : ''}${tPend ? ` + tareas ${money(tPend)}` : ''}`}>{money(r2(calcPago(p) + (fm ? fm.total : 0) + tPend))}</td>
@@ -1443,7 +1449,7 @@ function TarjetaPagoChatter({ p, bonos, sanciones, cuotas, tareas, pagos, abiert
     [`Pago base (neta × ${Math.round(num(p.pct) * 100)}%)`, money(num(p.fact_neta) * num(p.pct)), !sintetico],
     ['+ Bonos', money(soloBonos)],
     ['+ Pago por tareas', money(sumT)],
-    ['+ Tareas pendientes de cobro', money(sumPend)],
+    ['+ Pagos extra (tareas/bonos del día)', money(sumPend)],
     ['+ Adelanto', money(p.adelanto)],
     ['− Sanciones', money(p.penalizacion)],
     [`− Deuda / cuota de adelanto${textoFechasAdelanto(fechasAdelanto(p, cuotas, pagos)) ? ' (' + textoFechasAdelanto(fechasAdelanto(p, cuotas, pagos)) + ')' : ''}`, money(p.deuda)],
@@ -1521,8 +1527,8 @@ function DesglosePago({ p, bonos, sanciones, cuotas, tareas, pagos, abiertoInici
           {(ss.length > 0 || num(p.penalizacion) !== 0) && <Tit>Sanciones (−)</Tit>}
           {ss.map((x) => <Fila key={x.id} k={x.motivo || 'Sanción'} sub={x.fecha ? fmtF(x.fecha) : undefined} v={num(x.monto) ? '−' + money(Math.abs(num(x.monto))) : '—'} color="var(--danger)" />)}
           {ss.length === 0 && num(p.penalizacion) !== 0 && <Fila k="Sanciones" v={'−' + money(Math.abs(num(p.penalizacion)))} color="var(--danger)" />}
-          {tareasPend.length > 0 && <Tit>Tareas pendientes de cobro (+)</Tit>}
-          {tareasPend.map((x) => <Fila key={x.id} k={x.titulo || 'Tarea'} sub={x.fecha_pago ? `Día de pago ${fmtF(x.fecha_pago)}` : 'Pago por tarea'} v={'+' + money(x.monto)} color="var(--success)" />)}
+          {tareasPend.length > 0 && <Tit>Pagos extra incluidos en el total (+)</Tit>}
+          {tareasPend.map((x) => <Fila key={x.id} k={x.titulo || 'Tarea'} sub={x.esBono ? `Bono · cobro ${fmtF(x.fecha_cobro)}` : x.fecha_pago ? `Pago por tarea · día de pago ${fmtF(x.fecha_pago)}` : 'Pago por tarea'} v={'+' + money(x.monto)} color="var(--success)" />)}
           {mgr && <Tit>Pago de manager (+)</Tit>}
           {mgr && mgr.desde && <Fila k="Periodo" v={`${fmtF(mgr.desde)} → ${fmtF(mgr.hasta)}`} />}
           {mgr && <Fila k="Sueldo del periodo" v={money(mgr.base)} />}
@@ -1571,7 +1577,9 @@ function MisPagos() {
   const lista = [...(filas || []).map((p) => ({ k: p.id, fecha: p.fecha, p, mgr: (() => { const x = mios.find((y) => fechaMgr(y) === p.fecha); return x ? mgrDeFila(x) : null })() })),
     ...soloMgr.map((x) => ({ k: 'm' + x.id, fecha: fechaMgr(x), mgr: mgrDeFila(x), p: { id: 'mgr-' + x.id, fecha: fechaMgr(x), fact_neta: 0, pct: 0, bonos: 0, adelanto: 0, penalizacion: 0, deuda: 0, estado: 'Pagado' }, sintetico: true }))]
     .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)))
-  const total = r2((filas || []).filter((p) => p.estado === 'Pagado').reduce((s, p) => s + calcPago(p), 0) + mios.reduce((s, x) => s + num(x.importe_pagado), 0))
+  // bonos creados después del pago con cobro ese mismo día: ya cuentan dentro del total
+  const extrasBonos = (p) => (p.account_id ? bonos.filter((x) => x.account_id === p.account_id && !x.aplicado_en && x.fecha_cobro === p.fecha).map((b) => ({ id: 'b' + b.id, titulo: b.nombre, monto: b.monto, esBono: true, fecha_cobro: b.fecha_cobro })) : [])
+  const total = r2((filas || []).filter((p) => p.estado === 'Pagado').reduce((s, p) => s + calcPago(p) + extrasBonos(p).reduce((t, x) => t + num(x.monto), 0), 0) + mios.reduce((s, x) => s + num(x.importe_pagado), 0))
   return (
     <div>
       <PageHeader title="Mis pagos" subtitle="El detalle de lo que has cobrado en cada pago." />
@@ -1583,7 +1591,7 @@ function MisPagos() {
               <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Total cobrado</p>
               <p className="text-xl font-display font-semibold gold-text tabular-nums">{money(total)}</p>
             </Panel>
-            {lista.map((it) => <TarjetaPagoChatter key={it.k} p={it.p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={filas} mgr={it.mgr} sintetico={!!it.sintetico} />)}
+            {lista.map((it) => <TarjetaPagoChatter key={it.k} p={it.p} bonos={bonos} sanciones={sanciones} cuotas={cuotas} tareas={tareas} pagos={filas} mgr={it.mgr} tareasPend={it.sintetico ? [] : extrasBonos(it.p)} sintetico={!!it.sintetico} />)}
           </>
         )}
     </div>
