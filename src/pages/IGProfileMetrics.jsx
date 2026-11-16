@@ -5,6 +5,11 @@ import { useAuth } from '../context/AuthContext'
 import { actualizarMetricasIG } from '../lib/igScrape'
 import { Panel, Button, Select } from '../components/ui'
 import ScrollSuperior from '../components/ScrollSuperior'
+import { urlInstagram } from '../lib/instagramLink'
+import { estadoDeCuenta } from '../lib/cuentasIGSecciones'
+
+// Las cuentas suspendidas o en reposo no se miden: no aparecen en este cuadro
+const SIN_METRICAS = ['SUSPENDIDA', 'EN REPOSO', 'SUSPENDIDA INDEFINIDAMENTE']
 
 const n0 = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 }))
 const n1 = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }))
@@ -48,12 +53,12 @@ export default function IGProfileMetrics() {
   async function cargar() {
     setLoading(true)
     const [{ data: acc }, { data: st, error: e }] = await Promise.all([
-      supabase.from('instagram_accounts').select('id, username, status, profile_link, models(stage_name)').eq('archivada', false).order('username'),
+      supabase.from('instagram_accounts').select('id, username, status, estado_cuenta, archivada, profile_link, models(stage_name)').eq('archivada', false).order('username'),
       supabase.from('ig_profile_stats').select('id, account_id, captured_at, followers, following, posts_count, avg_likes, avg_comments, engagement_rate, avg_reel_views, reels_sampled, posts_sampled, last_post_at, is_verified, is_private, biography, external_url, full_name, profile_pic_url').order('captured_at', { ascending: false }).limit(3000),
     ])
     if (e) setErr(e.message.includes('ig_profile_stats') ? 'Falta ejecutar la migración 61 en Supabase.' : e.message)
     else setErr('')
-    setCuentas(acc || [])
+    setCuentas((acc || []).filter((c) => !SIN_METRICAS.includes(estadoDeCuenta(c))))
     setStats(st || [])
     setLoading(false)
   }
@@ -150,7 +155,7 @@ export default function IGProfileMetrics() {
                       <div className="flex items-center gap-3">
                         <FotoIG url={f.foto} nombre={f.username} />
                         <div>
-                          <div className="font-medium">@{f.username}{f.ult?.is_verified ? ' ✔' : ''}{f.ult?.is_private ? ' 🔒' : ''}</div>
+                          <div className="font-medium"><a href={f.profile_link || urlInstagram(f.username)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline" style={{ color: 'var(--accent)' }} title={`Abrir el perfil de @${f.username} en Instagram`} data-perfil-ig>@{f.username}</a>{f.ult?.is_verified ? ' ✔' : ''}{f.ult?.is_private ? ' 🔒' : ''}</div>
                           <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{f.models?.stage_name || 'Sin modelo'}</div>
                         </div>
                       </div>
