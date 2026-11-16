@@ -5,6 +5,7 @@ import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { ModelAvatar } from '../components/ModelAvatar'
 import { horarioTurno } from '../lib/horasTurno'
+import { conNombres } from '../lib/nombresHorario'
 
 const TURNOS = [
   { id: 'noche', n: 'Mañana', h: horarioTurno('noche') },
@@ -70,14 +71,15 @@ function HorarioSemana({ esMgr }) {
   const [colores, setColores] = useState({})   // chatter_id -> color elegido
   const [pickerId, setPickerId] = useState(null)
   const [avisoColor, setAvisoColor] = useState('')
+  const [errCarga, setErrCarga] = useState('')
 
   const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(lunes, i)), [lunes])
 
   async function load() {
     const desde = isoDate(dias[0]), hasta = isoDate(dias[6])
     try { await supabase.rpc('materializar_repeticiones', { p_desde: desde, p_hasta: hasta }) } catch (e) { /* migración 131 aún sin ejecutar */ }
-    const [{ data: r }, u, { data: g }, ex, { data: rp }, { data: md }, { data: cl }] = await Promise.all([
-      supabase.from('schedules').select('*, profiles(full_name)').gte('fecha', desde).lte('fecha', hasta),
+    const [{ data: r0, error: errR }, u, { data: g }, ex, { data: rp }, { data: md }, { data: cl }] = await Promise.all([
+      supabase.from('schedules').select('*').gte('fecha', desde).lte('fecha', hasta).limit(2000),
       getProfilesByRoles(['manager', 'chatter']),
       supabase.from('shift_groups').select('id, nombre, modelos').eq('activo', true).order('nombre'),
       getExtrabajadorIds(),
@@ -86,6 +88,8 @@ function HorarioSemana({ esMgr }) {
       supabase.from('chatter_colores').select('chatter_id, color'),   // migración 141 (si aún no existe, se usan colores automáticos)
     ])
     setColores(Object.fromEntries((cl || []).filter((x) => colorValido(x.color)).map((x) => [x.chatter_id, x.color])))
+    const r = await conNombres(r0)
+    setErrCarga(errR ? 'No se pudieron cargar los turnos: ' + errR.message : '')
     setRows((r || []).filter((x) => !ex.has(x.chatter_id)).map((x) => (x.turno === 'madrugada' ? { ...x, turno: 'noche' } : x))); setChatters(u); setGrupos(g || []); setReps(rp || []); setModelosCRM((md || []).filter((m) => m.status !== 'baja'))
   }
   useEffect(() => { load() }, [lunes])
@@ -163,6 +167,7 @@ function HorarioSemana({ esMgr }) {
           <button onClick={() => setLunes(addDays(lunes, 7))} className="px-2 py-1 rounded" style={{ border: '1px solid var(--border)' }}>›</button>
           <Button variant="ghost" onClick={() => setLunes(mondayOf(new Date()))}>Hoy</Button>
         </div>
+        {errCarga && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }} data-error-horario>⚠️ {errCarga}</p>}
         {presentes.length > 0 && (
           <div className="mb-4" data-leyenda-colores>
             <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Chatters de la semana{esMgr ? ' · pulsa un color para cambiarlo' : ''}</p>

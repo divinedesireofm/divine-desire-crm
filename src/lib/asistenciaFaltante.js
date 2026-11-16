@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { getExtrabajadorIds } from './roles'
+import { conNombres } from './nombresHorario'
 
 // Turnos según el horario (ids antiguos de la base de datos): noche = 4–12 h VE, mañana = 12–20, tarde = 20–4. Venezuela = UTC−4 todo el año.
 const INICIOS = { noche: 4, 'mañana': 12, tarde: 20 }
@@ -43,7 +44,7 @@ export async function cargarFaltasAsistencia(ahora = Date.now()) {
   const desde = isoDia(ahora - DIAS_REVISION_ASISTENCIA * 86400000), hasta = isoDia(ahora + 86400000)
   try { await supabase.rpc('materializar_repeticiones', { p_desde: desde, p_hasta: hasta }) } catch { /* sin repeticiones */ }
   const [sc, ev, ds, ex] = await Promise.all([
-    supabase.from('schedules').select('id, fecha, turno, chatter_id, profiles(full_name)').gte('fecha', desde).lte('fecha', hasta).limit(2000),
+    supabase.from('schedules').select('id, fecha, turno, chatter_id').gte('fecha', desde).lte('fecha', hasta).limit(2000),
     supabase.from('attendance_events').select('chatter_id, tipo, created_at').gte('created_at', new Date(ahora - (DIAS_REVISION_ASISTENCIA + 2) * 86400000).toISOString()).order('created_at', { ascending: true }).limit(5000),
     supabase.from('avisos_turno_descartados').select('clave').limit(3000),
     getExtrabajadorIds(),
@@ -51,7 +52,7 @@ export async function cargarFaltasAsistencia(ahora = Date.now()) {
   if (sc.error || ev.error) return { faltas: [], quitadas: [] }
   const quitadasSet = new Set((ds.data || []).map((d) => d.clave))
   const todas = calcularFaltasAsistencia({
-    schedules: (sc.data || []).filter((s) => !ex.has(s.chatter_id) && s.fecha >= desde),
+    schedules: (await conNombres(sc.data || [])).filter((s) => !ex.has(s.chatter_id) && s.fecha >= desde),
     eventos: ev.data || [], ahora,
   })
   return { faltas: todas.filter((f) => !quitadasSet.has(f.clave)), quitadas: todas.filter((f) => quitadasSet.has(f.clave)) }
