@@ -13,6 +13,10 @@ const TURNOS = [
 ]
 const DIAS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 
+// Paleta de colores distintivos para los chatters (se asigna sola; el manager puede cambiarla)
+const PALETA = ['#E8A33D', '#4F9DDE', '#E0607E', '#5CB88A', '#A67FE0', '#E5784B', '#3FB8C4', '#C9B037', '#D46BC1', '#7C93E8', '#8FC24F', '#C98A6B']
+const colorValido = (c) => /^#[0-9a-fA-F]{6}$/.test(String(c || ''))
+
 function mondayOf(date) {
   const d = new Date(date)
   const day = (d.getDay() + 6) % 7
@@ -63,20 +67,25 @@ function HorarioSemana({ esMgr }) {
   const [add, setAdd] = useState(null)
   const [reps, setReps] = useState([])
   const [modelosCRM, setModelosCRM] = useState([])
+  const [colores, setColores] = useState({})   // chatter_id -> color elegido
+  const [pickerId, setPickerId] = useState(null)
+  const [avisoColor, setAvisoColor] = useState('')
 
   const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(lunes, i)), [lunes])
 
   async function load() {
     const desde = isoDate(dias[0]), hasta = isoDate(dias[6])
     try { await supabase.rpc('materializar_repeticiones', { p_desde: desde, p_hasta: hasta }) } catch (e) { /* migración 131 aún sin ejecutar */ }
-    const [{ data: r }, u, { data: g }, ex, { data: rp }, { data: md }] = await Promise.all([
+    const [{ data: r }, u, { data: g }, ex, { data: rp }, { data: md }, { data: cl }] = await Promise.all([
       supabase.from('schedules').select('*, profiles(full_name)').gte('fecha', desde).lte('fecha', hasta),
       getProfilesByRoles(['manager', 'chatter']),
       supabase.from('shift_groups').select('id, nombre, modelos').eq('activo', true).order('nombre'),
       getExtrabajadorIds(),
       supabase.from('schedule_repeticiones').select('*').eq('activo', true).order('desde'),
       supabase.from('models').select('id, stage_name, status').order('stage_name'),
+      supabase.from('chatter_colores').select('chatter_id, color'),   // migración 141 (si aún no existe, se usan colores automáticos)
     ])
+    setColores(Object.fromEntries((cl || []).filter((x) => colorValido(x.color)).map((x) => [x.chatter_id, x.color])))
     setRows((r || []).filter((x) => !ex.has(x.chatter_id)).map((x) => (x.turno === 'madrugada' ? { ...x, turno: 'noche' } : x))); setChatters(u); setGrupos(g || []); setReps(rp || []); setModelosCRM((md || []).filter((m) => m.status !== 'baja'))
   }
   useEffect(() => { load() }, [lunes])
@@ -94,11 +103,40 @@ function HorarioSemana({ esMgr }) {
   }, [rows])
   const hoy = fechaHoyISO()
 
+  // Color de cada chatter: el elegido o, si no hay, uno automático de la paleta (estable según la lista de chatters)
+  const idsOrdenados = useMemo(() => [...new Set([...chatters.map((c) => c.id), ...rows.map((r) => r.chatter_id)])].sort(), [chatters, rows])
+  const colorDe = (id) => colores[id] || PALETA[Math.max(0, idsOrdenados.indexOf(id)) % PALETA.length]
+  async function guardarColor(id, color) {
+    setAvisoColor('')
+    const anterior = colores[id]
+    setColores((c) => { const n = { ...c }; if (color) n[id] = color; else delete n[id]; return n })
+    const { error } = color
+      ? await supabase.from('chatter_colores').upsert([{ chatter_id: id, color }], { onConflict: 'chatter_id' })
+      : await supabase.from('chatter_colores').delete().eq('chatter_id', id)
+    if (error) {
+      setColores((c) => { const n = { ...c }; if (anterior) n[id] = anterior; else delete n[id]; return n })
+      setAvisoColor(/chatter_colores/.test(error.message || '') ? 'Falta ejecutar la migración 141 en Supabase para poder guardar los colores.' : 'No se pudo guardar el color: ' + error.message)
+    }
+  }
+  // Chatters con turno esta semana (para la leyenda de colores)
+  const presentes = useMemo(() => {
+    const m = new Map()
+    for (const r of rows) if (!m.has(r.chatter_id)) m.set(r.chatter_id, r.profiles?.full_name || '—')
+    return [...m.entries()].map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [rows])
+  // Modelos de un turno: las del grupo + las asignadas a mano, sin repetir
+  const modelosDe = (h) => {
+    const g = grupos.find((x) => x.id === h.grupo_id)
+    const out = []
+    for (const n of [...(g ? aLista(g.modelos) : []), ...aLista(h.modelos)]) if (!out.some((y) => normN(y) === normN(n))) out.push(n)
+    return out
+  }
+
   // Resumen por chatter de la semana mostrada: días, nº de días y modelos (según el grupo asignado)
   const resumen = useMemo(() => {
     const m = {}
     for (const r of rows) {
-      const c = (m[r.chatter_id] = m[r.chatter_id] || { nombre: r.profiles?.full_name || '—', fechas: new Set(), grupos: new Set(), modelos: [] })
+      const c = (m[r.chatter_id] = m[r.chatter_id] || { id: r.chatter_id, nombre: r.profiles?.full_name || '—', fechas: new Set(), grupos: new Set(), modelos: [] })
       c.fechas.add(r.fecha)
       const g = grupos.find((x) => x.id === r.grupo_id)
       if (g) c.grupos.add(g.nombre)
@@ -125,8 +163,46 @@ function HorarioSemana({ esMgr }) {
           <button onClick={() => setLunes(addDays(lunes, 7))} className="px-2 py-1 rounded" style={{ border: '1px solid var(--border)' }}>›</button>
           <Button variant="ghost" onClick={() => setLunes(mondayOf(new Date()))}>Hoy</Button>
         </div>
+        {presentes.length > 0 && (
+          <div className="mb-4" data-leyenda-colores>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Chatters de la semana{esMgr ? ' · pulsa un color para cambiarlo' : ''}</p>
+            <div className="flex flex-wrap gap-2">
+              {presentes.map((c) => {
+                const col = colorDe(c.id)
+                return (
+                  <div key={c.id} style={{ position: 'relative' }}>
+                    <button type="button" disabled={!esMgr} onClick={() => setPickerId(pickerId === c.id ? null : c.id)} data-chip-chatter
+                      className="inline-flex items-center gap-2 pl-2 pr-3 py-1 rounded-full text-xs font-medium"
+                      style={{ background: `color-mix(in srgb, ${col} 18%, var(--panel))`, border: `1px solid color-mix(in srgb, ${col} 55%, transparent)`, color: 'var(--text)', cursor: esMgr ? 'pointer' : 'default' }}>
+                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: col, display: 'inline-block' }} />{c.nombre}
+                    </button>
+                    {esMgr && pickerId === c.id && (
+                      <div data-selector-color className="rounded-lg p-3" style={{ position: 'absolute', zIndex: 30, top: '100%', left: 0, marginTop: 6, width: 236, background: 'var(--panel)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
+                        <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Color de {c.nombre}</p>
+                        <div className="grid grid-cols-6 gap-2 mb-3">
+                          {PALETA.map((p) => (
+                            <button key={p} type="button" aria-label={`Color ${p}`} onClick={() => { guardarColor(c.id, p); setPickerId(null) }}
+                              style={{ width: 26, height: 26, borderRadius: '50%', background: p, border: col.toLowerCase() === p.toLowerCase() ? '2px solid var(--text)' : '2px solid transparent' }} />
+                          ))}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>Otro
+                            <input type="color" value={col} onChange={(e) => guardarColor(c.id, e.target.value)} style={{ width: 34, height: 26, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }} />
+                          </label>
+                          <button type="button" className="text-xs underline" style={{ color: 'var(--text-muted)' }} onClick={() => { guardarColor(c.id, null); setPickerId(null) }}>Automático</button>
+                          <button type="button" className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={() => setPickerId(null)}>Cerrar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {avisoColor && <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>{avisoColor}</p>}
+          </div>
+        )}
         <div className="overflow-x-auto">
-          <div style={{ display: 'grid', gridTemplateColumns: '110px repeat(7, minmax(120px, 1fr))', gap: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '110px repeat(7, minmax(128px, 1fr))', gap: 4 }}>
             <div />
             {dias.map((d, i) => (
               <div key={i} className="text-xs text-center py-1" style={{ color: 'var(--text-muted)' }}>
@@ -146,16 +222,23 @@ function HorarioSemana({ esMgr }) {
                       className="rounded-md p-1 min-h-[52px]"
                       style={{ background: iso === hoy ? 'var(--accent-soft)' : 'var(--panel-alt)', border: '1px solid var(--border)' }}
                     >
-                      {cell.map((h) => (
-                        <div key={h.id} className="text-xs rounded px-1.5 py-1 mb-1 flex justify-between items-center" style={{ background: 'var(--panel)' }}>
-                          <span>
-                            <strong>{h.profiles?.full_name}</strong>
-                            {h.grupo_id ? <span style={{ color: 'var(--text-muted)' }}> · {grupos.find((g) => g.id === h.grupo_id)?.nombre}</span> : null}
-                            {aLista(h.modelos).length > 0 ? <span style={{ color: 'var(--text-muted)' }}> · {aLista(h.modelos).join(', ')}</span> : null}
-                          </span>
-                          {esMgr && <span onClick={() => borrar(h)} className="cursor-pointer" style={{ color: 'var(--danger)' }}>✕</span>}
-                        </div>
-                      ))}
+                      {cell.map((h) => {
+                        const col = colorDe(h.chatter_id); const gr = grupos.find((g) => g.id === h.grupo_id); const mods = modelosDe(h)
+                        return (
+                          <div key={h.id} data-turno-chatter className="rounded-md mb-1.5 px-2 py-1.5 text-xs" style={{ background: `color-mix(in srgb, ${col} 17%, var(--panel))`, borderLeft: `4px solid ${col}`, border: `1px solid color-mix(in srgb, ${col} 35%, transparent)`, borderLeftWidth: 4, borderLeftColor: col }}>
+                            <div className="flex justify-between items-start gap-1">
+                              <strong className="leading-tight" style={{ color: 'var(--text)' }}>{h.profiles?.full_name || '—'}</strong>
+                              {esMgr && <span onClick={() => borrar(h)} className="cursor-pointer leading-none" title="Quitar este turno" style={{ color: 'var(--danger)' }}>✕</span>}
+                            </div>
+                            {(gr || mods.length > 0) && (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {gr && <span className="px-1.5 rounded-full" style={{ fontSize: 10, border: `1px solid ${col}`, color: 'var(--text)' }}>{gr.nombre}</span>}
+                                {mods.map((n) => <span key={n} className="px-1.5 rounded-full" style={{ fontSize: 10, background: `color-mix(in srgb, ${col} 30%, transparent)`, color: 'var(--text)' }}>{n}</span>)}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                       {esMgr && (
                         <button
                           onClick={() => setAdd({ fecha: iso, turno: t.id, chatter_id: chatters[0]?.id || '', grupo_id: '', modelos: '' })}
@@ -190,7 +273,7 @@ function HorarioSemana({ esMgr }) {
               <tbody>
                 {resumen.map((c) => (
                   <tr key={c.nombre} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td className="py-2 pr-3 font-medium">{c.nombre}</td>
+                    <td className="py-2 pr-3 font-medium"><span style={{ width: 10, height: 10, borderRadius: '50%', background: colorDe(c.id), display: 'inline-block', marginRight: 8 }} />{c.nombre}</td>
                     <td className="py-2 pr-3">{c.dias.join(', ')}</td>
                     <td className="py-2 pr-3">{c.dias.length}</td>
                     <td className="py-2" style={{ color: c.modelos.length ? 'var(--text)' : 'var(--text-muted)' }}>
