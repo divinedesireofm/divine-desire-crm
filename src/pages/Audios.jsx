@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { readFunctionError } from '../lib/functions'
 import { Panel, Button, Select, PageHeader } from '../components/ui'
 import { audioAMp4 } from '../lib/audioMp4'
+import { esOgg, oggAWav } from '../lib/audioWav'
 
 const BUCKET = 'audios-chatting'
 const MAX_TEXTO = 2000
@@ -109,15 +110,21 @@ export default function Audios() {
       let actuales = [...muestras]
       let principal = voz?.muestra_principal || null
       for (const f of Array.from(files)) {
-        if (!/\.(mp3|m4a|wav)$/i.test(f.name)) throw new Error(`«${f.name}»: usa un audio mp3, m4a o wav.`)
+        if (!/\.(mp3|m4a|wav|ogg|oga|opus)$/i.test(f.name)) throw new Error(`«${f.name}»: usa un audio mp3, m4a, wav u ogg.`)
         if (f.size > 20 * 1024 * 1024) throw new Error(`«${f.name}» pesa más de 20 MB.`)
-        const dur = await duracionDe(f)
+        // MiniMax no acepta ogg: se convierte a WAV en el navegador antes de subirlo
+        let subir = f, nombre = f.name, dur
+        if (esOgg(f.name)) {
+          const c = await oggAWav(f)
+          subir = c.blob; dur = c.duracion; nombre = f.name.replace(/\.[^.]+$/, '') + '.wav'
+          if (subir.size > 20 * 1024 * 1024) throw new Error(`«${f.name}» convertido pesa más de 20 MB: recórtalo.`)
+        } else dur = await duracionDe(f)
         if (dur < 10) throw new Error(`«${f.name}» dura ${Math.round(dur)} s: la muestra debe durar al menos 10 segundos.`)
         if (dur > 300) throw new Error(`«${f.name}» dura más de 5 minutos: recórtala.`)
-        const path = `muestras/${modeloId}/${crypto.randomUUID()}-${slug(f.name.replace(/\.[^.]+$/, ''))}.${f.name.split('.').pop().toLowerCase()}`
-        const { error } = await supabase.storage.from(BUCKET).upload(path, f, { contentType: f.type || 'audio/mpeg' })
+        const path = `muestras/${modeloId}/${crypto.randomUUID()}-${slug(nombre.replace(/\.[^.]+$/, ''))}.${nombre.split('.').pop().toLowerCase()}`
+        const { error } = await supabase.storage.from(BUCKET).upload(path, subir, { contentType: subir.type || f.type || 'audio/mpeg' })
         if (error) throw new Error('No se pudo subir «' + f.name + '»: ' + error.message)
-        actuales.push({ path, nombre: f.name, duracion_s: Math.round(dur), bytes: f.size })
+        actuales.push({ path, nombre, duracion_s: Math.round(dur), bytes: subir.size })
         if (!principal) principal = path
       }
       await guardarVoz({ muestras: actuales, muestra_principal: principal })
@@ -234,7 +241,7 @@ export default function Audios() {
               <p className="text-sm font-medium">1. Voz de {modelo?.stage_name}</p>
               <span className="text-xs px-2.5 py-1 rounded-full" style={{ background: `color-mix(in srgb, ${estadoVoz.c} 16%, transparent)`, color: estadoVoz.c }} data-estado-voz>{estadoVoz.t}</span>
             </div>
-            <p className="text-xs mb-3" style={lbl}>Sube audios de ejemplo donde se oiga claramente a la modelo hablando, sin música ni ruido. Cada audio debe durar entre 10 segundos y 5 minutos (mp3, m4a o wav, máx. 20 MB). Para clonar se usa la muestra marcada como principal.</p>
+            <p className="text-xs mb-3" style={lbl}>Sube audios de ejemplo donde se oiga claramente a la modelo hablando, sin música ni ruido. Cada audio debe durar entre 10 segundos y 5 minutos (mp3, m4a, wav u ogg, máx. 20 MB; los ogg se convierten solos a WAV). Para clonar se usa la muestra marcada como principal.</p>
             {muestras.length > 0 && (
               <div className="mb-3 space-y-2">
                 {muestras.map((m) => (
@@ -253,7 +260,7 @@ export default function Audios() {
             {gestiona ? (
               <>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <input ref={fileRef} type="file" accept=".mp3,.m4a,.wav,audio/*" multiple className="hidden" onChange={(e) => e.target.files?.length && subirMuestras(e.target.files)} data-input-muestras />
+                  <input ref={fileRef} type="file" accept=".mp3,.m4a,.wav,.ogg,.oga,.opus,audio/*" multiple className="hidden" onChange={(e) => e.target.files?.length && subirMuestras(e.target.files)} data-input-muestras />
                   <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={subiendo}>{subiendo ? 'Subiendo…' : '+ Subir audios de ejemplo'}</Button>
                   {muestras.length > 0 && (
                     <>
