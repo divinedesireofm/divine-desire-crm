@@ -89,6 +89,8 @@ export function textoPlan(p, usuario) {
 export default function IGPlans() {
   const { hasAnyRole, profile } = useAuth()
   const puedeBorrar = hasAnyRole(['admin', 'ig_manager'])
+  // Asistente IG «a secas»: ve solo las planificaciones enviadas, sin poder crear ni editar nada; marca los reels editados
+  const esAsistente = hasAnyRole(['ig_assistant']) && !hasAnyRole(['admin', 'ig_manager', 'planner'])
   const [cuentas, setCuentas] = useState([])
   const [planes, setPlanes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -110,9 +112,14 @@ export default function IGPlans() {
 
   // Reels que la modelo ha marcado como hechos, por planificación (se actualiza solo cada 30 s)
   const [hechosPlan, setHechosPlan] = useState({})
+  const [editadosPlan, setEditadosPlan] = useState({})
   async function cargarHechos() {
-    const { data } = await supabase.from('plan_reels_hechos').select('plan_id').limit(10000)
-    const m = {}; (data || []).forEach((h) => { m[h.plan_id] = (m[h.plan_id] || 0) + 1 }); setHechosPlan(m)
+    if (!esAsistente) {
+      const { data } = await supabase.from('plan_reels_hechos').select('plan_id').limit(10000)
+      const m = {}; (data || []).forEach((h) => { m[h.plan_id] = (m[h.plan_id] || 0) + 1 }); setHechosPlan(m)
+    }
+    const { data: ed2 } = await supabase.from('plan_reels_editados').select('plan_id').limit(10000)
+    const m2 = {}; (ed2 || []).forEach((h) => { m2[h.plan_id] = (m2[h.plan_id] || 0) + 1 }); setEditadosPlan(m2)
   }
   useEffect(() => { const t = setInterval(cargarHechos, 30000); return () => clearInterval(t) }, [])
 
@@ -137,7 +144,7 @@ export default function IGPlans() {
   const nombreDe = (id) => equipo.find((x) => x.id === id)?.full_name || todosNombres[id] || '—'
   const delFiltro = useMemo(() => planes.filter((p) => filtro === 'todas' || p.account_id === filtro), [planes, filtro])
   const borradores = delFiltro.filter((p) => p.estado === 'borrador')
-  const visibles = delFiltro.filter((p) => p.estado !== 'borrador')
+  const visibles = delFiltro.filter((p) => p.estado !== 'borrador' && (!esAsistente || p.enviado_at))
   const texto = useMemo(() => (ed ? textoPlan(ed, usuarioDe(ed.account_id) || 'cuenta') : ''), [ed, cuentas])
   const totalReels = (p) => (p.dias || []).reduce((a, d) => a + (d.reels?.length || 0), 0)
 
@@ -357,7 +364,7 @@ export default function IGPlans() {
       ? `Al marcar «${p.titulo}» como hecha se BORRARÁN del CRM ${vs.length === 1 ? 'el video' : `los ${vs.length} videos`} de esta planificación y no se podrán recuperar.\n\nLos enlaces y textos se conservan. ¿Continuar?`
       : `Esta planificación no tiene videos guardados. ¿Marcarla como hecha?`
     if (!confirm(aviso)) return
-    const { error } = await supabase.from('ig_plans').update({ dias: quitarVideos(p.dias), hecha_at: new Date().toISOString(), hecha_por: profile?.id || null }).eq('id', p.id)
+    const { error } = await supabase.from('ig_plans').update({ dias: quitarVideos(p.dias), hecha_at: new Date().toISOString(), hecha_por: profile?.id || null, hecha_auto: false }).eq('id', p.id)
     if (error) { alert(/column|hecha/.test(error.message) ? 'Falta ejecutar la migración 93 en Supabase.' : 'No se pudo marcar como hecha.'); return }
     const r = await borrarVideos(vs.map((v) => v.path))
     if (!r.ok) alert('Se marcó como hecha, pero no se pudieron borrar algunos videos del almacén: ' + r.error)
@@ -366,7 +373,7 @@ export default function IGPlans() {
     cargar(true)
   }
   async function quitarHecha(p) {
-    const { error } = await supabase.from('ig_plans').update({ hecha_at: null, hecha_por: null }).eq('id', p.id)
+    const { error } = await supabase.from('ig_plans').update({ hecha_at: null, hecha_por: null, hecha_auto: false }).eq('id', p.id)
     if (error) { alert('No se pudo quitar la marca.'); return }
     cargar(true)
   }
@@ -388,8 +395,8 @@ export default function IGPlans() {
       )}
       <PageHeader
         title="Planificaciones de reels"
-        subtitle="Confecciona la planificación semanal de cada cuenta con la plantilla y copia el texto listo para enviárselo a la chica."
-        action={<Button onClick={nueva} disabled={!cuentas.length}>Nueva planificación</Button>}
+        subtitle={esAsistente ? 'Planificaciones ya enviadas a las modelos: mira qué reels hay que editar y cómo, y marca los que ya están editados.' : 'Confecciona la planificación semanal de cada cuenta con la plantilla y copia el texto listo para enviárselo a la chica.'}
+        action={esAsistente ? null : <Button onClick={nueva} disabled={!cuentas.length}>Nueva planificación</Button>}
       />
 
       {ed && (
@@ -559,7 +566,7 @@ export default function IGPlans() {
       <Panel className="p-5">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <div className="flex gap-2">
-            {[['planes', `Planificaciones (${visibles.length})`], ['borradores', `Borradores (${borradores.length})`]].map(([id, label]) => (
+            {[['planes', `Planificaciones (${visibles.length})`], ...(esAsistente ? [] : [['borradores', `Borradores (${borradores.length})`]])].map(([id, label]) => (
               <button
                 key={id} onClick={() => setVista(id)} className="px-3 py-1.5 rounded-full text-sm"
                 style={{ background: vista === id ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${vista === id ? 'var(--accent)' : 'var(--border)'}`, color: vista === id ? 'var(--accent)' : 'var(--text)' }}
@@ -577,7 +584,7 @@ export default function IGPlans() {
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
         ) : (vista === 'planes' ? visibles : borradores).length === 0 ? (
           <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
-            {vista === 'planes' ? 'Todavía no hay planificaciones. Pulsa «Nueva planificación».' : 'No hay borradores. Usa «Guardar como borrador» en una planificación para dejarla pendiente de revisar.'}
+            {vista === 'planes' ? (esAsistente ? 'Todavía no hay planificaciones enviadas. Cuando el equipo envíe una a la modelo, aparecerá aquí.' : 'Todavía no hay planificaciones. Pulsa «Nueva planificación».') : 'No hay borradores. Usa «Guardar como borrador» en una planificación para dejarla pendiente de revisar.'}
           </p>
         ) : (
           <ScrollSuperior altoMax="calc(100vh - 260px)">
@@ -613,16 +620,29 @@ export default function IGPlans() {
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span style={{ color: est[1] }}>{est[0]}</span>
                         {p.estado !== 'borrador' && p.enviado_at && <span className="text-xs block" style={{ color: 'var(--success)' }}>✓ Enviada · {fmtExacta(p.enviado_at)}</span>}
-                        {p.estado !== 'borrador' && p.enviado_at && totalReels(p) > 0 && (
+                        {p.estado !== 'borrador' && p.enviado_at && totalReels(p) > 0 && esAsistente && (
+                          <span className="text-xs block" data-editados-plan={p.id} style={{ color: (editadosPlan[p.id] || 0) >= totalReels(p) ? 'var(--success)' : 'var(--text-muted)' }}>
+                            {(editadosPlan[p.id] || 0) >= totalReels(p) ? '✅' : '☑'} Reels editados: {editadosPlan[p.id] || 0}/{totalReels(p)}
+                          </span>
+                        )}
+                        {p.estado !== 'borrador' && p.enviado_at && totalReels(p) > 0 && !esAsistente && (
                           <span className="text-xs block" data-hechos-plan={p.id} style={{ color: (hechosPlan[p.id] || 0) >= totalReels(p) ? 'var(--success)' : 'var(--text-muted)' }}>
                             {(hechosPlan[p.id] || 0) >= totalReels(p) ? '✅' : '☑'} Reels hechos por la modelo: {hechosPlan[p.id] || 0}/{totalReels(p)}
                           </span>
                         )}
-                        {p.hecha_at && <span className="text-xs block" style={{ color: 'var(--success)' }}>✓ Hecha · {fmtExacta(p.hecha_at)} · videos borrados</span>}
+                        {p.estado !== 'borrador' && p.enviado_at && totalReels(p) > 0 && !esAsistente && (
+                          <span className="text-xs block" data-editados-plan={p.id} style={{ color: (editadosPlan[p.id] || 0) >= totalReels(p) ? 'var(--success)' : 'var(--text-muted)' }}>
+                            {(editadosPlan[p.id] || 0) >= totalReels(p) ? '✅' : '✂️'} Reels editados: {editadosPlan[p.id] || 0}/{totalReels(p)}
+                          </span>
+                        )}
+                        {p.hecha_at && <span className="text-xs block" data-plan-hecha style={{ color: 'var(--success)' }}>✓ Hecha{p.hecha_auto ? ' automáticamente' : ''} · {fmtExacta(p.hecha_at)}{p.hecha_auto ? ' · todos los reels hechos y editados' : ' · videos borrados'}</span>}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}{videosDe(p.dias).length > 0 && <span> · 🎞 {plural(videosDe(p.dias).length, 'video', 'videos')}</span>}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap cursor-default" onClick={(e) => e.stopPropagation()}>
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(linkDe(p.id)).catch(() => {}); alert('Link copiado.') }}>🔗 Copiar link</button>
+                        {esAsistente ? (
+                          <button className="text-xs underline mr-3" onClick={() => alternar(p.id)}>{abiertos.has(p.id) ? 'Ocultar' : 'Ver planificación'}</button>
+                        ) : (<>
                         <button className="text-xs underline mr-3" onClick={() => abrir(p)}>Abrir / editar</button>
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(textoPlan(p, usuarioDe(p.account_id))).catch(() => {}); setMsg(''); alert('Texto copiado.') }}>Copiar texto</button>
                         {p.estado !== 'borrador' && (p.enviado_at
@@ -633,12 +653,13 @@ export default function IGPlans() {
                           : <button className="text-xs underline mr-3" style={{ color: 'var(--success)' }} onClick={() => marcarHecha(p)}>✔ Marcar como hecha (borra los videos)</button>)}
                         <button className="text-xs underline mr-3" onClick={() => duplicarEstructura(p)}>Duplicar estructura</button>
                         {puedeBorrar && <button className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={() => borrar(p)}>Borrar</button>}
+                        </>)}
                       </td>
                     </tr>
                     {abiertos.has(p.id) && (
                       <tr style={{ borderBottom: '1px solid var(--border)' }}>
                         <td colSpan={7} className="px-3 pb-4 pt-1">
-                          <PlanContenido plan={p} usuario={usuarioDe(p.account_id)} linkPlan={linkDe(p.id)} />
+                          <PlanContenido plan={p} usuario={usuarioDe(p.account_id)} linkPlan={linkDe(p.id)} paraAsistente={esAsistente} />
                         </td>
                       </tr>
                     )}
