@@ -43,7 +43,24 @@ const sumaDias = (iso, n) => { const m = String(iso || '').match(/^(\d{4})-(\d{2
 export const textoPeriodo = (p) => (p?.periodo_desde && p?.periodo_hasta ? `${deIso(p.periodo_desde)} al ${deIso(p.periodo_hasta)}` : p?.periodo_desde ? `desde el ${deIso(p.periodo_desde)}` : p?.periodo_hasta ? `hasta el ${deIso(p.periodo_hasta)}` : '')
 const perPayload = (e) => ('periodo_desde' in e ? { periodo_desde: e.periodo_desde || null, periodo_hasta: e.periodo_hasta || null } : {})
 const tituloHoy = () => new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
-const ESTADOS = { borrador: ['Borrador', 'var(--gold)'], guardada: ['Guardada', 'var(--text-muted)'] }
+const ESTADOS = { borrador: ['Borrador', 'var(--gold)'], guardada: ['Completa', 'var(--text-muted)'] }
+
+// Qué le falta a una planificación para estar completa: cada reel necesita su origen (enlace o idea original), gancho y texto
+const faltantesPlan = (dias) => {
+  const out = []
+  let total = 0
+  ;(dias || []).forEach((d, di) => (d.reels || []).forEach((r, ri) => {
+    total += 1
+    const f = []
+    if (r.fuente === 'original' ? !String(r.idea || '').trim() : !String(r.link || '').trim()) f.push(r.fuente === 'original' ? 'la idea' : 'el enlace')
+    if (!String(r.gancho || '').trim()) f.push('el gancho')
+    if (!String(r.texto || '').trim()) f.push('el texto')
+    if (f.length) out.push(`Día ${di + 1} · reel ${ri + 1}: falta ${f.join(', ')}`)
+  }))
+  if (!total) out.push('No tiene ningún reel')
+  return out
+}
+const avisoIncompleta = (falt) => `Esta planificación NO está completa:\n\n${falt.slice(0, 8).join('\n')}${falt.length > 8 ? `\n… y ${falt.length - 8} más` : ''}\n\n¿Seguro que quieres guardarla como completa?`
 
 // ---- Texto listo para copiar y pegar a la chica ----
 function bloqueReel(r) {
@@ -331,6 +348,7 @@ export default function IGPlans() {
     if (!ed.account_id) { setErr('Elige la cuenta de Instagram.'); return }
     if (ed.periodo_desde && ed.periodo_hasta && ed.periodo_hasta < ed.periodo_desde) { setErr('La fecha final del periodo no puede ser anterior a la inicial.'); return }
     if (ocupadoRef.current) { setErr('Se está autoguardando; vuelve a pulsar en un segundo.'); return }
+    if (destino === 'guardada') { const falt = faltantesPlan(ed.dias); if (falt.length && !confirm(avisoIncompleta(falt))) return }
     setGuardando(true)
     const payload = {
       account_id: ed.account_id,
@@ -347,7 +365,7 @@ export default function IGPlans() {
     baseRef.current = instantanea({ ...ed, titulo: data.titulo }); setAuto({ estado: '', hora: '' })
     limpiarPendientes()
     setEd((e) => ({ ...e, id: data.id, titulo: data.titulo, estado: data.estado, created_at: data.created_at }))
-    setMsg(destino === 'borrador' ? 'Guardada como borrador.' : 'Guardada.')
+    setMsg(destino === 'borrador' ? 'Guardada como borrador.' : 'Guardada como completa.')
     cargar()
   }
   // Marca manual de «ya la he enviado»: solo deja constancia en esta pantalla, no envía nada a ningún sitio
@@ -370,6 +388,16 @@ export default function IGPlans() {
     if (!r.ok) alert('Se marcó como hecha, pero no se pudieron borrar algunos videos del almacén: ' + r.error)
     if (ed?.id === p.id) { const sin = quitarVideos(ed.dias); baseRef.current = instantanea({ ...ed, dias: sin }); setEd((e) => ({ ...e, dias: sin })) }
     setToast(vs.length ? `✓ Marcada como hecha · ${vs.length} video${vs.length === 1 ? '' : 's'} borrado${vs.length === 1 ? '' : 's'}` : '✓ Marcada como hecha'); setTimeout(() => setToast(''), 3500)
+    cargar(true)
+  }
+  // Borrador -> Completas (con aviso si le falta algo)
+  async function pasarACompleta(p) {
+    const falt = faltantesPlan(p.dias)
+    if (falt.length && !confirm(avisoIncompleta(falt))) return
+    const { error } = await supabase.from('ig_plans').update({ estado: 'guardada' }).eq('id', p.id)
+    if (error) { alert('No se pudo pasar a completas.'); return }
+    if (ed?.id === p.id) setEd((e) => ({ ...e, estado: 'guardada' }))
+    setToast('✓ Pasada a Completas'); setTimeout(() => setToast(''), 3500)
     cargar(true)
   }
   async function quitarHecha(p) {
@@ -403,7 +431,7 @@ export default function IGPlans() {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <Button variant="ghost" onClick={volver}>← Volver a las planificaciones</Button>
           <span className="text-xs" style={{ color: auto.estado === 'error' ? 'var(--danger)' : 'var(--text-muted)' }}>
-            {auto.estado === 'pendiente' ? 'Cambios sin guardar…' : auto.estado === 'ok' ? `Borrador guardado automáticamente a las ${auto.hora}` : auto.estado === 'error' ? 'No se pudo autoguardar: guarda a mano' : (ed.id && ed.estado !== 'borrador' ? 'Las planificaciones ya guardadas o enviadas no se autoguardan: usa «Guardar»' : 'Se guarda sola como borrador mientras escribes y al salir')}
+            {auto.estado === 'pendiente' ? 'Cambios sin guardar…' : auto.estado === 'ok' ? `Borrador guardado automáticamente a las ${auto.hora}` : auto.estado === 'error' ? 'No se pudo autoguardar: guarda a mano' : (ed.id && ed.estado !== 'borrador' ? 'Las planificaciones ya guardadas o enviadas no se autoguardan: usa «Guardar como completa»' : 'Se guarda sola como borrador mientras escribes y al salir')}
           </span>
         </div>
       )}
@@ -551,7 +579,7 @@ export default function IGPlans() {
               {err && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{err}</p>}
               {msg && <p className="text-sm mt-3" style={{ color: 'var(--success)' }}>{msg}</p>}
               <div className="flex flex-wrap gap-2 mt-4">
-                <Button onClick={() => guardar('guardada')} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</Button>
+                <Button onClick={() => guardar('guardada')} disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar como completa'}</Button>
                 <Button variant="ghost" onClick={() => guardar('borrador')} disabled={guardando}>Guardar como borrador</Button>
                 <Button variant="ghost" onClick={volver}>Cerrar</Button>
               </div>
@@ -566,7 +594,7 @@ export default function IGPlans() {
       <Panel className="p-5">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
           <div className="flex gap-2">
-            {[['planes', `Planificaciones (${visibles.length})`], ...(esAsistente ? [] : [['borradores', `Borradores (${borradores.length})`]])].map(([id, label]) => (
+            {[['planes', `Completas (${visibles.length})`], ...(esAsistente ? [] : [['borradores', `Borradores (${borradores.length})`]])].map(([id, label]) => (
               <button
                 key={id} onClick={() => setVista(id)} className="px-3 py-1.5 rounded-full text-sm"
                 style={{ background: vista === id ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${vista === id ? 'var(--accent)' : 'var(--border)'}`, color: vista === id ? 'var(--accent)' : 'var(--text)' }}
@@ -584,7 +612,7 @@ export default function IGPlans() {
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p>
         ) : (vista === 'planes' ? visibles : borradores).length === 0 ? (
           <p className="text-sm text-center py-6" style={{ color: 'var(--text-muted)' }}>
-            {vista === 'planes' ? (esAsistente ? 'Todavía no hay planificaciones enviadas. Cuando el equipo envíe una a la modelo, aparecerá aquí.' : 'Todavía no hay planificaciones. Pulsa «Nueva planificación».') : 'No hay borradores. Usa «Guardar como borrador» en una planificación para dejarla pendiente de revisar.'}
+            {vista === 'planes' ? (esAsistente ? 'Todavía no hay planificaciones enviadas. Cuando el equipo envíe una a la modelo, aparecerá aquí.' : 'Todavía no hay planificaciones completas. Pulsa «Nueva planificación» o pasa un borrador a completas.') : 'No hay borradores. Usa «Guardar como borrador» en una planificación para dejarla pendiente de revisar.'}
           </p>
         ) : (
           <ScrollSuperior altoMax="calc(100vh - 260px)">
@@ -640,6 +668,7 @@ export default function IGPlans() {
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}{videosDe(p.dias).length > 0 && <span> · 🎞 {plural(videosDe(p.dias).length, 'video', 'videos')}</span>}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap cursor-default" onClick={(e) => e.stopPropagation()}>
                         <button className="text-xs underline mr-3" onClick={() => { navigator.clipboard.writeText(linkDe(p.id)).catch(() => {}); alert('Link copiado.') }}>🔗 Copiar link</button>
+                        {p.estado === 'borrador' && !esAsistente && <button className="text-xs underline mr-3" data-pasar-completa style={{ color: 'var(--success)' }} onClick={() => pasarACompleta(p)} title="Pasar esta planificación a Completas">✔ Pasar a completas</button>}
                         {esAsistente ? (
                           <button className="text-xs underline mr-3" onClick={() => alternar(p.id)}>{abiertos.has(p.id) ? 'Ocultar' : 'Ver planificación'}</button>
                         ) : (<>
