@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, Fragment } from 'react'
+import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
@@ -106,6 +106,29 @@ function HorarioSemana({ esMgr }) {
     setRows((rs) => rs.filter((x) => x.id !== h.id))
     setPapelera((p) => [h, ...p].slice(0, 30))
     setAvisoBorrado(`Turno de ${quien} quitado (${nombreTurno(h.turno)} · ${fmtFecha(h.fecha)}).`)
+  }
+
+  const panelRef = useRef(null)
+  function editar(h) {
+    setAdd({ editar: h, fecha: h.fecha, turno: h.turno, chatter_id: h.chatter_id, grupo_id: h.grupo_id || '', modelos: h.modelos || '' })
+    setTimeout(() => panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
+  // Guarda los cambios de un turno. Si venía de una repetición semanal, solo cambia ese día (se saca de la repetición y se crea un turno suelto)
+  async function guardarEdicion() {
+    const h = add.editar
+    if (!add.chatter_id || !add.fecha) return
+    const cambios = { fecha: add.fecha, turno: add.turno, chatter_id: add.chatter_id, grupo_id: add.grupo_id || null, modelos: add.modelos || null }
+    let error = null
+    if (h.repeticion_id) {
+      const r1 = await supabase.rpc('excluir_dia_repeticion', { p_id: h.repeticion_id, p_fecha: h.fecha })
+      error = r1.error
+      if (!error) { const r2 = await supabase.from('schedules').insert([{ ...cambios, creado_por: profile.id }]); error = r2.error }
+    } else {
+      const r = await supabase.from('schedules').update(cambios).eq('id', h.id); error = r.error
+    }
+    if (error) return alert('No se pudo guardar el turno: ' + error.message)
+    setAvisoBorrado(`Turno de ${chatters.find((c) => c.id === add.chatter_id)?.full_name || h.profiles?.full_name || 'chatter'} actualizado (${nombreTurno(add.turno)} · ${fmtFecha(add.fecha)}).`)
+    setAdd(null); load()
   }
 
   async function deshacer() {
@@ -275,7 +298,12 @@ function HorarioSemana({ esMgr }) {
                           <div key={h.id} data-turno-chatter className="rounded-md mb-1.5 px-2 py-1.5 text-xs" style={{ background: `color-mix(in srgb, ${col} 17%, var(--panel))`, borderLeft: `4px solid ${col}`, border: `1px solid color-mix(in srgb, ${col} 35%, transparent)`, borderLeftWidth: 4, borderLeftColor: col }}>
                             <div className="flex justify-between items-start gap-1">
                               <strong className="leading-tight" style={{ color: 'var(--text)' }}>{h.profiles?.full_name || '—'}</strong>
-                              {esMgr && <span onClick={() => borrar(h)} className="cursor-pointer leading-none" title="Quitar este turno" style={{ color: 'var(--danger)' }}>✕</span>}
+                              {esMgr && (
+                                <span className="flex items-center gap-1.5 leading-none">
+                                  <span onClick={() => editar(h)} className="cursor-pointer" title="Editar este turno" data-editar-turno style={{ color: 'var(--accent)' }}>✎</span>
+                                  <span onClick={() => borrar(h)} className="cursor-pointer" title="Quitar este turno" style={{ color: 'var(--danger)' }}>✕</span>
+                                </span>
+                              )}
                             </div>
                             {(gr || mods.length > 0) && (
                               <div className="flex flex-wrap gap-1 mt-1.5">
@@ -352,13 +380,16 @@ function HorarioSemana({ esMgr }) {
 
       {add && (
         <Panel className="p-5 mb-6">
-          <p className="text-sm font-medium mb-3">Asignar turno</p>
+          <div ref={panelRef} />
+          <p className="text-sm font-medium mb-3" data-panel-turno>{add.editar ? 'Editar turno' : 'Asignar turno'}</p>
+          {add.editar?.repeticion_id && <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Este turno viene de una repetición semanal: los cambios se aplican solo a este día y el resto de la repetición no se toca.</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <Input type="date" value={add.fecha} onChange={(e) => setAdd({ ...add, fecha: e.target.value })} />
             <Select value={add.turno} onChange={(e) => setAdd({ ...add, turno: e.target.value })}>
               {TURNOS.map((t) => <option key={t.id} value={t.id}>{t.n} ({t.h})</option>)}
             </Select>
             <Select value={add.chatter_id} onChange={(e) => setAdd({ ...add, chatter_id: e.target.value })}>
+              {add.chatter_id && !chatters.some((c) => c.id === add.chatter_id) && <option value={add.chatter_id}>{add.editar?.profiles?.full_name || 'Chatter actual'}</option>}
               {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
             </Select>
             <Select value={add.grupo_id} onChange={(e) => setAdd({ ...add, grupo_id: e.target.value })}>
@@ -367,11 +398,11 @@ function HorarioSemana({ esMgr }) {
             </Select>
           </div>
           <SelectorModelos modelos={modelosCRM} value={add.modelos} onChange={(v) => setAdd({ ...add, modelos: v })} titulo="Modelos asignadas manualmente (además del grupo, si eliges uno)" />
-          <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
+          {!add.editar && <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
             <input type="checkbox" checked={!!add.repetir} onChange={(e) => setAdd({ ...add, repetir: e.target.checked, dias: add.dias || [(new Date(add.fecha + 'T12:00:00').getDay() + 6) % 7], fin: add.fin || 'fecha' })} />
             Repetir este horario cada semana
-          </label>
-          {add.repetir && (
+          </label>}
+          {!add.editar && add.repetir && (
             <div className="mb-3 p-3 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
               <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Días de la semana en los que se repite</p>
               <div className="flex flex-wrap gap-2 mb-3">
@@ -397,6 +428,7 @@ function HorarioSemana({ esMgr }) {
           <div className="flex gap-2">
             <Button
               onClick={async () => {
+                if (add.editar) return guardarEdicion()
                 if (!add.chatter_id) return
                 const { repetir, dias: dsel, fin, hasta, ...base } = add
                 if (repetir) {
@@ -413,7 +445,7 @@ function HorarioSemana({ esMgr }) {
                 setAdd(null); load()
               }}
             >
-              Guardar
+              {add.editar ? "Guardar cambios" : "Guardar"}
             </Button>
             <Button variant="ghost" onClick={() => setAdd(null)}>Cancelar</Button>
           </div>
