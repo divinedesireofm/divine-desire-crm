@@ -94,10 +94,37 @@ function HorarioSemana({ esMgr }) {
   }
   useEffect(() => { load() }, [lunes])
 
+  const [papelera, setPapelera] = useState([])   // turnos quitados en esta sesión, para poder deshacer (el último primero)
+  const [avisoBorrado, setAvisoBorrado] = useState('')
+  const nombreTurno = (id) => TURNOS.find((t) => t.id === id)?.n || id
+
   async function borrar(h) {
+    const quien = h.profiles?.full_name || 'este chatter'
+    if (!confirm(`¿Quitar el turno de ${quien}?\n\n${nombreTurno(h.turno)} · ${fmtFecha(h.fecha)}${h.repeticion_id ? '\n\n(Solo se quita este día; la repetición semanal sigue con el resto.)' : ''}\n\nPodrás deshacerlo con el botón «Deshacer».`)) return
     if (h.repeticion_id) await supabase.rpc('excluir_dia_repeticion', { p_id: h.repeticion_id, p_fecha: h.fecha })
     else await supabase.from('schedules').delete().eq('id', h.id)
     setRows((rs) => rs.filter((x) => x.id !== h.id))
+    setPapelera((p) => [h, ...p].slice(0, 30))
+    setAvisoBorrado(`Turno de ${quien} quitado (${nombreTurno(h.turno)} · ${fmtFecha(h.fecha)}).`)
+  }
+
+  async function deshacer() {
+    const h = papelera[0]
+    if (!h) return
+    if (h.repeticion_id) {
+      // se quita la excepción del día y la repetición vuelve a generar el turno al recargar
+      const { data: rp } = await supabase.from('schedule_repeticiones').select('id, excepciones').eq('id', h.repeticion_id).maybeSingle()
+      if (rp) {
+        const { error } = await supabase.from('schedule_repeticiones').update({ excepciones: (rp.excepciones || []).filter((d) => d !== h.fecha) }).eq('id', rp.id)
+        if (error) { setAvisoBorrado('No se pudo deshacer: ' + error.message); return }
+      }
+    } else {
+      const { error } = await supabase.from('schedules').insert([{ fecha: h.fecha, turno: h.turno, chatter_id: h.chatter_id, grupo_id: h.grupo_id || null, modelos: h.modelos || null, creado_por: h.creado_por || profile.id }])
+      if (error) { setAvisoBorrado('No se pudo deshacer: ' + error.message); return }
+    }
+    setPapelera((p) => p.slice(1))
+    setAvisoBorrado(`Turno de ${h.profiles?.full_name || 'chatter'} recuperado (${nombreTurno(h.turno)} · ${fmtFecha(h.fecha)}).`)
+    load()
   }
 
   const byKey = useMemo(() => {
@@ -166,7 +193,22 @@ function HorarioSemana({ esMgr }) {
           <strong className="min-w-[180px] text-center text-sm">{fmtFecha(isoDate(dias[0]))} – {fmtFecha(isoDate(dias[6]))}</strong>
           <button onClick={() => setLunes(addDays(lunes, 7))} className="px-2 py-1 rounded" style={{ border: '1px solid var(--border)' }}>›</button>
           <Button variant="ghost" onClick={() => setLunes(mondayOf(new Date()))}>Hoy</Button>
+          {esMgr && (
+            <button type="button" onClick={deshacer} disabled={!papelera.length} data-deshacer
+              className="ml-auto px-3 py-1.5 rounded-full text-sm inline-flex items-center gap-1.5"
+              style={{ background: papelera.length ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${papelera.length ? 'var(--accent)' : 'var(--border)'}`, color: papelera.length ? 'var(--accent)' : 'var(--text-muted)', opacity: papelera.length ? 1 : 0.6, cursor: papelera.length ? 'pointer' : 'default' }}
+              title={papelera.length ? 'Recuperar el último turno quitado' : 'No hay nada que deshacer'}>
+              ↶ Deshacer{papelera.length ? ` (${papelera.length})` : ''}
+            </button>
+          )}
         </div>
+        {avisoBorrado && (
+          <p data-aviso-borrado className="text-sm mb-3 px-3 py-2 rounded-md flex items-center gap-3" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+            <span className="flex-1">{avisoBorrado}</span>
+            {esMgr && papelera.length > 0 && <button type="button" onClick={deshacer} className="underline" style={{ color: 'var(--accent)' }}>Deshacer</button>}
+            <button type="button" onClick={() => setAvisoBorrado('')} aria-label="Cerrar aviso">✕</button>
+          </p>
+        )}
         {errCarga && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }} data-error-horario>⚠️ {errCarga}</p>}
         {presentes.length > 0 && (
           <div className="mb-4" data-leyenda-colores>
