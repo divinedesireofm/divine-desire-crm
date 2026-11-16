@@ -30,6 +30,20 @@ export function Etiqueta({ estado }) {
   return <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap" style={{ background: `color-mix(in srgb, ${c} ${/INDEF/i.test(estado || '') ? 24 : 16}%, transparent)`, color: c, fontWeight: /INDEF/i.test(estado || '') ? 700 : undefined }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: c }} />{estado}</span>
 }
 
+// Estado que se cambia con un clic, directamente en la tabla (sin entrar a editar): se ve como la etiqueta y se despliega al pulsarla
+export function EstadoEditable({ valor, opciones, onCambio, bloqueado = false }) {
+  const c = colorEstado(valor)
+  const lista = valor && !opciones.includes(valor) ? [valor, ...opciones] : opciones
+  return (
+    <select data-estado-inline value={valor || ''} disabled={bloqueado} onChange={(e) => onCambio(e.target.value)} title="Pulsa para cambiar el estado"
+      className="text-xs rounded-full px-2.5 py-1 outline-none cursor-pointer font-medium"
+      style={{ background: `color-mix(in srgb, ${c} 16%, var(--panel))`, color: c, border: `1px solid color-mix(in srgb, ${c} 40%, transparent)`, maxWidth: 230 }}>
+      {!valor && <option value="">Sin estado</option>}
+      {lista.map((o) => <option key={o} value={o} style={{ color: 'var(--text)', background: 'var(--panel)' }}>{o}</option>)}
+    </select>
+  )
+}
+
 // Contraseñas: ocultas por defecto, con ojo para verlas y botón de copiar
 // Candado en lugar de la contraseña para quien no tiene el permiso «Ver contraseñas»
 function Candado({ que = 'las contraseñas' }) {
@@ -266,6 +280,20 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
     cargar()
   }
 
+  // Cambio de estado desde la propia tabla: se ve al instante y se guarda; si falla, vuelve al valor anterior
+  async function cambiarEstadoFila(f, k, nuevo) {
+    const anterior = f[k]
+    if (nuevo === anterior) return
+    setError(null); setAviso(null)
+    setFilas((prev) => prev.map((r) => (r.id === f.id ? { ...r, [k]: nuevo } : r)))
+    const { data: guardada, error: err } = await supabase.from(cfg.tabla).update({ [k]: nuevo }).eq('id', f.id).select().single()
+    if (err) {
+      setFilas((prev) => prev.map((r) => (r.id === f.id ? { ...r, [k]: anterior } : r)))
+      setError('No se pudo cambiar el estado: ' + err.message); return
+    }
+    if (onGuardado && guardada) { try { setAviso(await onGuardado(guardada)) } catch (ex) { setAviso({ tipo: 'error', texto: 'Se guardó, pero no se pudo actualizar el General: ' + ex.message }) } }
+  }
+
   async function borrar(f) {
     const nombre = f[colPrincipal.k] || cfg.singular
     if (!confirm(`¿Eliminar «${nombre}» de ${cfg.pestana.toLowerCase()}?\n\nNo se puede deshacer.`)) return
@@ -362,7 +390,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
     if (c.tipo === 'persona') cuerpo = <CeldaCopia completo titulo={c.n} texto={conEtiqueta(v, extras)} />
     else if (c.tipo === 'modeloSel') cuerpo = <CeldaCopia completo titulo={c.n} texto={nombreModelo(v)} />
     else if (c.tipo === 'secreto') cuerpo = verPass ? <CeldaSecreto valor={v} /> : <Candado />
-    else if (c.tipo === 'estado') cuerpo = vacio(v) ? <span style={{ color: 'var(--text-muted)' }}>—</span> : <Etiqueta estado={v} />
+    else if (c.tipo === 'estado') cuerpo = canEdit && cfg.estados ? <EstadoEditable valor={v} opciones={cfg.estados} onCambio={(n) => cambiarEstadoFila(f, c.k, n)} /> : vacio(v) ? <span style={{ color: 'var(--text-muted)' }}>—</span> : <Etiqueta estado={v} />
     else if (c.tipo === 'enlace') cuerpo = <CeldaCopia completo titulo={c.n} texto={v} muted>{v ? <a href={v} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>{String(v).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</a> : null}</CeldaCopia>
     else if (c.tipo === 'fecha') cuerpo = <CeldaCopia completo titulo={c.n} texto={v ? String(v).split('-').reverse().join('/') : ''} />
     else cuerpo = <CeldaCopia completo={!c.w} titulo={c.n} texto={v} muted={c.tipo === 'largo' || c.w} >{c.mono && v ? <span className="font-mono tracking-wide">{v}</span> : null}</CeldaCopia>

@@ -9,7 +9,7 @@ import ScrollSuperior from '../components/ScrollSuperior'
 import Desplegable from '../components/Desplegable'
 import ZeroAccounts from './ZeroAccounts'
 import IGProfileMetrics from './IGProfileMetrics'
-import TablaRegistros, { Etiqueta } from '../components/TablaRegistros'
+import TablaRegistros, { Etiqueta, EstadoEditable } from '../components/TablaRegistros'
 import { useOrdenPestanas } from '../lib/ordenPestanas'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES, ESTADOS_CUENTA, ESTADOS_GENERAL, estadoDeCuenta, normalizaEstado } from '../lib/cuentasIGSecciones'
@@ -434,6 +434,17 @@ export default function InstagramAccounts() {
     return { tipo: 'ok', texto }
   }
 
+  // Estado de la cuenta cambiado desde la tabla General, sin abrir la edición (se mantiene también el estado antiguo «status»)
+  async function cambiarEstadoCuenta(a, nuevo) {
+    if (!nuevo || nuevo === estadoDeCuenta(a)) return
+    const status = nuevo === 'ACTIVA' ? (['activa', 'calentando'].includes(a.status) ? a.status : 'activa')
+      : nuevo === 'SUSPENDIDA' ? 'suspendida' : nuevo === 'BLOQUEADA' ? 'baneada' : nuevo === 'RESTRINGIDA' ? 'en_revision' : nuevo === 'EN REPOSO' ? 'en_pausa' : a.status
+    setError(null)
+    setAccounts((prev) => prev.map((x) => (x.id === a.id ? { ...x, estado_cuenta: nuevo, status } : x)))
+    const { error: err } = await supabase.from('instagram_accounts').update({ estado_cuenta: nuevo, status }).eq('id', a.id)
+    if (err) { setError('No se pudo cambiar el estado: ' + err.message); load() }
+  }
+
   async function borrarCuenta(a) {
     if (!confirm(`¿Eliminar la cuenta @${a.username}?\n\nSe borrarán también sus planificaciones, reels ganadores y registros de seguidores. No se puede deshacer.`)) return
     const { error: err } = await supabase.from('instagram_accounts').delete().eq('id', a.id)
@@ -666,7 +677,7 @@ export default function InstagramAccounts() {
                         </div>
                       </td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Modelo" texto={a.models?.stage_name} /></td>
-                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Estado" texto={estadoDeCuenta(a)}><Etiqueta estado={estadoDeCuenta(a)} /></CeldaCopia></td>
+                      <td className="px-4 align-middle" style={fila}>{canEdit ? <EstadoEditable valor={estadoDeCuenta(a)} opciones={ESTADOS_GENERAL} onCambio={(n) => cambiarEstadoCuenta(a, n)} /> : <CeldaCopia completo titulo="Estado" texto={estadoDeCuenta(a)}><Etiqueta estado={estadoDeCuenta(a)} /></CeldaCopia>}</td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Responsable" texto={a.profiles?.full_name} /></td>
                       <td className="px-4 align-middle tabular-nums" style={fila}><CeldaCopia completo titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
                       <td className="px-4 align-middle" style={fila}>
