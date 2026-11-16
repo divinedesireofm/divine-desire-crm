@@ -37,6 +37,7 @@ export const SECTIONS = [
       { to: '/pagos', label: 'Pagos', icon: 'dollar', roles: ['admin', 'manager', 'chatter'] },
       { to: '/packs', label: 'Packs', icon: 'package', roles: ['admin', 'manager', 'chatter'] },
       { to: '/scripts', label: 'Scripts', icon: 'chat', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/audios', label: 'Audios', icon: 'sparkle', roles: ['admin', 'manager'] },
       { to: '/activacion', label: 'Activación', icon: 'zap', roles: ['admin', 'manager', 'chatter'] },
       { to: '/precios', label: 'Precios', icon: 'tag', roles: ['admin', 'manager', 'chatter'] },
       { to: '/formacion', label: 'Formación', icon: 'book', roles: ['admin', 'manager'] },

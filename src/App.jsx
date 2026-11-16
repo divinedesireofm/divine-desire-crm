@@ -30,6 +30,7 @@ import Payments from './pages/Payments'
 import Sanctions from './pages/Sanctions'
 import Packs from './pages/Packs'
 import Scripts from './pages/Scripts'
+import Audios from './pages/Audios'
 import Prices from './pages/Prices'
 import Activation from './pages/Activation'
 import Team from './pages/Team'
@@ -128,6 +129,7 @@ function AppRoutes() {
         <Route path="sanciones" element={<Sanctions />} />
         <Route path="packs" element={<Packs />} />
         <Route path="scripts" element={<Scripts />} />
+        <Route path="audios" element={<Audios />} />
         <Route path="precios" element={<Prices />} />
         <Route path="activacion" element={<Activation />} />
         <Route path="equipo" element={<Team />} />
