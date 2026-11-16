@@ -72,6 +72,8 @@ function HorarioSemana({ esMgr }) {
   const [pickerId, setPickerId] = useState(null)
   const [avisoColor, setAvisoColor] = useState('')
   const [errCarga, setErrCarga] = useState('')
+  const [editRep, setEditRep] = useState(null)   // repetición que se está editando
+  const repPanelRef = useRef(null)
 
   const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(lunes, i)), [lunes])
 
@@ -108,6 +110,9 @@ function HorarioSemana({ esMgr }) {
     setAvisoBorrado(`Turno de ${quien} quitado (${nombreTurno(h.turno)} · ${fmtFecha(h.fecha)}).`)
   }
 
+  // Modelos que ya trae el grupo elegido: no se pueden volver a elegir a mano
+  const modelosDelGrupo = (grupoId) => { const g = grupos.find((x) => x.id === grupoId); return g ? aLista(g.modelos) : [] }
+  const sinModelosDelGrupo = (txt, grupoId) => { const del = modelosDelGrupo(grupoId); return aLista(txt).filter((n) => !del.some((d) => normN(d) === normN(n))).join(', ') }
   const panelRef = useRef(null)
   function editar(h) {
     setAdd({ editar: h, fecha: h.fecha, turno: h.turno, chatter_id: h.chatter_id, grupo_id: h.grupo_id || '', modelos: h.modelos || '' })
@@ -117,7 +122,7 @@ function HorarioSemana({ esMgr }) {
   async function guardarEdicion() {
     const h = add.editar
     if (!add.chatter_id || !add.fecha) return
-    const cambios = { fecha: add.fecha, turno: add.turno, chatter_id: add.chatter_id, grupo_id: add.grupo_id || null, modelos: add.modelos || null }
+    const cambios = { fecha: add.fecha, turno: add.turno, chatter_id: add.chatter_id, grupo_id: add.grupo_id || null, modelos: sinModelosDelGrupo(add.modelos, add.grupo_id) || null }
     let error = null
     if (h.repeticion_id) {
       const r1 = await supabase.rpc('excluir_dia_repeticion', { p_id: h.repeticion_id, p_fecha: h.fecha })
@@ -129,6 +134,29 @@ function HorarioSemana({ esMgr }) {
     if (error) return alert('No se pudo guardar el turno: ' + error.message)
     setAvisoBorrado(`Turno de ${chatters.find((c) => c.id === add.chatter_id)?.full_name || h.profiles?.full_name || 'chatter'} actualizado (${nombreTurno(add.turno)} · ${fmtFecha(add.fecha)}).`)
     setAdd(null); load()
+  }
+
+  function abrirEditRep(rp) {
+    setEditRep({ id: rp.id, chatter_id: rp.chatter_id, turno: rp.turno, grupo_id: rp.grupo_id || '', modelos: rp.modelos || '', dias: [...(rp.dias || [])], desde: rp.desde, hasta: rp.hasta || '', fin: rp.hasta ? 'fecha' : 'siempre' })
+    setTimeout(() => repPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+  }
+  // Guarda la repetición y vuelve a generar sus turnos desde hoy (los días pasados no se tocan)
+  async function guardarEditRep() {
+    const e = editRep
+    if (!e.chatter_id) return
+    if (!e.dias.length) return alert('Elige al menos un día de la semana')
+    if (e.fin !== 'siempre' && !e.hasta) return alert('Elige hasta qué fecha se repite, o marca «Indefinidamente»')
+    if (e.fin !== 'siempre' && e.hasta < e.desde) return alert('La fecha final no puede ser anterior a la de inicio')
+    const { error } = await supabase.from('schedule_repeticiones').update({
+      chatter_id: e.chatter_id, turno: e.turno, grupo_id: e.grupo_id || null, modelos: sinModelosDelGrupo(e.modelos, e.grupo_id) || null,
+      dias: e.dias, desde: e.desde, hasta: e.fin === 'siempre' ? null : e.hasta, activo: true,
+    }).eq('id', e.id)
+    if (error) return alert('No se pudo guardar la repetición: ' + error.message)
+    const { error: e2 } = await supabase.from('schedules').delete().eq('repeticion_id', e.id).gte('fecha', hoy)   // se regeneran con los datos nuevos
+    if (e2) return alert('Se guardó la repetición, pero no se pudieron actualizar los turnos futuros: ' + e2.message)
+    setEditRep(null)
+    setAvisoBorrado('Repetición actualizada: los turnos desde hoy se han generado de nuevo con los cambios.')
+    load()
   }
 
   async function deshacer() {
@@ -372,9 +400,61 @@ function HorarioSemana({ esMgr }) {
                 <strong>{chatters.find((c) => c.id === rp.chatter_id)?.full_name || 'Chatter'}</strong> · {TURNOS.find((t) => t.id === rp.turno)?.n} · {rp.dias.map((d) => DIAS[d].slice(0, 3)).join(', ')} ·{' '}
                 desde {fmtFecha(rp.desde)} {rp.hasta ? `hasta ${fmtFecha(rp.hasta)}` : '· indefinidamente'}
               </span>
-              <button onClick={() => detener(rp)} className="hover:underline" style={{ color: 'var(--danger)' }}>Detener</button>
+              <span className="flex items-center gap-3">
+                <button onClick={() => abrirEditRep(rp)} data-editar-repeticion className="hover:underline" style={{ color: 'var(--accent)' }}>Editar</button>
+                <button onClick={() => detener(rp)} className="hover:underline" style={{ color: 'var(--danger)' }}>Detener</button>
+              </span>
             </div>
           ))}
+        </Panel>
+      )}
+
+      {esMgr && editRep && (
+        <Panel className="p-5 mb-6">
+          <div ref={repPanelRef} />
+          <p className="text-sm font-medium mb-1" data-panel-repeticion>Editar repetición</p>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Los cambios se aplican a los turnos de hoy en adelante; los días ya pasados se quedan como estaban.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <Select value={editRep.turno} onChange={(e) => setEditRep({ ...editRep, turno: e.target.value })}>
+              {TURNOS.map((t) => <option key={t.id} value={t.id}>{t.n} ({t.h})</option>)}
+            </Select>
+            <Select value={editRep.chatter_id} onChange={(e) => setEditRep({ ...editRep, chatter_id: e.target.value })}>
+              {!chatters.some((c) => c.id === editRep.chatter_id) && <option value={editRep.chatter_id}>Chatter actual</option>}
+              {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+            </Select>
+            <Select value={editRep.grupo_id} onChange={(e) => setEditRep({ ...editRep, grupo_id: e.target.value, modelos: sinModelosDelGrupo(editRep.modelos, e.target.value) })}>
+              <option value="">— sin grupo —</option>
+              {grupos.map((g) => <option key={g.id} value={g.id}>{g.nombre}</option>)}
+            </Select>
+            <Input type="date" value={editRep.desde} onChange={(e) => setEditRep({ ...editRep, desde: e.target.value })} />
+          </div>
+          <SelectorModelos modelos={modelosCRM} value={editRep.modelos} onChange={(v) => setEditRep({ ...editRep, modelos: v })} titulo="Modelos asignadas manualmente (además del grupo, si eliges uno)"
+            bloqueadas={modelosDelGrupo(editRep.grupo_id)} motivoBloqueo={`Ya está incluida en el grupo «${grupos.find((g) => g.id === editRep.grupo_id)?.nombre || ''}», que ya está asignado`} />
+          <div className="mb-3 p-3 rounded-md" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Días de la semana en los que se repite</p>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {DIAS.map((d, i) => {
+                const on = editRep.dias.includes(i)
+                return (
+                  <button key={d} type="button" onClick={() => setEditRep({ ...editRep, dias: on ? editRep.dias.filter((x) => x !== i) : [...editRep.dias, i].sort() })}
+                    className="px-2.5 py-1 rounded-full text-xs"
+                    style={{ background: on ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}>
+                    {d.slice(0, 3)}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>¿Hasta cuándo?</p>
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={editRep.fin !== 'siempre'} onChange={() => setEditRep({ ...editRep, fin: 'fecha' })} /> Hasta una fecha</label>
+              {editRep.fin !== 'siempre' && <Input type="date" value={editRep.hasta || ''} min={editRep.desde} onChange={(e) => setEditRep({ ...editRep, hasta: e.target.value })} />}
+              <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={editRep.fin === 'siempre'} onChange={() => setEditRep({ ...editRep, fin: 'siempre' })} /> Indefinidamente</label>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={guardarEditRep}>Guardar cambios</Button>
+            <Button variant="ghost" onClick={() => setEditRep(null)}>Cancelar</Button>
+          </div>
         </Panel>
       )}
 
@@ -392,12 +472,13 @@ function HorarioSemana({ esMgr }) {
               {add.chatter_id && !chatters.some((c) => c.id === add.chatter_id) && <option value={add.chatter_id}>{add.editar?.profiles?.full_name || 'Chatter actual'}</option>}
               {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
             </Select>
-            <Select value={add.grupo_id} onChange={(e) => setAdd({ ...add, grupo_id: e.target.value })}>
+            <Select value={add.grupo_id} onChange={(e) => setAdd({ ...add, grupo_id: e.target.value, modelos: sinModelosDelGrupo(add.modelos, e.target.value) })}>
               <option value="">— sin grupo —</option>
               {grupos.map((g) => <option key={g.id} value={g.id}>{g.nombre}</option>)}
             </Select>
           </div>
-          <SelectorModelos modelos={modelosCRM} value={add.modelos} onChange={(v) => setAdd({ ...add, modelos: v })} titulo="Modelos asignadas manualmente (además del grupo, si eliges uno)" />
+          <SelectorModelos modelos={modelosCRM} value={add.modelos} onChange={(v) => setAdd({ ...add, modelos: v })} titulo="Modelos asignadas manualmente (además del grupo, si eliges uno)"
+            bloqueadas={modelosDelGrupo(add.grupo_id)} motivoBloqueo={`Ya está incluida en el grupo «${grupos.find((g) => g.id === add.grupo_id)?.nombre || ''}», que ya está asignado`} />
           {!add.editar && <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
             <input type="checkbox" checked={!!add.repetir} onChange={(e) => setAdd({ ...add, repetir: e.target.checked, dias: add.dias || [(new Date(add.fecha + 'T12:00:00').getDay() + 6) % 7], fin: add.fin || 'fecha' })} />
             Repetir este horario cada semana
@@ -431,6 +512,7 @@ function HorarioSemana({ esMgr }) {
                 if (add.editar) return guardarEdicion()
                 if (!add.chatter_id) return
                 const { repetir, dias: dsel, fin, hasta, ...base } = add
+                base.modelos = sinModelosDelGrupo(base.modelos, base.grupo_id)
                 if (repetir) {
                   if (!dsel?.length) return alert('Elige al menos un día de la semana')
                   if (fin !== 'siempre' && !hasta) return alert('Elige hasta qué fecha se repite, o marca «Indefinidamente»')
@@ -459,13 +541,15 @@ function HorarioSemana({ esMgr }) {
 const aLista = (txt) => String(txt || '').split(/[,\n]+/).map((x) => x.trim()).filter(Boolean)
 const normN = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 
-function SelectorModelos({ modelos, value, onChange, titulo = 'Modelos del grupo' }) {
+function SelectorModelos({ modelos, value, onChange, titulo = 'Modelos del grupo', bloqueadas = [], motivoBloqueo = '' }) {
   const [q, setQ] = useState('')
   const elegidas = aLista(value)
   const enCRM = new Set(modelos.map((m) => normN(m.stage_name)))
   const sueltas = elegidas.filter((n) => !enCRM.has(normN(n))) // nombres antiguos que ya no coinciden con ninguna modelo del CRM
   const estaOn = (nombre) => elegidas.some((n) => normN(n) === normN(nombre))
+  const estaBloq = (nombre) => bloqueadas.some((n) => normN(n) === normN(nombre))   // ya van incluidas por el grupo asignado
   function alternar(nombre) {
+    if (estaBloq(nombre)) return
     const nuevo = estaOn(nombre) ? elegidas.filter((n) => normN(n) !== normN(nombre)) : elegidas.concat([nombre])
     onChange(nuevo.join(', '))
   }
@@ -473,7 +557,7 @@ function SelectorModelos({ modelos, value, onChange, titulo = 'Modelos del grupo
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between gap-3 mb-2">
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{titulo} · {elegidas.length} seleccionada{elegidas.length === 1 ? '' : 's'}</p>
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{titulo} · {elegidas.length} seleccionada{elegidas.length === 1 ? '' : 's'}{bloqueadas.length > 0 ? ` · ${bloqueadas.length} ya en el grupo` : ''}</p>
         <input
           value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar modelo…"
           className="px-3 py-1 rounded-md text-xs outline-none"
@@ -482,15 +566,17 @@ function SelectorModelos({ modelos, value, onChange, titulo = 'Modelos del grupo
       </div>
       <div className="flex flex-wrap gap-2">
         {visibles.map((m) => {
-          const on = estaOn(m.stage_name)
+          const bloq = estaBloq(m.stage_name)
+          const on = !bloq && estaOn(m.stage_name)
           return (
             <button
-              key={m.id} type="button" onClick={() => alternar(m.stage_name)}
+              key={m.id} type="button" onClick={() => alternar(m.stage_name)} disabled={bloq} data-modelo-bloqueada={bloq ? '1' : undefined}
+              title={bloq ? motivoBloqueo : undefined}
               className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-full text-sm"
-              style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)' }}
+              style={{ background: on ? 'var(--accent-soft)' : 'var(--panel-alt)', border: `1px ${bloq ? 'dashed' : 'solid'} ${on ? 'var(--accent)' : 'var(--border)'}`, color: on ? 'var(--accent)' : 'var(--text)', opacity: bloq ? 0.45 : 1, cursor: bloq ? 'not-allowed' : 'pointer' }}
             >
               <ModelAvatar name={m.stage_name} size={26} />
-              {on ? '✓ ' : ''}{m.stage_name}
+              {bloq ? '🔒 ' : on ? '✓ ' : ''}{m.stage_name}
             </button>
           )
         })}
