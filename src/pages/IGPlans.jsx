@@ -89,7 +89,7 @@ export function textoPlan(p, usuario) {
 export default function IGPlans() {
   const { hasAnyRole, profile } = useAuth()
   const puedeBorrar = hasAnyRole(['admin', 'ig_manager'])
-  // Asistente IG «a secas»: ve solo las planificaciones enviadas, sin poder crear ni editar nada; marca los reels editados
+  // Asistente IG «a secas»: ve solo las planificaciones enviadas, sin poder crear ni editar nada; marca los reels subidos
   const esAsistente = hasAnyRole(['ig_assistant']) && !hasAnyRole(['admin', 'ig_manager', 'planner'])
   const [cuentas, setCuentas] = useState([])
   const [planes, setPlanes] = useState([])
@@ -395,7 +395,7 @@ export default function IGPlans() {
       )}
       <PageHeader
         title="Planificaciones de reels"
-        subtitle={esAsistente ? 'Planificaciones ya enviadas a las modelos: mira qué reels hay que editar y cómo, y marca los que ya están editados.' : 'Confecciona la planificación semanal de cada cuenta con la plantilla y copia el texto listo para enviárselo a la chica.'}
+        subtitle={esAsistente ? 'Planificaciones ya enviadas a las modelos: mira qué reels hay que editar y subir y cómo, y marca los que ya has subido.' : 'Confecciona la planificación semanal de cada cuenta con la plantilla y copia el texto listo para enviárselo a la chica.'}
         action={esAsistente ? null : <Button onClick={nueva} disabled={!cuentas.length}>Nueva planificación</Button>}
       />
 
@@ -622,7 +622,7 @@ export default function IGPlans() {
                         {p.estado !== 'borrador' && p.enviado_at && <span className="text-xs block" style={{ color: 'var(--success)' }}>✓ Enviada · {fmtExacta(p.enviado_at)}</span>}
                         {p.estado !== 'borrador' && p.enviado_at && totalReels(p) > 0 && esAsistente && (
                           <span className="text-xs block" data-editados-plan={p.id} style={{ color: (editadosPlan[p.id] || 0) >= totalReels(p) ? 'var(--success)' : 'var(--text-muted)' }}>
-                            {(editadosPlan[p.id] || 0) >= totalReels(p) ? '✅' : '☑'} Reels editados: {editadosPlan[p.id] || 0}/{totalReels(p)}
+                            {(editadosPlan[p.id] || 0) >= totalReels(p) ? '✅' : '☑'} Reels subidos: {editadosPlan[p.id] || 0}/{totalReels(p)}
                           </span>
                         )}
                         {p.estado !== 'borrador' && p.enviado_at && totalReels(p) > 0 && !esAsistente && (
@@ -632,10 +632,10 @@ export default function IGPlans() {
                         )}
                         {p.estado !== 'borrador' && p.enviado_at && totalReels(p) > 0 && !esAsistente && (
                           <span className="text-xs block" data-editados-plan={p.id} style={{ color: (editadosPlan[p.id] || 0) >= totalReels(p) ? 'var(--success)' : 'var(--text-muted)' }}>
-                            {(editadosPlan[p.id] || 0) >= totalReels(p) ? '✅' : '✂️'} Reels editados: {editadosPlan[p.id] || 0}/{totalReels(p)}
+                            {(editadosPlan[p.id] || 0) >= totalReels(p) ? '✅' : '⬆️'} Reels subidos: {editadosPlan[p.id] || 0}/{totalReels(p)}
                           </span>
                         )}
-                        {p.hecha_at && <span className="text-xs block" data-plan-hecha style={{ color: 'var(--success)' }}>✓ Hecha{p.hecha_auto ? ' automáticamente' : ''} · {fmtExacta(p.hecha_at)}{p.hecha_auto ? ' · todos los reels hechos y editados' : ' · videos borrados'}</span>}
+                        {p.hecha_at && <span className="text-xs block" data-plan-hecha style={{ color: 'var(--success)' }}>✓ Hecha{p.hecha_auto ? ' automáticamente' : ''} · {fmtExacta(p.hecha_at)}{p.hecha_auto ? ' · todos los reels hechos y subidos' : ' · videos borrados'}</span>}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{plural((p.dias || []).length, 'día', 'días')} · {plural(totalReels(p), 'reel', 'reels')}{videosDe(p.dias).length > 0 && <span> · 🎞 {plural(videosDe(p.dias).length, 'video', 'videos')}</span>}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap cursor-default" onClick={(e) => e.stopPropagation()}>

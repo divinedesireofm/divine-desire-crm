@@ -12,7 +12,7 @@ const nTipo = (id) => (id === 'marca_personal' ? 'Marca personal' : 'Sugerente')
 const esUrl = (t) => /^https?:\/\//i.test(String(t || '').trim())
 
 // Contenido de una planificación en solo lectura (se muestra desplegado dentro de la lista)
-// paraModelo: la modelo marca «hecho» y no ve «editado». paraAsistente: el asistente marca «editado» y no ve «hecho». Sin ninguno (admin, manager, planner): ve los dos, sin poder marcar.
+// paraModelo: la modelo marca «hecho» y no ve «subido». paraAsistente: el asistente marca «subido» y no ve «hecho». Sin ninguno (admin, manager, planner): ve los dos, sin poder marcar.
 export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = false, paraAsistente = false }) {
   const texto = useMemo(() => textoPlan(plan, usuario || 'cuenta'), [plan, usuario])
   const lbl = { color: 'var(--text-muted)' }
@@ -79,7 +79,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
       {total > 0 && (
         <p className="text-sm mb-3 flex flex-wrap gap-x-5 gap-y-1" data-progreso>
           {!paraAsistente && <span data-progreso-hechos>✅ {paraModelo ? 'Reels hechos' : 'Hechos por la modelo'}: <strong>{hechosN}/{total}</strong></span>}
-          {!paraModelo && <span data-progreso-editados>✂️ Editados: <strong>{editadosN}/{total}</strong></span>}
+          {!paraModelo && <span data-progreso-editados>⬆️ Subidos: <strong>{editadosN}/{total}</strong></span>}
         </p>
       )}
       {errHecho && <p className="text-sm mb-2" style={{ color: 'var(--danger)' }}>{errHecho}</p>}
@@ -117,7 +117,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                     ) : paraAsistente ? (
                       <button type="button" onClick={() => marcarEditado(di, ri)} data-editado={di + ':' + ri} className="text-xs px-2.5 py-1 rounded-full"
                         style={{ background: editados[di + ':' + ri] ? 'var(--success, #30a46c)' : 'transparent', color: editados[di + ':' + ri] ? '#fff' : 'var(--text)', border: '1px solid var(--success, #30a46c)' }}>
-                        {editados[di + ':' + ri] ? `✓ Editado · ${fmtH(editados[di + ':' + ri])}` : 'Marcar como editado'}
+                        {editados[di + ':' + ri] ? `✓ Subido · ${fmtH(editados[di + ':' + ri])}` : 'Marcar como subido'}
                       </button>
                     ) : (
                       <span className="flex items-center gap-2 flex-wrap">
@@ -125,7 +125,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                           {hechos[di + ':' + ri] ? `✓ Modelo: hecho · ${fmtH(hechos[di + ':' + ri])}` : '☐ Modelo: pendiente'}
                         </span>
                         <span data-check-editado={di + ':' + ri} className="text-xs px-2 py-0.5 rounded-full" style={editados[di + ':' + ri] ? { background: 'var(--success, #30a46c)', color: '#fff' } : { border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                          {editados[di + ':' + ri] ? `✓ Editado · ${fmtH(editados[di + ':' + ri])}` : '☐ Editado: pendiente'}
+                          {editados[di + ':' + ri] ? `✓ Subido · ${fmtH(editados[di + ':' + ri])}` : '☐ Subido: pendiente'}
                         </span>
                       </span>
                     )}
