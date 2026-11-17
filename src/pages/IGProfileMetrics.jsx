@@ -7,6 +7,7 @@ import { Panel, Button, Select } from '../components/ui'
 import ScrollSuperior from '../components/ScrollSuperior'
 import { urlInstagram } from '../lib/instagramLink'
 import { estadoDeCuenta } from '../lib/cuentasIGSecciones'
+import IGAccountAnalytics from './IGAccountAnalytics'
 
 // Las cuentas suspendidas o en reposo no se miden: no aparecen en este cuadro
 const SIN_METRICAS = ['SUSPENDIDA', 'EN REPOSO', 'SUSPENDIDA INDEFINIDAMENTE']
@@ -49,6 +50,7 @@ export default function IGProfileMetrics() {
   const [resumen, setResumen] = useState(null) // resultado de la última actualización
   const [abierta, setAbierta] = useState(null)
   const [grafica, setGrafica] = useState('followers')
+  const [analizando, setAnalizando] = useState(null) // id de la cuenta que se está analizando a fondo
 
   async function cargar() {
     setLoading(true)
@@ -103,6 +105,9 @@ export default function IGProfileMetrics() {
 
   const abiertaFila = filas.find((f) => f.id === abierta)
   const datosGrafica = abiertaFila ? [...abiertaFila.historial].reverse().map((s) => ({ fecha: fFecha(s.captured_at), v: s[grafica] === null ? null : Number(s[grafica]) })) : []
+
+  const cuentaAnalizada = analizando ? cuentas.find((c) => c.id === analizando) : null
+  if (cuentaAnalizada) return <IGAccountAnalytics cuenta={cuentaAnalizada} puedeActualizar={puedeActualizar} onVolver={() => { setAnalizando(null); cargar() }} />
 
   return (
     <div>
@@ -170,6 +175,7 @@ export default function IGProfileMetrics() {
                     <td className="px-3 py-3 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{f.ult?.last_post_at ? hace(f.ult.last_post_at) : '—'}</td>
                     <td className="px-3 py-3 whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{f.ult ? fFechaHora(f.ult.captured_at) : 'sin datos'}</td>
                     <td className="px-3 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()} style={{ position: 'sticky', right: 0, zIndex: 5, background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
+                      <button className="text-xs underline mr-3" style={{ color: 'var(--accent)' }} data-analizar={f.username} onClick={() => setAnalizando(f.id)}>📊 Analizar métricas</button>
                       {puedeActualizar && <button className="text-xs underline" style={{ color: 'var(--accent)' }} disabled={busy !== null} onClick={() => actualizar([f.id], f.id)}>{busy === f.id ? 'Leyendo…' : 'Actualizar'}</button>}
                     </td>
                   </tr>
