@@ -72,7 +72,7 @@ export default function PermissionsMatrix() {
       <Panel className="p-4 mb-4">
         <p className="text-sm mb-1"><strong>Qué apartados ve cada rol.</strong> Marca o desmarca y pulsa «Guardar cambios» para aplicarlo. El admin siempre lo ve todo.</p>
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Esto decide qué aparece en el menú y a qué apartados se puede entrar. Los datos de cada apartado siguen protegidos por la base de datos: si das acceso a un apartado cuyos datos ese rol no puede leer, lo verá vacío. Las casillas con punto dorado son cambios tuyos respecto al valor por defecto.
+          Esto decide qué aparece en el menú y a qué apartados se puede entrar. Los datos de cada apartado siguen protegidos por la base de datos: si das acceso a un apartado cuyos datos ese rol no puede leer, lo verá vacío.
         </p>
       </Panel>
 
@@ -142,7 +142,6 @@ function SeccionFilas({ sec, efectivo, personalizado, cambiar }) {
                       style={{ width: 18, height: 18, accentColor: 'var(--accent)' }}
                       aria-label={`${item.label} para ${r.label}`}
                     />
-                    <span style={{ width: 6, height: 6, borderRadius: 3, background: !fijo && personalizado(r.id, item) ? 'var(--gold)' : 'transparent' }} />
                   </label>
                 </td>
               )
