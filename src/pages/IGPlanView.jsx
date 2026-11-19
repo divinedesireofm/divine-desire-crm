@@ -13,7 +13,7 @@ const esUrl = (t) => /^https?:\/\//i.test(String(t || '').trim())
 
 // Contenido de una planificación en solo lectura (se muestra desplegado dentro de la lista)
 // paraModelo: la modelo marca «hecho» y no ve «subido». paraAsistente: el asistente marca «subido» y no ve «hecho». Sin ninguno (admin, manager, planner): ve los dos, sin poder marcar.
-export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = false, paraAsistente = false }) {
+export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = false, paraAsistente = false, onHechos = null }) {
   const texto = useMemo(() => textoPlan(plan, usuario || 'cuenta'), [plan, usuario])
   const lbl = { color: 'var(--text-muted)' }
   // Reels marcados como hechos por la modelo: ella los marca; el equipo los ve
@@ -68,6 +68,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
     setHechos((h) => { const n = { ...h }; if (ya) delete n[k]; else n[k] = new Date().toISOString(); return n })
     const { error } = await supabase.rpc('marcar_reel_hecho', { p_plan: plan.id, p_dia: di, p_reel: ri, p_hecho: !ya })
     if (error) { setErrHecho('No se pudo guardar el cambio. Inténtalo de nuevo.'); setHechos((h) => { const n = { ...h }; if (ya) n[k] = new Date().toISOString(); else delete n[k]; return n }) }
+    else if (onHechos) onHechos(plan.id, di + ':' + ri, !ya)
   }
   const fmtH = (ts) => new Date(ts).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
   const total = (plan.dias || []).reduce((a, d) => a + (d.reels?.length || 0), 0)
@@ -110,7 +111,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                       {hecho(di + ':' + ri) ? '✅ ' : ''}{nOrigen(r.origen)} · {nTipo(r.tipo)}{r.fuente === 'original' ? ' · 💡 Idea original' : ''}{r.prueba ? ' · 🧪 Prueba' : ''}{r.aire_libre ? ' · 🌳 Al aire libre' : ''}
                     </p>
                     {paraModelo ? (
-                      <button type="button" onClick={() => marcar(di, ri)} data-hecho={di + ':' + ri} className="text-xs px-2.5 py-1 rounded-full"
+                      <button type="button" onClick={() => marcar(di, ri)} data-hecho={di + ':' + ri} className="text-sm px-4 py-2 rounded-full w-full sm:w-auto"
                         style={{ background: hechos[di + ':' + ri] ? 'var(--success, #30a46c)' : 'transparent', color: hechos[di + ':' + ri] ? '#fff' : 'var(--text)', border: '1px solid var(--success, #30a46c)' }}>
                         {hechos[di + ':' + ri] ? `✓ Hecho · ${fmtH(hechos[di + ':' + ri])}` : 'Marcar como hecho'}
                       </button>
