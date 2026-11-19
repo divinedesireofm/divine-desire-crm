@@ -110,12 +110,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                     <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gold, var(--accent))' }}>
                       {hecho(di + ':' + ri) ? '✅ ' : ''}{nOrigen(r.origen)} · {nTipo(r.tipo)}{r.fuente === 'original' ? ' · 💡 Idea original' : ''}{r.prueba ? ' · 🧪 Prueba' : ''}{r.aire_libre ? ' · 🌳 Al aire libre' : ''}
                     </p>
-                    {paraModelo ? (
-                      <button type="button" onClick={() => marcar(di, ri)} data-hecho={di + ':' + ri} className="text-sm px-4 py-2 rounded-full w-full sm:w-auto"
-                        style={{ background: hechos[di + ':' + ri] ? 'var(--success, #30a46c)' : 'transparent', color: hechos[di + ':' + ri] ? '#fff' : 'var(--text)', border: '1px solid var(--success, #30a46c)' }}>
-                        {hechos[di + ':' + ri] ? `✓ Hecho · ${fmtH(hechos[di + ':' + ri])}` : 'Marcar como hecho'}
-                      </button>
-                    ) : paraAsistente ? (
+                    {paraModelo ? null : paraAsistente ? (
                       <button type="button" onClick={() => marcarEditado(di, ri)} data-editado={di + ':' + ri} className="text-xs px-2.5 py-1 rounded-full"
                         style={{ background: editados[di + ':' + ri] ? 'var(--success, #30a46c)' : 'transparent', color: editados[di + ':' + ri] ? '#fff' : 'var(--text)', border: '1px solid var(--success, #30a46c)' }}>
                         {editados[di + ':' + ri] ? `✓ Subido · ${fmtH(editados[di + ':' + ri])}` : 'Marcar como subido'}
@@ -159,6 +154,10 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                   {r.texto?.trim() && <p className="whitespace-pre-wrap">📝 <TextoConLinks texto={r.texto} /></p>}
                   {r.edicion?.trim() && <p className="whitespace-pre-wrap mt-1">📹 <strong>Edición:</strong> <TextoConLinks texto={r.edicion} /></p>}
                   {!r.tematica?.trim() && !r.link?.trim() && !r.idea?.trim() && !(r.imagenes || []).length && !r.gancho?.trim() && !r.texto?.trim() && !r.edicion?.trim() && !r.video?.path && <p style={lbl}>Sin contenido todavía.</p>}
+                  {paraModelo && <div className="mt-3"><button type="button" onClick={() => marcar(di, ri)} data-hecho={di + ':' + ri} className="text-base font-medium px-4 py-3 rounded-full w-full"
+                        style={{ background: hechos[di + ':' + ri] ? 'var(--success, #30a46c)' : 'transparent', color: hechos[di + ':' + ri] ? '#fff' : 'var(--text)', border: '1px solid var(--success, #30a46c)' }}>
+                        {hechos[di + ':' + ri] ? `✓ Hecho · ${fmtH(hechos[di + ':' + ri])}` : 'Marcar como hecho'}
+                      </button></div>}
                 </div>
               ))}
             </div>
