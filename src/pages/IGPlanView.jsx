@@ -61,6 +61,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
     setEditados((h) => { const n = { ...h }; if (ya) delete n[k]; else n[k] = new Date().toISOString(); return n })
     const { error } = await supabase.rpc('marcar_reel_editado', { p_plan: plan.id, p_dia: di, p_reel: ri, p_editado: !ya })
     if (error) { setErrHecho('No se pudo guardar el cambio. Inténtalo de nuevo.'); setEditados((h) => { const n = { ...h }; if (ya) n[k] = new Date().toISOString(); else delete n[k]; return n }) }
+    else if (onHechos) onHechos(plan.id, k, !ya)
   }
   async function marcar(di, ri) {
     const k = di + ':' + ri; const ya = !!hechos[k]
@@ -85,7 +86,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
       )}
       {errHecho && <p className="text-sm mb-2" style={{ color: 'var(--danger)' }}>{errHecho}</p>}
       <div className="flex flex-wrap gap-2 mb-3">
-        {!paraModelo && <CopyButton text={linkPlan} label="🔗 Copiar link de esta planificación" />}
+        {!paraModelo && !paraAsistente && <CopyButton text={linkPlan} label="🔗 Copiar link de esta planificación" />}
         <CopyButton text={texto} label="Copiar texto" />
       </div>
       {(plan.periodo_desde || plan.periodo_hasta) && <p className="text-sm mb-3">📅 <strong>Planificación del</strong> {textoPeriodo(plan)}</p>}
@@ -110,12 +111,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                     <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gold, var(--accent))' }}>
                       {hecho(di + ':' + ri) ? '✅ ' : ''}{nOrigen(r.origen)} · {nTipo(r.tipo)}{r.fuente === 'original' ? ' · 💡 Idea original' : ''}{r.prueba ? ' · 🧪 Prueba' : ''}{r.aire_libre ? ' · 🌳 Al aire libre' : ''}
                     </p>
-                    {paraModelo ? null : paraAsistente ? (
-                      <button type="button" onClick={() => marcarEditado(di, ri)} data-editado={di + ':' + ri} className="text-xs px-2.5 py-1 rounded-full"
-                        style={{ background: editados[di + ':' + ri] ? 'var(--success, #30a46c)' : 'transparent', color: editados[di + ':' + ri] ? '#fff' : 'var(--text)', border: '1px solid var(--success, #30a46c)' }}>
-                        {editados[di + ':' + ri] ? `✓ Subido · ${fmtH(editados[di + ':' + ri])}` : 'Marcar como subido'}
-                      </button>
-                    ) : (
+                    {paraModelo || paraAsistente ? null : (
                       <span className="flex items-center gap-2 flex-wrap">
                         <span data-check-modelo={di + ':' + ri} className="text-xs px-2 py-0.5 rounded-full" style={hechos[di + ':' + ri] ? { background: 'var(--success, #30a46c)', color: '#fff' } : { border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
                           {hechos[di + ':' + ri] ? `✓ Modelo: hecho · ${fmtH(hechos[di + ':' + ri])}` : '☐ Modelo: pendiente'}
@@ -144,7 +140,7 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                   )}
                   {r.video?.path && <VideoReel video={r.video} soloLectura />}
                   <ImagenesReel imagenes={r.imagenes || []} />
-                  {paraModelo && r.aire_libre && (
+                  {(paraModelo || paraAsistente) && r.aire_libre && (
                     <p className="mt-2 mb-1 text-sm font-medium rounded-md px-3 py-2" data-lugar-reel="aire_libre"
                       style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
                       🌳 Este reel se graba al aire libre
@@ -157,6 +153,10 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                   {paraModelo && <div className="mt-3"><button type="button" onClick={() => marcar(di, ri)} data-hecho={di + ':' + ri} className="text-base font-medium px-4 py-3 rounded-full w-full"
                         style={{ background: hechos[di + ':' + ri] ? 'var(--success, #30a46c)' : 'transparent', color: hechos[di + ':' + ri] ? '#fff' : 'var(--text)', border: '1px solid var(--success, #30a46c)' }}>
                         {hechos[di + ':' + ri] ? `✓ Hecho · ${fmtH(hechos[di + ':' + ri])}` : 'Marcar como hecho'}
+                      </button></div>}
+                  {paraAsistente && <div className="mt-3"><button type="button" onClick={() => marcarEditado(di, ri)} data-editado={di + ':' + ri} className="text-base font-medium px-4 py-3 rounded-full w-full"
+                        style={{ background: editados[di + ':' + ri] ? 'var(--success, #30a46c)' : 'transparent', color: editados[di + ':' + ri] ? '#fff' : 'var(--text)', border: '1px solid var(--success, #30a46c)' }}>
+                        {editados[di + ':' + ri] ? `✓ Subido · ${fmtH(editados[di + ':' + ri])}` : 'Marcar como subido'}
                       </button></div>}
                 </div>
               ))}

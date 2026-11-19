@@ -49,6 +49,7 @@ import ChatterMetrics from './pages/ChatterMetrics'
 import Requests from './pages/Requests'
 import Recaptures from './pages/Recaptures'
 import IGPlans from './pages/IGPlans'
+import PlanificacionesRuta from './pages/PlanificacionesRuta'
 import SltLinks from './pages/SltLinks'
 import RedditAccounts from './pages/RedditAccounts'
 import RedditReports from './pages/RedditReports'
@@ -148,7 +149,7 @@ function AppRoutes() {
         <Route path="informes-metricas" element={<Navigate to="/metricas-chatters?vista=informes" replace />} />
         <Route path="solicitudes" element={<Requests />} />
         <Route path="recaptaciones" element={<Recaptures />} />
-        <Route path="planificaciones" element={<IGPlans />} />
+        <Route path="planificaciones" element={<PlanificacionesRuta />} />
         <Route path="mis-planificaciones" element={<ReelsModelo />} />
         <Route path="mi-perfil" element={<MiPerfil />} />
         <Route path="enlaces" element={<SltLinks />} />
