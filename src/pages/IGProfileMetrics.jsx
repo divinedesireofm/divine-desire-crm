@@ -146,7 +146,7 @@ export default function IGProfileMetrics() {
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {['Cuenta', 'Seguidores', 'Siguiendo', 'Posts', 'Likes medios', 'Comentarios medios', 'Engagement', 'Vistas reels', 'Último post', 'Actualizado', ''].map((c, i, arr) => (
-                    <th key={c || 'acc'} className="text-left px-3 py-3 font-medium whitespace-nowrap"
+                    <th key={c || 'acc'} className={`text-left px-3 py-3 font-medium whitespace-nowrap${i === 0 ? ' col-cuenta-fija' : ''}`}
                       style={{ color: 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}), ...(i === arr.length - 1 ? { position: 'sticky', right: 0, zIndex: 6, background: 'var(--panel)', borderLeft: '1px solid var(--border)' } : {}) }}>{c}</th>
                   ))}
                 </tr>
@@ -156,7 +156,7 @@ export default function IGProfileMetrics() {
                   <tr><td colSpan={11} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay cuentas de Instagram.</td></tr>
                 ) : filas.map((f) => (
                   <tr key={f.id} onClick={() => setAbierta(abierta === f.id ? null : f.id)} className="cursor-pointer" style={{ borderBottom: '1px solid var(--border)', background: abierta === f.id ? 'var(--accent-soft)' : undefined }}>
-                    <td className="px-3 py-3 whitespace-nowrap" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)' }}>
+                    <td className="px-3 py-3 whitespace-nowrap col-cuenta-fija" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)' }}>
                       <div className="flex items-center gap-3">
                         <FotoIG url={f.foto} nombre={f.username} />
                         <div>

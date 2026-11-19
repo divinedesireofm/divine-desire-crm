@@ -121,3 +121,8 @@ main textarea, main input, main select { max-width: 100%; }
 .tabla-pagos-scroll::-webkit-scrollbar-track { background: color-mix(in srgb, var(--text-muted) 15%, transparent); border-radius: 8px; }
 .tabla-pagos-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--accent) 55%, var(--border)); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
 .tabla-pagos-scroll::-webkit-scrollbar-corner { background: transparent; }
+
+/* Cuentas de Instagram (móvil): la columna de la cuenta no queda fija al desplazar la tabla */
+@media (max-width: 767px) {
+  .col-cuenta-fija { position: static !important; }
+}

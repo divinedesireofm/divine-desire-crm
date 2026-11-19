@@ -464,7 +464,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
                   {colsTabla.map((c, i) => (
-                    <th key={c.k} className="text-left px-4 py-3 font-medium whitespace-nowrap" style={{ color: ordenK === c.k ? 'var(--accent)' : 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}) }}>
+                    <th key={c.k} className={`text-left px-4 py-3 font-medium whitespace-nowrap${i === 0 ? ' col-cuenta-fija' : ''}`} style={{ color: ordenK === c.k ? 'var(--accent)' : 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}) }}>
                       {c.tipo === 'secreto' || es2faBloq(c) ? c.n : <button type="button" onClick={() => ordenarPor(c.k)} className="hover:underline uppercase" title="Ordenar por esta columna">{c.n}{ordenK === c.k ? (ordenDir === 'asc' ? ' ▲' : ' ▼') : ''}</button>}
                     </th>
                   ))}
@@ -484,7 +484,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
                       onDrop={puedeArrastrar && arrastrando ? (e) => { e.preventDefault(); soltar(f.id) } : undefined}
                       style={{ borderBottom: editId === f.id ? 'none' : '1px solid var(--border)', borderTop: inicio ? '2px solid color-mix(in srgb, var(--accent) 45%, var(--border))' : undefined, height: 54 }}>
                       {colsTabla.map((c, i) => (
-                        <td key={c.k} className={`px-4 align-middle${i === 0 ? ' font-medium' : ''}`} style={tdStyle(c, i)}>
+                        <td key={c.k} className={`px-4 align-middle${i === 0 ? ' font-medium col-cuenta-fija' : ''}`} style={tdStyle(c, i)}>
                           {i === 0 && puedeArrastrar ? (
                             <div className="flex items-center gap-2">
                               <span draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', f.id); const tr = e.currentTarget.closest('tr'); if (tr) e.dataTransfer.setDragImage(tr, 24, 20); setArrastrando(f.id) }} onDragEnd={() => { setArrastrando(null); setSobre(null) }}

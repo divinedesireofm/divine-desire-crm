@@ -639,7 +639,7 @@ export default function InstagramAccounts() {
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
                   {COLS.map((c, i) => (
-                    <th key={c.k} className="text-left px-4 py-3 font-medium whitespace-nowrap"
+                    <th key={c.k} className={`text-left px-4 py-3 font-medium whitespace-nowrap${i === 0 ? ' col-cuenta-fija' : ''}`}
                       style={{ color: ordenK === c.k ? 'var(--accent)' : 'var(--text-muted)', ...(i === 0 ? { position: 'sticky', left: 0, zIndex: 6, background: 'var(--panel)' } : {}), ...(c.k === 'acc' ? { position: 'sticky', right: 0, zIndex: 6, background: 'var(--panel)', borderLeft: '1px solid var(--border)' } : {}) }}>
                       {c.k === 'acc' ? '' : (
                         <button type="button" onClick={() => ordenarPor(c.k)} className="hover:underline uppercase" title="Ordenar por esta columna">
@@ -662,7 +662,7 @@ export default function InstagramAccounts() {
                       onDragOver={puedeArrastrar && arrastrando ? (e) => { e.preventDefault(); if (sobre !== a.id) setSobre(a.id) } : undefined}
                       onDrop={puedeArrastrar && arrastrando ? (e) => { e.preventDefault(); soltar(a.id) } : undefined}
                       style={{ borderBottom: editingId === a.id ? 'none' : '1px solid var(--border)', borderTop: cambiaModelo ? '4px solid color-mix(in srgb, var(--accent) 55%, var(--border))' : undefined, height: 62 }}>
-                      <td className="px-4 align-middle" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)', ...fila }}>
+                      <td className="px-4 align-middle col-cuenta-fija" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)', ...fila }}>
                         <div className="flex items-center">
                         {puedeArrastrar && (
                           <span draggable onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', a.id); const tr = e.currentTarget.closest('tr'); if (tr) e.dataTransfer.setDragImage(tr, 24, 20); setArrastrando(a.id) }} onDragEnd={() => { setArrastrando(null); setSobre(null) }}
