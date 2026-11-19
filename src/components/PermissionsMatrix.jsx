@@ -5,34 +5,57 @@ import { SECTIONS, ROLES_EDITABLES, PERMISOS_EXTRA } from '../lib/navigation'
 import { Panel, Button } from './ui'
 
 // Tabla de permisos: cada fila es un apartado del CRM y cada columna un rol.
-// Solo la ve el admin. Cada casilla guarda el cambio al instante.
+// Solo la ve el admin. Los cambios se acumulan y se aplican al pulsar «Guardar cambios».
 export default function PermissionsMatrix() {
   const { perms, refreshPermissions } = useAuth()
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+  const [borrador, setBorrador] = useState({}) // { 'rol|ruta': { rol, item, valor } } cambios aún sin guardar
 
   const efectivo = (rol, item) => {
     const k = rol + '|' + item.to
+    if (k in borrador) return borrador[k].valor
     return k in perms ? perms[k] : item.roles.includes(rol)
   }
   const personalizado = (rol, item) => {
     const k = rol + '|' + item.to
+    if (k in borrador) return borrador[k].valor !== item.roles.includes(rol)
     return k in perms && perms[k] !== item.roles.includes(rol)
   }
 
-  async function cambiar(rol, item, valor) {
+  // Marca el cambio en el borrador; si vuelve a coincidir con lo ya guardado, se quita del borrador
+  function cambiar(rol, item, valor) {
     setMsg('')
-    const porDefecto = item.roles.includes(rol)
-    // Si vuelve a coincidir con el valor por defecto, borramos la fila para no acumular excepciones
-    const { error } = valor === porDefecto
-      ? await supabase.from('role_permissions').delete().eq('role', rol).eq('ruta', item.to)
-      : await supabase.from('role_permissions').upsert({ role: rol, ruta: item.to, permitido: valor }, { onConflict: 'role,ruta' })
-    if (error) { setMsg('No se pudo guardar el cambio. ¿Has ejecutado la migración 38?'); return }
+    const k = rol + '|' + item.to
+    const guardado = k in perms ? perms[k] : item.roles.includes(rol)
+    setBorrador((b) => {
+      const n = { ...b }
+      if (valor === guardado) delete n[k]; else n[k] = { rol, item, valor }
+      return n
+    })
+  }
+
+  async function guardar() {
+    setBusy(true); setMsg('')
+    const cambios = Object.values(borrador)
+    const subir = cambios.filter((c) => c.valor !== c.item.roles.includes(c.rol)).map((c) => ({ role: c.rol, ruta: c.item.to, permitido: c.valor }))
+    const borrar = cambios.filter((c) => c.valor === c.item.roles.includes(c.rol)) // vuelven al valor por defecto: se borra la excepción
+    let error = null
+    if (subir.length) ({ error } = await supabase.from('role_permissions').upsert(subir, { onConflict: 'role,ruta' }))
+    for (const c of borrar) {
+      if (error) break
+      ;({ error } = await supabase.from('role_permissions').delete().eq('role', c.rol).eq('ruta', c.item.to))
+    }
+    setBusy(false)
+    if (error) { setMsg('No se pudieron guardar los cambios. ¿Has ejecutado la migración 38?'); return }
     await refreshPermissions()
+    setBorrador({})
+    setMsg(`✓ ${cambios.length} ${cambios.length === 1 ? 'cambio guardado' : 'cambios guardados'}.`)
   }
 
   async function restablecer() {
     if (!confirm('¿Volver a los permisos por defecto de todos los roles? Se borran todos tus cambios.')) return
+    setBorrador({})
     setBusy(true)
     const { error } = await supabase.from('role_permissions').delete().neq('ruta', '')
     setBusy(false)
@@ -42,11 +65,12 @@ export default function PermissionsMatrix() {
   }
 
   const hayCambios = Object.keys(perms).length > 0
+  const nBorrador = Object.keys(borrador).length
 
   return (
     <div>
       <Panel className="p-4 mb-4">
-        <p className="text-sm mb-1"><strong>Qué apartados ve cada rol.</strong> Marca o desmarca y se guarda al momento. El admin siempre lo ve todo.</p>
+        <p className="text-sm mb-1"><strong>Qué apartados ve cada rol.</strong> Marca o desmarca y pulsa «Guardar cambios» para aplicarlo. El admin siempre lo ve todo.</p>
         <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
           Esto decide qué aparece en el menú y a qué apartados se puede entrar. Los datos de cada apartado siguen protegidos por la base de datos: si das acceso a un apartado cuyos datos ese rol no puede leer, lo verá vacío. Las casillas con punto dorado son cambios tuyos respecto al valor por defecto.
         </p>
@@ -75,6 +99,14 @@ export default function PermissionsMatrix() {
           </table>
         </div>
       </Panel>
+
+      {nBorrador > 0 && (
+        <div className="sticky bottom-3 z-20 mt-4 flex items-center gap-3 flex-wrap rounded-lg px-4 py-3" data-barra-guardar style={{ background: 'var(--panel)', border: '1px solid var(--accent)', boxShadow: '0 4px 16px rgba(0,0,0,.35)' }}>
+          <span className="text-sm">Tienes <strong>{nBorrador}</strong> {nBorrador === 1 ? 'cambio' : 'cambios'} sin guardar.</span>
+          <Button onClick={guardar} disabled={busy} data-guardar-permisos>{busy ? 'Guardando…' : 'Guardar cambios'}</Button>
+          <Button variant="ghost" onClick={() => { setBorrador({}); setMsg('') }} disabled={busy} data-descartar-permisos>Descartar</Button>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 mt-4">
         {hayCambios && <Button variant="ghost" onClick={restablecer} disabled={busy}>Restablecer valores por defecto</Button>}

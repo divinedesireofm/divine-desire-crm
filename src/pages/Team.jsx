@@ -268,7 +268,7 @@ export default function Team() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={!u.password_set ? 'pendiente' : (u.active ? 'activa' : 'baja')} />
+                      <StatusBadge status={(!u.password_set || ('primer_acceso' in u && !u.primer_acceso)) ? 'pendiente' : (u.active ? 'activa' : 'baja')} />
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {esAdmin && <button onClick={() => setFicha(u)} className="text-xs hover:underline mr-3" style={{ color: 'var(--accent)' }}>Ficha</button>}
@@ -453,6 +453,8 @@ function NuevoUsuarioModal({ form: f, setForm: setF, asignables, onClose, onSave
 }
 
 function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
+  const panelRef = useRef(null)
+  useEffect(() => { panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [])
   const [nombre, setNombre] = useState(usuario.full_name)
   const [rolesSel, setRolesSel] = useState(usuario.roles)
   const [turno, setTurno] = useState('')
@@ -489,7 +491,7 @@ function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
   }
 
   return (
-    <Panel className="p-5 mb-4">
+    <div ref={panelRef} style={{ scrollMarginTop: 12 }}><Panel className="p-5 mb-4">
       <p className="text-sm font-medium mb-3">Editar · {usuario.full_name}</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-1">
         <Input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
@@ -511,7 +513,7 @@ function EditarRolesModal({ usuario, asignables, onClose, onSaved }) {
         <Button onClick={guardar} disabled={busy}>{busy ? 'Guardando…' : 'Guardar cambios'}</Button>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
       </div>
-    </Panel>
+    </Panel></div>
   )
 }
 
