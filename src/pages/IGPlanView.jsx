@@ -149,6 +149,12 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                   )}
                   {r.video?.path && <VideoReel video={r.video} soloLectura />}
                   <ImagenesReel imagenes={r.imagenes || []} />
+                  {paraModelo && (
+                    <p className="mt-2 mb-1 text-sm font-medium rounded-md px-3 py-2" data-lugar-reel={r.aire_libre ? 'aire_libre' : 'interior'}
+                      style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
+                      {r.aire_libre ? '🌳 Este reel se graba al aire libre' : '🏠 Este reel NO es al aire libre (se graba en interior)'}
+                    </p>
+                  )}
                   {r.gancho?.trim() && <p className="mb-1 mt-1 whitespace-pre-wrap">🎣 <TextoConLinks texto={r.gancho} /></p>}
                   {r.texto?.trim() && <p className="whitespace-pre-wrap">📝 <TextoConLinks texto={r.texto} /></p>}
                   {r.edicion?.trim() && <p className="whitespace-pre-wrap mt-1">📹 <strong>Edición:</strong> <TextoConLinks texto={r.edicion} /></p>}
