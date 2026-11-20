@@ -1,7 +1,13 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
+
+// Caché de la última sesión (perfil, roles y permisos): la app abre al instante y se refresca por detrás
+const CLAVE_CACHE = 'dd-auth-cache'
+const leerCache = (uid) => { try { const c = JSON.parse(localStorage.getItem(CLAVE_CACHE) || 'null'); return c && c.uid === uid ? c : null } catch (_e) { return null } }
+const guardarCache = (o) => { try { localStorage.setItem(CLAVE_CACHE, JSON.stringify(o)) } catch (_e) { /* sin caché */ } }
+const borrarCache = () => { try { localStorage.removeItem(CLAVE_CACHE) } catch (_e) { /* sin caché */ } }
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
@@ -11,22 +17,32 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [deactivatedMsg, setDeactivatedMsg] = useState('')
 
-  async function loadPerms() {
+  const cargadoPara = useRef(null) // id de la persona cuyo perfil, roles y permisos ya están cargados
+
+  async function fetchPerms() {
     const { data } = await supabase.from('role_permissions').select('role, ruta, permitido')
     const m = {}
     ;(data || []).forEach((p) => { m[p.role + '|' + p.ruta] = p.permitido })
+    return m
+  }
+  async function loadPerms() {
+    const m = await fetchPerms()
     setPerms(m)
+    try { const c = JSON.parse(localStorage.getItem(CLAVE_CACHE) || 'null'); if (c) guardarCache({ ...c, perms: m }) } catch (_e) { /* sin caché */ }
   }
 
+  // Perfil, roles y permisos se piden a la vez (antes iban en tandas y la pantalla enseñaba «sin permisos» mientras llegaban)
   async function loadProfile(userId) {
-    const [{ data, error }, { data: roleRows }] = await Promise.all([
+    const [{ data, error }, { data: roleRows }, permsNuevos] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', userId).single(),
       supabase.from('user_roles').select('role').eq('user_id', userId),
+      fetchPerms().catch(() => null),
     ])
-    loadPerms()
+    if (permsNuevos) setPerms(permsNuevos)
     if (!error) {
       if (data.active === false || data.extrabajador === true) {
         setDeactivatedMsg('Tu cuenta ha sido desactivada. Contacta con tu administrador.')
+        borrarCache(); cargadoPara.current = null
         await supabase.auth.signOut()
         setProfile(null)
         setRoles([])
@@ -34,22 +50,43 @@ export function AuthProvider({ children }) {
       }
       setProfile(data)
       const rs = (roleRows || []).map((r) => r.role)
-      setRoles(rs.length ? rs : [data.role]) // por si acaso user_roles aún no tiene fila
+      const rolesFinal = rs.length ? rs : [data.role] // por si acaso user_roles aún no tiene fila
+      setRoles(rolesFinal)
+      cargadoPara.current = userId
+      guardarCache({ uid: userId, profile: data, roles: rolesFinal, perms: permsNuevos || {} })
+      // Primera vez que entra (ya con contraseña): deja de verse como «pendiente» en Equipo
+      if ('primer_acceso' in data && !data.primer_acceso && data.password_set !== false) supabase.rpc('marcar_primer_acceso').then(() => {}, () => {})
     }
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session)
-      if (session?.user) loadProfile(session.user.id)
+      if (session?.user) {
+        const c = leerCache(session.user.id)
+        if (c) {
+          // Abre ya con lo guardado de la última vez y lo refresca por detrás
+          setProfile(c.profile); setRoles(c.roles); setPerms(c.perms || {}); cargadoPara.current = session.user.id
+          setLoading(false)
+          loadProfile(session.user.id)
+          return
+        }
+        await loadProfile(session.user.id)
+      }
       setLoading(false)
     })
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((evento, session) => {
+      if (evento === 'INITIAL_SESSION') return // ya lo gestiona getSession
       setSession(session)
       if (session?.user) {
-        loadProfile(session.user.id)
+        // Renovar el token o volver a la pestaña no recarga nada: solo un inicio de sesión nuevo
+        if (cargadoPara.current === session.user.id) return
+        setLoading(true)
+        loadProfile(session.user.id).finally(() => setLoading(false))
       } else {
+        cargadoPara.current = null
+        borrarCache()
         setProfile(null)
         setRoles([])
         setPerms({})

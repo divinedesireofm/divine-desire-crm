@@ -128,7 +128,7 @@ export default function Layout() {
   const mitad = (ev) => { const r = ev.currentTarget.getBoundingClientRect(); return ev.clientY > r.top + r.height / 2 ? 1 : 0 }
 
   const itemActual = buscarItem(location.pathname)
-  const sinAcceso = itemActual && (!puedeVer(itemActual.to, itemActual.roles) || (itemActual.soloRoles && !itemActual.soloRoles.some((r) => roles.includes(r)) && !esAdmin))
+  const sinAcceso = roles.length > 0 && itemActual && (!puedeVer(itemActual.to, itemActual.roles) || (itemActual.soloRoles && !itemActual.soloRoles.some((r) => roles.includes(r)) && !esAdmin))
 
   const seccionesFijas = new Set(roles.map((r) => SECCION_FIJA_POR_ROL[r]).filter(Boolean))
   const etiquetaRoles = roles.map((r) => ROLE_LABELS[r] || r).join(' · ')
