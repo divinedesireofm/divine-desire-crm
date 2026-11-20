@@ -8,7 +8,7 @@ export function computeAlertas(filas, ahora = Date.now()) {
   const add = (f, tipo, severidad, titulo, detalle, fecha) => out.push({ id: f.id + ':' + tipo, account_id: f.id, username: f.username, modelo: f.modelo || null, tipo, severidad, titulo, detalle, fecha: fecha || null })
 
   for (const f of filas) {
-    const h = f.historial || []
+    const h = [...(f.historial || [])].sort((x, y) => new Date(y.captured_at) - new Date(x.captured_at)) // de más nueva a más vieja
     const ult = h[0]
 
     if (f.lectura_error === 'no_encontrada') add(f, 'caida', 'alta', 'Cuenta no encontrada', 'ScrapeCreators ya no encuentra este perfil: puede estar suspendido, eliminado o haber cambiado de nombre.', f.lectura_error_at)
@@ -22,13 +22,18 @@ export function computeAlertas(filas, ahora = Date.now()) {
       if (a.full_name != null && b.full_name != null && (a.full_name || '') !== (b.full_name || '')) add(f, 'nombre', 'media', 'Cambió el nombre del perfil', `Antes: ${b.full_name || '(vacío)'} → Ahora: ${a.full_name || '(vacío)'}`, a.captured_at)
     }
 
-    // Seguidores que bajan de golpe: contra la lectura de hace ≥20 h dentro de los últimos 8 días
+    // Seguidores que bajan de golpe: se compara con la lectura anterior (cualquiera, aunque sea de hace minutos)
+    // y con la última de hace al menos 20 h, y se avisa con la peor de las dos caídas. Siempre dentro de los últimos 8 días.
     if (ult && ult.followers != null) {
-      const ref = h.slice(1).find((s) => s.followers != null && new Date(ult.captured_at) - new Date(s.captured_at) >= 20 * 3600000 && new Date(ult.captured_at) - new Date(s.captured_at) <= 8 * DIA)
-      if (ref && ref.followers > 0) {
+      const t0 = new Date(ult.captured_at).getTime()
+      const cands = [h[1], h.slice(1).find((s) => new Date(ult.captured_at) - new Date(s.captured_at) >= 20 * 3600000)]
+        .filter((s) => s && s.followers != null && s.followers > 0 && t0 - new Date(s.captured_at).getTime() <= 8 * DIA)
+      let peor = null
+      for (const ref of cands) {
         const dif = ult.followers - ref.followers, pct = (dif / ref.followers) * 100
-        if (dif <= -10 && pct <= -3) add(f, 'seguidores', pct <= -8 ? 'alta' : 'media', 'Seguidores a la baja', `${ref.followers.toLocaleString('es-ES')} → ${ult.followers.toLocaleString('es-ES')} (${pct.toFixed(1).replace('.', ',')}%)`, ult.captured_at)
+        if (dif <= -10 && pct <= -3 && (!peor || pct < peor.pct)) peor = { ref, pct }
       }
+      if (peor) add(f, 'seguidores', peor.pct <= -8 ? 'alta' : 'media', 'Seguidores a la baja', `${peor.ref.followers.toLocaleString('es-ES')} → ${ult.followers.toLocaleString('es-ES')} (${peor.pct.toFixed(1).replace('.', ',')}%)`, ult.captured_at)
     }
 
     // Vistas de reels: caída o pico frente a la lectura anterior con reels

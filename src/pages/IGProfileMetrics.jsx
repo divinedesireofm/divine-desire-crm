@@ -126,7 +126,7 @@ export default function IGProfileMetrics() {
 
   const porCuenta = useMemo(() => {
     const m = new Map()
-    stats.forEach((s) => { if (!m.has(s.account_id)) m.set(s.account_id, []); m.get(s.account_id).push(s) }) // ya vienen de más nuevo a más viejo
+    ;[...stats].sort((x, y) => new Date(y.captured_at) - new Date(x.captured_at)).forEach((s) => { if (!m.has(s.account_id)) m.set(s.account_id, []); m.get(s.account_id).push(s) }) // de más nuevo a más viejo
     return m
   }, [stats])
 
