@@ -14,7 +14,7 @@ import { useOrdenPestanas } from '../lib/ordenPestanas'
 import ModalMotivo, { hoyLocal } from '../components/ModalMotivo'
 import { SECCIONES, ORDEN_SECCIONES, ESTADOS_CUENTA, ESTADOS_GENERAL, estadoDeCuenta, normalizaEstado } from '../lib/cuentasIGSecciones'
 import QrCelda from '../components/QrCelda'
-import { PERMISO_IG_2FA, PERMISO_IG_HISTORIAL, PERMISO_IG_CONTRASENAS, permisoSeccionIG } from '../lib/navigation'
+import { PERMISO_IG_2FA, PERMISO_IG_HISTORIAL, PERMISO_IG_CONTRASENAS, permisoSeccionIG, PERMISO_IG_EDITAR, PERMISO_IG_BAJA, PERMISO_IG_BORRAR, PERMISO_IG_ORDENAR, PERMISO_IG_EXPORTAR } from '../lib/navigation'
 import { urlInstagram, usuarioIG } from '../lib/instagramLink'
 import InsigniaVerificada from '../components/InsigniaVerificada'
 import { useVerificadasIG, esVerificadaIG } from '../lib/verificadasIG'
@@ -68,8 +68,13 @@ export default function InstagramAccounts() {
   const { hasAnyRole, puedeVer, puedeTab } = useAuth()
   const verificadas = useVerificadasIG()
   const ver2fa = puedeVer(PERMISO_IG_2FA, ['admin', 'ig_manager', 'ig_assistant'])
-  const canEdit = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
   const canDelete = hasAnyRole(['admin', 'ig_manager'])
+  // Acciones del apartado General: se ajustan desde Equipo → Permisos → Cuentas de Instagram
+  const canEdit = puedeVer(PERMISO_IG_EDITAR, ['admin', 'ig_manager', 'ig_assistant'])
+  const canBaja = puedeVer(PERMISO_IG_BAJA, ['admin', 'ig_manager'])
+  const canBorrar = puedeVer(PERMISO_IG_BORRAR, ['admin', 'ig_manager'])
+  const canOrdenar = puedeVer(PERMISO_IG_ORDENAR, ['admin', 'ig_manager'])
+  const verExportar = puedeVer(PERMISO_IG_EXPORTAR, ['admin', 'ig_manager', 'ig_assistant'])
   const canEditSecciones = canDelete
   const [params, setParams] = useSearchParams()
   // Eliminadas, Stock mails, Cuentas propias y Stock Instagram llevan credenciales: solo admin y manager de Instagram
@@ -77,10 +82,12 @@ export default function InstagramAccounts() {
   // Qué apartados ve cada rol: se ajusta desde Equipo → Permisos (por defecto, admin y Manager de Instagram)
   const seccionesVisibles = ORDEN_SECCIONES.filter((id) => puedeVer(permisoSeccionIG(id), ['admin', 'ig_manager']))
   const tabParam = params.get('tab')
+  const verGeneral = puedeTab('/instagram', 'general')
   const verMetricas = puedeTab('/instagram', 'metricas')   // Equipo → Permisos → Cuentas de Instagram → Métricas de perfil
   const verCero = puedeTab('/instagram', 'cero')
-  const ordenTabs = useOrdenPestanas('instagram', [['cuentas', 'General'], ...seccionesVisibles.map((id) => [id, SECCIONES[id].pestana]), ...(verMetricas ? [['metricas', 'Métricas de perfil']] : []), ...(verCero ? [['cero', 'Cuentas de cero']] : [])])
-  const tab = tabParam === 'cero' && verCero ? 'cero' : tabParam === 'metricas' && verMetricas ? 'metricas' : (seccionesVisibles.includes(tabParam)) ? tabParam : 'cuentas'
+  const ordenTabs = useOrdenPestanas('instagram', [...(verGeneral ? [['cuentas', 'General']] : []), ...seccionesVisibles.map((id) => [id, SECCIONES[id].pestana]), ...(verMetricas ? [['metricas', 'Métricas de perfil']] : []), ...(verCero ? [['cero', 'Cuentas de cero']] : [])])
+  const disponibles = [...(verGeneral ? ['cuentas'] : []), ...seccionesVisibles, ...(verMetricas ? ['metricas'] : []), ...(verCero ? ['cero'] : [])]
+  const tab = disponibles.includes(tabParam) ? tabParam : (disponibles[0] || 'cuentas')   // si no se puede ver General, se abre la primera pestaña permitida
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
   const [assistants, setAssistants] = useState([])
@@ -160,7 +167,7 @@ export default function InstagramAccounts() {
   }, [accounts, seguidores, ordenK, ordenDir, fModelo, fEstado, fResp, busca]) // eslint-disable-line
   const hayFiltros = fModelo !== 'todos' || fEstado !== 'todos' || fResp !== 'todos' || busca.trim() !== ''
   // Arrastrar filas: solo con el orden manual y sin filtros (así lo que ves es la lista completa)
-  const puedeArrastrar = canDelete && ordenK === 'manual' && !busca.trim() && fModelo === 'todos' && fEstado === 'todos' && fResp === 'todos' && !editingId
+  const puedeArrastrar = canOrdenar && ordenK === 'manual' && !busca.trim() && fModelo === 'todos' && fEstado === 'todos' && fResp === 'todos' && !editingId
   async function soltar(haciaId) {
     const desde = arrastrando
     setArrastrando(null); setSobre(null)
@@ -488,7 +495,7 @@ export default function InstagramAccounts() {
         </button>
       ))}
       <div className="ml-auto flex flex-wrap items-start gap-2">
-        <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={seccionesVisibles} origenDe={origenDe} personas={creadores} />
+        {verExportar && <ExportarCuentasIG accounts={accounts} seguidores={seguidores} models={models} verPass={puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])} ver2fa={ver2fa} incluirSecciones={seccionesVisibles} origenDe={origenDe} personas={creadores} />}
         {puedeVer(PERMISO_IG_HISTORIAL, ['admin', 'ig_manager']) && <HistorialIG onRestaurado={() => { setVersionElim((v) => v + 1); load() }} />}
       </div>
     </div>
@@ -721,12 +728,12 @@ export default function InstagramAccounts() {
                               {editingId === a.id && !cerrando ? 'Cerrar' : 'Editar'}
                             </button>
                           )}
-                          {canDelete && verSecciones && (
+                          {canBaja && verSecciones && (
                             <button onClick={() => { setModalErr(null); setBajaDe(a) }} className="text-xs hover:underline" style={{ color: 'var(--gold)' }} title="Pasar a Eliminadas (eliminada, suspendida o perdida) indicando el motivo">
                               Dar de baja
                             </button>
                           )}
-                          {canDelete && (
+                          {canBorrar && (
                             <button onClick={() => borrarCuenta(a)} className="text-xs hover:underline" style={{ color: 'var(--danger)' }} title="Borra la cuenta y todo su historial para siempre">
                               Borrar
                             </button>

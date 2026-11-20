@@ -105,6 +105,12 @@ export const PERMISO_IG_2FA = 'permiso:ig_2fa'
 export const PERMISO_IG_HISTORIAL = 'permiso:ig_historial'
 export const PERMISO_QUITAR_AVISOS = 'permiso:quitar_avisos_turno'
 export const permisoSeccionIG = (id) => `permiso:ig_seccion_${id}`
+// Acciones del apartado General de Cuentas de Instagram
+export const PERMISO_IG_EDITAR = 'permiso:ig_general_editar'
+export const PERMISO_IG_BAJA = 'permiso:ig_general_baja'
+export const PERMISO_IG_BORRAR = 'permiso:ig_general_borrar'
+export const PERMISO_IG_ORDENAR = 'permiso:ig_general_ordenar'
+export const PERMISO_IG_EXPORTAR = 'permiso:ig_exportar'
 // Quién ve cada dato de la tabla de Modelos (se decide en Equipo → Permisos)
 export const permisoModelos = (k) => `permiso:modelos_${k}`
 const ROLES_EQUIPO = ['admin', 'manager', 'chatter', 'ig_manager', 'ig_assistant', 'reddit_manager', 'reddit_assistant', 'planner', 'masivos']
@@ -150,6 +156,7 @@ const SOLO_MGR = ['admin', 'manager']
 // Pestañas por apartado. `roles` solo si por defecto no las ven todos los que entran al apartado.
 export const PESTANAS = {
   '/instagram': [
+    { id: 'general', label: 'General' },
     { id: 'metricas', label: 'Métricas de perfil' },
     { id: 'cero', label: 'Cuentas de cero' },
   ],
@@ -173,7 +180,14 @@ export const HIJOS = (() => {
   // Cuentas de Instagram: las pestañas con credenciales ya tenían su permiso propio (se conserva la clave)
   const ig = [['stock_mails', 'Stock mails'], ['propias', 'Cuentas propias'], ['modelos', 'Cuentas de modelos'], ['stock_ig', 'Stock Instagram'], ['eliminadas', 'Eliminadas']]
     .map(([id, label]) => ({ to: permisoSeccionIG(id), label, tipo: 'pestana', roles: ['admin', 'ig_manager'] }))
-  h['/instagram'] = [...ig, ...(h['/instagram'] || []),
+  const tabsIG = h['/instagram'] || []
+  const tIG = (id) => tabsIG.find((t) => t.to === permisoTab('/instagram', id))
+  h['/instagram'] = [tIG('general'), ...ig, tIG('metricas'), tIG('cero'),
+    { to: PERMISO_IG_EDITAR, label: 'General: editar cuentas y cambiar estado o responsable desde la tabla', tipo: 'accion', roles: ['admin', 'ig_manager', 'ig_assistant'] },
+    { to: PERMISO_IG_BAJA, label: 'General: dar de baja (pasar a Eliminadas)', tipo: 'accion', roles: ['admin', 'ig_manager'] },
+    { to: PERMISO_IG_BORRAR, label: 'General: borrar una cuenta para siempre', tipo: 'accion', roles: ['admin', 'ig_manager'] },
+    { to: PERMISO_IG_ORDENAR, label: 'General: reordenar las cuentas arrastrando', tipo: 'accion', roles: ['admin', 'ig_manager'] },
+    { to: PERMISO_IG_EXPORTAR, label: 'Exportar las cuentas (todas las pestañas)', tipo: 'accion', roles: ['admin', 'ig_manager', 'ig_assistant'] },
     { to: PERMISO_IG_CONTRASENAS, label: 'Ver contraseñas', tipo: 'dato', roles: ['admin', 'ig_manager'] },
     { to: PERMISO_IG_2FA, label: 'Ver 2FA (código y QR)', tipo: 'dato', roles: ['admin', 'ig_manager', 'ig_assistant'] },
     { to: PERMISO_IG_HISTORIAL, label: 'Ver el historial y restaurar cambios', tipo: 'accion', roles: ['admin', 'ig_manager', 'ig_assistant'] }]
