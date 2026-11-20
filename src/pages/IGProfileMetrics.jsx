@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { actualizarMetricasIG } from '../lib/igScrape'
+import { actualizarMetricasIG, consultarCreditosIG } from '../lib/igScrape'
 import { Panel, Button, Select } from '../components/ui'
 import ScrollSuperior from '../components/ScrollSuperior'
 import { urlInstagram } from '../lib/instagramLink'
@@ -50,6 +50,25 @@ export default function IGProfileMetrics() {
   const [resumen, setResumen] = useState(null) // resultado de la última actualización
   const [abierta, setAbierta] = useState(null)
   const [grafica, setGrafica] = useState('followers')
+  const [creditos, setCreditos] = useState(null) // { n, hora }: saldo actual de ScrapeCreators
+  const [errCred, setErrCred] = useState('')
+  const [cargandoCred, setCargandoCred] = useState(false)
+  const ultimaConsulta = useRef(0)
+  async function refrescarCreditos() {
+    setCargandoCred(true); setErrCred('')
+    try {
+      const r = await consultarCreditosIG()
+      setCreditos({ n: r.creditos, hora: new Date() }); ultimaConsulta.current = Date.now()
+    } catch (e) { setErrCred(e.message) }
+    setCargandoCred(false)
+  }
+  // Al abrir la pestaña y al volver a ella (como mucho una vez por minuto) se consulta el saldo real
+  useEffect(() => {
+    refrescarCreditos()
+    const alVolver = () => { if (document.visibilityState === 'visible' && Date.now() - ultimaConsulta.current > 60000) refrescarCreditos() }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => document.removeEventListener('visibilitychange', alVolver)
+  }, [])
   const [analizando, setAnalizando] = useState(null) // id de la cuenta que se está analizando a fondo
 
   async function cargar() {
@@ -95,6 +114,7 @@ export default function IGProfileMetrics() {
     try {
       const r = await actualizarMetricasIG(ids, { reels })
       setResumen(r)
+      if (r.creditos_restantes != null) { setCreditos({ n: Number(r.creditos_restantes), hora: new Date() }); ultimaConsulta.current = Date.now(); setErrCred('') }
       await cargar()
     } catch (e) { setErr(e.message) }
     setBusy(null)
@@ -112,12 +132,21 @@ export default function IGProfileMetrics() {
   return (
     <div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        {[['Seguidores totales', n0(totalSeg)], ['Cuentas con datos', `${conDatos} / ${cuentas.length}`], ['Última lectura', ultimaAct ? fFechaHora(ultimaAct) : '—'], ['Créditos ScrapeCreators', resumen?.creditos_restantes != null ? n0(resumen.creditos_restantes) : 'tras actualizar']].map(([t, v]) => (
+        {[['Seguidores totales', n0(totalSeg)], ['Cuentas con datos', `${conDatos} / ${cuentas.length}`], ['Última lectura', ultimaAct ? fFechaHora(ultimaAct) : '—']].map(([t, v]) => (
           <Panel key={t} className="p-4">
             <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>{t}</p>
             <p className="font-display text-lg font-semibold tabular-nums break-words">{v}</p>
           </Panel>
         ))}
+        <Panel className="p-4" data-creditos>
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Créditos ScrapeCreators</p>
+            <button type="button" className="text-xs underline" style={{ color: 'var(--accent)' }} onClick={refrescarCreditos} disabled={cargandoCred} data-refrescar-creditos title="Consultar el saldo ahora">{cargandoCred ? '…' : '↻ Actualizar'}</button>
+          </div>
+          <p className="font-display text-lg font-semibold tabular-nums" data-creditos-valor>{creditos ? n0(creditos.n) : cargandoCred ? 'Consultando…' : '—'}</p>
+          {creditos && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Saldo a las {creditos.hora.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>}
+          {errCred && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }} data-creditos-error>{errCred}</p>}
+        </Panel>
       </div>
 
       <Panel className="p-4 mb-5">
