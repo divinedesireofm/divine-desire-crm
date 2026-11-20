@@ -16,6 +16,17 @@ import { useVerificadasIG, esVerificadaIG, refrescarVerificadas } from '../lib/v
 // Las cuentas suspendidas o en reposo no se miden: no aparecen en este cuadro
 const SIN_METRICAS = ['SUSPENDIDA', 'EN REPOSO', 'SUSPENDIDA INDEFINIDAMENTE']
 
+// Métricas que se pueden elegir una a una para la lectura automática. Las de «perfil» salen en la misma llamada (1 crédito); los reels son otra (+1).
+const METRICAS_AUTO = [
+  { k: 'seguidores', c: 'Seguidores', t: 'Seguidores, siguiendo y nº de publicaciones', g: 'perfil' },
+  { k: 'engagement', c: 'Engagement', t: 'Likes, comentarios y engagement medios', g: 'perfil' },
+  { k: 'bio_enlace', c: 'Bio y enlace', t: 'Bio, enlace de la bio y nombre (para las alertas de cambios)', g: 'perfil' },
+  { k: 'posts', c: 'Publicaciones', t: 'Últimas publicaciones (fotos y carruseles) y fecha de la última', g: 'perfil' },
+  { k: 'relacionadas', c: 'Relacionadas', t: 'Cuentas relacionadas', g: 'perfil' },
+  { k: 'reels_vistas', c: 'Vistas de reels', t: 'Vistas de reels (ranking, curva de cada reel, vistas medias)', g: 'reels' },
+]
+const TODAS_METRICAS = METRICAS_AUTO.map((m) => m.k)
+
 const MODOS_REELS = {
   novedad: { corto: 'perfil + reels solo si hay publicaciones nuevas (o cada 7 días)', largo: 'Perfil + reels solo si hay publicaciones nuevas (o cada 7 días)' },
   siempre: { corto: 'perfil + reels en cada lectura', largo: 'Perfil + reels en cada lectura (el más completo)' },
@@ -62,7 +73,7 @@ export default function IGProfileMetrics() {
   const verificadas = useVerificadasIG()
   const puedeAjustar = hasAnyRole(['admin', 'manager', 'ig_manager'])
   const [ajustes, setAjustes] = useState({ tope: null, aviso: null, falta: false, faltaAuto: false, auto: { activo: false, cadaDias: 7, hora: 8, reels: 'novedad', ultima: null, resultado: null } })
-  const [fAuto, setFAuto] = useState({ activo: false, cadaDias: 7, hora: 8, reels: 'novedad' })
+  const [fAuto, setFAuto] = useState({ activo: false, cadaDias: 7, hora: 8, reels: 'novedad', metricas: TODAS_METRICAS })
   const [gastoMes, setGastoMes] = useState(0)
   const [editTope, setEditTope] = useState(false)
   const [fTope, setFTope] = useState('')
@@ -74,7 +85,8 @@ export default function IGProfileMetrics() {
     const num = (v) => (String(v).trim() === '' ? null : Math.max(0, Math.round(Number(v))))
     const t = num(fTope), a = num(fAviso)
     if ((t !== null && Number.isNaN(t)) || (a !== null && Number.isNaN(a))) { setMsgTope('Escribe solo números.'); return }
-    try { await guardarAjustesCreditosIG({ tope: t, aviso: a, auto: ajustes.faltaAuto ? undefined : { ...fAuto, cadaDias: Number(fAuto.cadaDias), hora: Number(fAuto.hora) } }); setMsgTope('✓ Guardado'); setEditTope(false); await cargarTope() } catch (e) { setMsgTope(e.message) }
+    if (!ajustes.faltaAuto && !ajustes.faltaMetricas && fAuto.activo && fAuto.metricas.length === 0) { setMsgTope('Marca al menos una métrica para la lectura automática (o desactívala).'); return }
+    try { await guardarAjustesCreditosIG({ tope: t, aviso: a, auto: ajustes.faltaAuto ? undefined : { ...fAuto, cadaDias: Number(fAuto.cadaDias), hora: Number(fAuto.hora), metricas: ajustes.faltaMetricas ? undefined : fAuto.metricas } }); setMsgTope('✓ Guardado'); setEditTope(false); await cargarTope() } catch (e) { setMsgTope(e.message) }
   }
   const [creditos, setCreditos] = useState(null) // { n, hora }: saldo actual de ScrapeCreators
   const [errCred, setErrCred] = useState('')
@@ -194,7 +206,7 @@ export default function IGProfileMetrics() {
       <Panel className="p-4 mb-5" data-tope-creditos>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm font-medium">Créditos y lectura automática</p>
-          {puedeAjustar && !editTope && <button type="button" className="text-xs underline" style={{ color: 'var(--accent)' }} data-editar-tope onClick={() => { setFTope(ajustes.tope ?? ''); setFAviso(ajustes.aviso ?? ''); setFAuto({ activo: ajustes.auto.activo, cadaDias: ajustes.auto.cadaDias, hora: ajustes.auto.hora, reels: ajustes.auto.reels }); setMsgTope(''); setEditTope(true) }}>⚙ Configurar</button>}
+          {puedeAjustar && !editTope && <button type="button" className="text-xs underline" style={{ color: 'var(--accent)' }} data-editar-tope onClick={() => { setFTope(ajustes.tope ?? ''); setFAviso(ajustes.aviso ?? ''); setFAuto({ activo: ajustes.auto.activo, cadaDias: ajustes.auto.cadaDias, hora: ajustes.auto.hora, reels: ajustes.auto.reels, metricas: ajustes.auto.metricas ?? TODAS_METRICAS }); setMsgTope(''); setEditTope(true) }}>⚙ Configurar</button>}
         </div>
         {ajustes.falta ? <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Falta ejecutar la migración 145 en Supabase para activar el tope.</p> : (
           <>
@@ -210,7 +222,7 @@ export default function IGProfileMetrics() {
               {ajustes.faltaAuto ? (
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Lectura automática: para activarla ejecuta la migración 146 y despliega la función «ig-auto» (ver instrucciones del lote 224).</p>
               ) : ajustes.auto.activo ? (
-                <p className="text-sm" data-auto-estado>🔄 <strong>Lectura automática activada</strong>: cada {ajustes.auto.cadaDias} {ajustes.auto.cadaDias === 1 ? 'día' : 'días'}, a partir de las {String(ajustes.auto.hora).padStart(2, '0')}:00 · {MODOS_REELS[ajustes.auto.reels]?.corto}</p>
+                <p className="text-sm" data-auto-estado>🔄 <strong>Lectura automática activada</strong>: cada {ajustes.auto.cadaDias} {ajustes.auto.cadaDias === 1 ? 'día' : 'días'}, a partir de las {String(ajustes.auto.hora).padStart(2, '0')}:00 · {ajustes.auto.metricas ? (ajustes.auto.metricas.length === 0 ? 'ninguna métrica marcada' : `${ajustes.auto.metricas.map((k) => METRICAS_AUTO.find((m) => m.k === k)?.c).filter(Boolean).join(' · ')}${ajustes.auto.metricas.includes('reels_vistas') ? ` (reels: ${ajustes.auto.reels === 'siempre' ? 'siempre' : 'si hay novedades o cada 7 días'})` : ''}`) : MODOS_REELS[ajustes.auto.reels]?.corto}</p>
               ) : <p className="text-sm" data-auto-estado style={{ color: 'var(--text-muted)' }}>🔄 Lectura automática desactivada: todo se actualiza a mano con «Actualizar».</p>}
               {!ajustes.faltaAuto && ajustes.auto.ultima && <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }} data-auto-ultima>Última ejecución: {fFechaHora(ajustes.auto.ultima)} · {ajustes.auto.resultado}</p>}
             </div>
@@ -234,19 +246,48 @@ export default function IGProfileMetrics() {
                       {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
                     </select>
                   </label>
-                  <label className="text-xs">Qué datos actualizar
-                    <select value={fAuto.reels} onChange={(e) => setFAuto({ ...fAuto, reels: e.target.value })} data-auto-reels className="block mt-1 rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)', maxWidth: 320 }}>
-                      {Object.entries(MODOS_REELS).map(([k, m]) => <option key={k} value={k}>{m.largo}</option>)}
-                    </select>
-                  </label>
                 </div>
+                {ajustes.faltaMetricas ? (
+                  <div className="mt-3">
+                    <label className="text-xs">Qué datos actualizar
+                      <select value={fAuto.reels} onChange={(e) => setFAuto({ ...fAuto, reels: e.target.value })} data-auto-reels className="block mt-1 rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)', maxWidth: 320 }}>
+                        {Object.entries(MODOS_REELS).map(([k, m]) => <option key={k} value={k}>{m.largo}</option>)}
+                      </select>
+                    </label>
+                    <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>Para elegir las métricas una a una ejecuta la migración 148 en Supabase.</p>
+                  </div>
+                ) : (
+                  <div className="mt-3" data-metricas-auto>
+                    <p className="text-xs mb-2">Qué métricas quieres que se actualicen solas</p>
+                    {[['perfil', 'Perfil · 1 crédito por cuenta (se leen todas juntas)'], ['reels', 'Reels · +1 crédito por cuenta']].map(([g, tit]) => (
+                      <div key={g} className="mb-2">
+                        <p className="text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>{tit}</p>
+                        {METRICAS_AUTO.filter((m) => m.g === g).map((m) => (
+                          <label key={m.k} className="text-sm flex items-center gap-2 py-0.5">
+                            <input type="checkbox" data-metrica={m.k} checked={fAuto.metricas.includes(m.k)} onChange={(e) => setFAuto({ ...fAuto, metricas: e.target.checked ? [...fAuto.metricas, m.k] : fAuto.metricas.filter((x) => x !== m.k) })} /> {m.t}
+                          </label>
+                        ))}
+                      </div>
+                    ))}
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>ScrapeCreators cobra por llamada, no por dato: al leer el perfil se guardan siempre todas las métricas de perfil, y marcar solo una cuesta lo mismo que marcarlas todas. Lo que ahorra créditos es desmarcar el perfil o los reels.</p>
+                    {fAuto.metricas.includes('reels_vistas') && (
+                      <label className="text-xs block mt-3">Cada vez que toque, ¿cuándo leer los reels?
+                        <select value={fAuto.reels} onChange={(e) => setFAuto({ ...fAuto, reels: e.target.value })} data-auto-reels className="block mt-1 rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)', maxWidth: 360 }}>
+                          {['novedad', 'siempre'].map((k) => <option key={k} value={k}>{MODOS_REELS[k].largo}</option>)}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                )}
                 {(() => {
+                  const reelsOn = ajustes.faltaMetricas ? fAuto.reels !== 'no' : fAuto.metricas.includes('reels_vistas')
+                  const modoEf = reelsOn ? (fAuto.reels === 'no' ? 'novedad' : fAuto.reels) : 'no'
                   const lecturas = activas.length * (30 / Math.max(1, Number(fAuto.cadaDias)))
-                  const min = Math.round(lecturas * 1), max = Math.round(lecturas * (fAuto.reels === 'no' ? 1 : 2))
+                  const min = Math.round(lecturas * 1), max = Math.round(lecturas * (modoEf === 'no' ? 1 : 2))
                   const tp = String(fTope).trim() === '' ? null : Number(fTope)
                   return (
                     <p className="text-xs mt-3" data-estimacion-auto style={{ color: 'var(--text-muted)' }}>
-                      Con tus <strong>{activas.length}</strong> cuentas activas, gastaría {min === max || fAuto.reels === 'siempre' ? <>unos <strong>{n0(max)}</strong></> : <>entre <strong>{n0(min)}</strong> y <strong>{n0(max)}</strong></>} créditos al mes{fAuto.reels === 'novedad' ? ' (los reels solo se leen si hay publicaciones nuevas o pasan 7 días, así que suele quedarse en la parte baja)' : ''}.
+                      Con tus <strong>{activas.length}</strong> cuentas activas, gastaría {min === max || modoEf === 'siempre' ? <>unos <strong>{n0(max)}</strong></> : <>entre <strong>{n0(min)}</strong> y <strong>{n0(max)}</strong></>} créditos al mes{modoEf === 'novedad' ? ' (los reels solo se leen si hay publicaciones nuevas o pasan 7 días, así que suele quedarse en la parte baja)' : ''}.
                       {tp !== null && !Number.isNaN(tp) && max > tp && <span style={{ color: 'var(--danger)' }}> ⚠️ Supera tu tope mensual ({n0(tp)}): se pararía antes de leer todas las cuentas.</span>}
                     </p>
                   )

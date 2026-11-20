@@ -3,14 +3,14 @@ import { readFunctionError } from './functions'
 
 // Ajustes de créditos y de la lectura automática. Sin la migración 145 devuelve «falta»; sin la 146 solo hay tope y aviso.
 export async function ajustesCreditosIG() {
-  const base = { tope: null, aviso: null, auto: { activo: false, cadaDias: 7, hora: 8, reels: 'novedad', ultima: null, resultado: null }, falta: false, faltaAuto: false }
+  const base = { tope: null, aviso: null, auto: { activo: false, cadaDias: 7, hora: 8, reels: 'novedad', metricas: null, ultima: null, resultado: null }, falta: false, faltaAuto: false, faltaMetricas: true }
   try {
     const { data, error } = await supabase.from('ig_creditos_ajustes').select('*').eq('id', 1).maybeSingle()
     if (error) return { ...base, falta: true, faltaAuto: true }
     if (!data) return { ...base, falta: true, faltaAuto: true }
     return {
-      ...base, tope: data.tope_mensual ?? null, aviso: data.aviso_saldo ?? null, faltaAuto: !('auto_activo' in data),
-      auto: { activo: !!data.auto_activo, cadaDias: data.auto_cada_dias ?? 7, hora: data.auto_hora ?? 8, reels: data.auto_reels || 'novedad', ultima: data.auto_ultima_ejecucion || null, resultado: data.auto_ultimo_resultado || null },
+      ...base, tope: data.tope_mensual ?? null, aviso: data.aviso_saldo ?? null, faltaAuto: !('auto_activo' in data), faltaMetricas: !('auto_metricas' in data),
+      auto: { activo: !!data.auto_activo, cadaDias: data.auto_cada_dias ?? 7, hora: data.auto_hora ?? 8, reels: data.auto_reels || 'novedad', metricas: Array.isArray(data.auto_metricas) ? data.auto_metricas : null, ultima: data.auto_ultima_ejecucion || null, resultado: data.auto_ultimo_resultado || null },
     }
   } catch (_e) { return { ...base, falta: true, faltaAuto: true } }
 }
@@ -19,8 +19,9 @@ export async function ajustesCreditosIG() {
 export async function guardarAjustesCreditosIG({ tope, aviso, auto }) {
   const cambios = { tope_mensual: tope, aviso_saldo: aviso, updated_at: new Date().toISOString() }
   if (auto) Object.assign(cambios, { auto_activo: !!auto.activo, auto_cada_dias: auto.cadaDias, auto_hora: auto.hora, auto_reels: auto.reels })
+  if (auto && Array.isArray(auto.metricas)) cambios.auto_metricas = auto.metricas
   const { error } = await supabase.from('ig_creditos_ajustes').update(cambios).eq('id', 1)
-  if (error) throw new Error(/ig_creditos_ajustes|relation|auto_/i.test(error.message) ? 'Falta ejecutar la migración 145 y la 146 en Supabase.' : error.message)
+  if (error) throw new Error(/auto_metricas/i.test(error.message) ? 'Falta ejecutar la migración 148 en Supabase.' : /ig_creditos_ajustes|relation|auto_/i.test(error.message) ? 'Falta ejecutar la migración 145 y la 146 en Supabase.' : error.message)
 }
 
 // Créditos gastados desde el CRM en el mes natural actual
