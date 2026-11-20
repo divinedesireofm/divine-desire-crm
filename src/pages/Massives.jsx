@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTabsPermitidas } from '../lib/tabsPermitidas'
 import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
@@ -15,12 +16,14 @@ function isoDate(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).pa
 function fechaHoyISO() { return isoDate(new Date()) }
 
 export default function Massives() {
-  const [tab, setTab] = useState('cal')
+  const [tabSel, setTab] = useState('cal')
+  const tabsMa = useTabsPermitidas('/masivos', [['cal'], ['fmt']], tabSel)   // Equipo → Permisos
+  const tab = tabsMa.actual
   return (
     <div>
       <PageHeader title="Calendario de masivos" subtitle="Todos los masivos (PPV y demás): qué se envía, a qué modelo, en qué turno y quién lo manda. Y los formatos disponibles." />
       <div className="flex gap-2 mb-5">
-        {[['cal', 'Calendario'], ['fmt', 'Formatos']].map(([id, label]) => (
+        {[['cal', 'Calendario'], ['fmt', 'Formatos']].filter(([id]) => tabsMa.puede(id)).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}

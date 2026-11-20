@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTabsPermitidas } from '../lib/tabsPermitidas'
 import { getProfilesByRoles } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader, DeltaBadge } from '../components/ui'
 import InformeIAModal from '../components/InformeIAModal'
@@ -90,7 +91,9 @@ export default function ChatterMetrics() {
   const [chatters, setChatters] = useState([])
   const [stats, setStats] = useState([])
   const [params] = useSearchParams()
-  const [vista, setVista] = useState(params.get('vista') === 'informes' ? 'informes' : 'chatter') // 'chatter' | 'equipo' | 'informes'
+  const [vistaSel, setVista] = useState(params.get('vista') === 'informes' ? 'informes' : 'chatter') // 'chatter' | 'equipo' | 'informes'
+  const tabsM = useTabsPermitidas('/metricas-chatters', [['chatter'], ['equipo'], ['informes']], vistaSel)   // Equipo → Permisos
+  const vista = tabsM.actual
   const [selectedChatter, setSelectedChatter] = useState('')
   const [semanaEquipo, setSemanaEquipo] = useState('')
   const [loading, setLoading] = useState(true)
@@ -546,7 +549,7 @@ export default function ChatterMetrics() {
 
       <div className="flex flex-wrap gap-3 mb-6 items-center">
         <div className="flex rounded-md overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-          {[['chatter', 'Por chatter'], ['equipo', 'Equipo por semana'], ...(canEdit ? [['informes', 'Informes de IA']] : [])].map(([k, t]) => (
+          {[['chatter', 'Por chatter'], ['equipo', 'Equipo por semana'], ...(canEdit ? [['informes', 'Informes de IA']] : [])].filter(([k]) => tabsM.puede(k)).map(([k, t]) => (
             <button key={k} onClick={() => setVista(k)} className="px-4 py-2 text-sm" style={{ background: vista === k ? 'var(--accent-soft)' : 'transparent', color: vista === k ? 'var(--accent)' : 'var(--text-muted)' }}>{t}</button>
           ))}
         </div>

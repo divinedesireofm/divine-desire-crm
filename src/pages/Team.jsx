@@ -63,9 +63,11 @@ function TurnoSelector({ value, onChange }) {
 }
 
 export default function Team() {
-  const { profile, roles, hasRole } = useAuth()
+  const { profile, roles, hasRole, puedeTab } = useAuth()
   const esAdmin = hasRole('admin')
-  const [vista, setVista] = useState('miembros')
+  const [vistaSel, setVista] = useState('miembros')
+  const verExtra = puedeTab('/equipo', 'extrabajadores')   // Equipo → Permisos
+  const vista = vistaSel === 'extrabajadores' && !verExtra ? 'miembros' : vistaSel
   const asignables = rolesAsignables(roles)
   const visibles = rolesVisibles(roles)
   const [rows, setRows] = useState([])
@@ -155,7 +157,7 @@ export default function Team() {
 
       {(esAdmin || asignables.length > 0) && (
         <div className="flex gap-2 mb-4">
-          {[['miembros', 'Miembros'], ['extrabajadores', `Extrabajadores (${exRows.length})`], ...(esAdmin ? [['permisos', 'Permisos por rol']] : [])].map(([id, label]) => (
+          {[['miembros', 'Miembros'], ...(verExtra ? [['extrabajadores', `Extrabajadores (${exRows.length})`]] : []), ...(esAdmin ? [['permisos', 'Permisos por rol']] : [])].map(([id, label]) => (
             <button
               key={id}
               onClick={() => setVista(id)}

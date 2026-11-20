@@ -65,7 +65,7 @@ function diasTranscurridos(fecha) {
 }
 
 export default function InstagramAccounts() {
-  const { hasAnyRole, puedeVer } = useAuth()
+  const { hasAnyRole, puedeVer, puedeTab } = useAuth()
   const verificadas = useVerificadasIG()
   const ver2fa = puedeVer(PERMISO_IG_2FA, ['admin', 'ig_manager', 'ig_assistant'])
   const canEdit = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
@@ -77,8 +77,10 @@ export default function InstagramAccounts() {
   // Qué apartados ve cada rol: se ajusta desde Equipo → Permisos (por defecto, admin y Manager de Instagram)
   const seccionesVisibles = ORDEN_SECCIONES.filter((id) => puedeVer(permisoSeccionIG(id), ['admin', 'ig_manager']))
   const tabParam = params.get('tab')
-  const ordenTabs = useOrdenPestanas('instagram', [['cuentas', 'General'], ...seccionesVisibles.map((id) => [id, SECCIONES[id].pestana]), ['metricas', 'Métricas de perfil'], ['cero', 'Cuentas de cero']])
-  const tab = tabParam === 'cero' ? 'cero' : tabParam === 'metricas' ? 'metricas' : (seccionesVisibles.includes(tabParam)) ? tabParam : 'cuentas'
+  const verMetricas = puedeTab('/instagram', 'metricas')   // Equipo → Permisos → Cuentas de Instagram → Métricas de perfil
+  const verCero = puedeTab('/instagram', 'cero')
+  const ordenTabs = useOrdenPestanas('instagram', [['cuentas', 'General'], ...seccionesVisibles.map((id) => [id, SECCIONES[id].pestana]), ...(verMetricas ? [['metricas', 'Métricas de perfil']] : []), ...(verCero ? [['cero', 'Cuentas de cero']] : [])])
+  const tab = tabParam === 'cero' && verCero ? 'cero' : tabParam === 'metricas' && verMetricas ? 'metricas' : (seccionesVisibles.includes(tabParam)) ? tabParam : 'cuentas'
   const [accounts, setAccounts] = useState([])
   const [models, setModels] = useState([])
   const [assistants, setAssistants] = useState([])

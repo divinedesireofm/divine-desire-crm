@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { permisoTab, rolesDefectoTab } from '../lib/navigation'
 
 const AuthContext = createContext(null)
 
@@ -129,6 +130,11 @@ export function AuthProvider({ children }) {
     })
   }
 
+  // ¿Puede ver esta pestaña de este apartado? (Equipo → Permisos). Sin cambios del admin valen los permisos de siempre.
+  function puedeTab(ruta, id) {
+    return puedeVer(permisoTab(ruta, id), rolesDefectoTab(ruta, id))
+  }
+
   const value = {
     session,
     profile,
@@ -137,6 +143,7 @@ export function AuthProvider({ children }) {
     hasRole,
     hasAnyRole,
     puedeVer,
+    puedeTab,
     perms,
     refreshPermissions: loadPerms,
     loading,

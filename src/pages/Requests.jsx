@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTabsPermitidas } from '../lib/tabsPermitidas'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import CopyButton from '../components/CopyButton'
 import { ModelAvatar } from '../components/ModelAvatar'
@@ -118,7 +119,9 @@ export default function Requests() {
   const [showForm, setShowForm] = useState(false)
   const [fModelo, setFModelo] = useState('todas')
   const [q, setQ] = useState('')
-  const [vista, setVista] = useState('tarjetas')
+  const [vistaSel, setVista] = useState('tarjetas')
+  const tabsS = useTabsPermitidas('/solicitudes', [['tarjetas'], ['modelo']], vistaSel)   // Equipo → Permisos
+  const vista = tabsS.actual
 
   const esInterno = T_OBJ(form.tipo).cat === 'interno'
 
@@ -305,7 +308,7 @@ export default function Requests() {
           </Select>
         </div>
         <div className="flex gap-1">
-          {[['tarjetas', 'Tarjetas'], ['modelo', 'Por modelo']].map(([id, n]) => (
+          {[['tarjetas', 'Tarjetas'], ['modelo', 'Por modelo']].filter(([id]) => tabsS.puede(id)).map(([id, n]) => (
             <button key={id} onClick={() => setVista(id)} className="px-3 py-1.5 rounded-full text-xs" style={chip(vista === id, 'var(--accent)')}>{n}</button>
           ))}
         </div>

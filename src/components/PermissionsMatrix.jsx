@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { SECTIONS, ROLES_EDITABLES, PERMISOS_EXTRA } from '../lib/navigation'
+import { SECTIONS, ROLES_EDITABLES, HIJOS } from '../lib/navigation'
 import { Panel, Button } from './ui'
 
 // Tabla de permisos: cada fila es un apartado del CRM y cada columna un rol.
@@ -11,6 +11,9 @@ export default function PermissionsMatrix() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [borrador, setBorrador] = useState({}) // { 'rol|ruta': { rol, item, valor } } cambios aún sin guardar
+  const [abiertos, setAbiertos] = useState({}) // apartados desplegados: { ruta: true }
+  const alternar = (ruta) => setAbiertos((a) => ({ ...a, [ruta]: !a[ruta] }))
+  const conHijos = Object.keys(HIJOS).filter((r) => HIJOS[r].length)
 
   const efectivo = (rol, item) => {
     const k = rol + '|' + item.to
@@ -77,7 +80,11 @@ export default function PermissionsMatrix() {
       </Panel>
 
       <Panel className="p-4 mb-4">
-        <p className="text-sm"><strong>Permisos adicionales</strong> (al final de la tabla): <em>Ver contraseñas en Cuentas de Instagram</em>. Quien no lo tenga verá un candado 🔒 con «No tienes permiso» en lugar de las contraseñas. Solo afecta a quien pueda entrar a esas pestañas (admin y Manager de Instagram); el admin siempre las ve.</p>
+        <p className="text-sm"><strong>Dentro de cada apartado</strong> hay un desplegable <span style={{ color: 'var(--accent)' }}>▸</span> con sus pestañas, datos y acciones (por ejemplo, en Cuentas de Instagram: Métricas de perfil, Stock mails, ver contraseñas, 2FA…). Despliégalo para dar o quitar cada cosa por separado. Si un rol no tiene el apartado, sus permisos de dentro no le sirven de nada (salen atenuados).</p>
+        <div className="flex gap-2 mt-3">
+          <Button variant="ghost" onClick={() => setAbiertos(Object.fromEntries(conHijos.map((r) => [r, true])))} data-expandir-todo>Desplegar todo</Button>
+          <Button variant="ghost" onClick={() => setAbiertos({})} data-contraer-todo>Plegar todo</Button>
+        </div>
       </Panel>
 
       <Panel>
@@ -92,8 +99,8 @@ export default function PermissionsMatrix() {
               </tr>
             </thead>
             <tbody>
-              {[...SECTIONS, ...PERMISOS_EXTRA].map((sec) => (
-                <SeccionFilas key={sec.id} sec={sec} efectivo={efectivo} personalizado={personalizado} cambiar={cambiar} />
+              {SECTIONS.map((sec) => (
+                <SeccionFilas key={sec.id} sec={sec} efectivo={efectivo} personalizado={personalizado} cambiar={cambiar} abiertos={abiertos} alternar={alternar} />
               ))}
             </tbody>
           </table>
@@ -116,7 +123,31 @@ export default function PermissionsMatrix() {
   )
 }
 
-function SeccionFilas({ sec, efectivo, personalizado, cambiar }) {
+const ETIQUETA_TIPO = { pestana: 'Pestaña', dato: 'Dato', accion: 'Acción' }
+
+function CasillaPermiso({ item, rol, on, fijo: fijoProp, cambiar, atenuado }) {
+  const noAplica = item.soloRoles && !item.soloRoles.includes(rol.id)   // p. ej. pestañas que solo funcionan para managers
+  const fijo = fijoProp || noAplica
+  on = noAplica ? false : on
+  return (
+    <td className="px-3 py-2 text-center" style={atenuado ? { opacity: 0.45 } : undefined}>
+      <label className="inline-flex items-center gap-1 cursor-pointer" title={noAplica ? 'Esta pestaña solo funciona para ' + item.soloRoles.join(' / ') : fijo ? 'El panel general lo ven todos' : atenuado ? 'Este rol no tiene el apartado, así que no le sirve' : ''}>
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={fijo}
+          onChange={(e) => cambiar(rol.id, item, e.target.checked)}
+          style={{ width: 18, height: 18, accentColor: 'var(--accent)' }}
+          aria-label={`${item.label} para ${rol.label}`}
+          data-permiso={item.to}
+          data-rol={rol.id}
+        />
+      </label>
+    </td>
+  )
+}
+
+function SeccionFilas({ sec, efectivo, personalizado, cambiar, abiertos, alternar }) {
   return (
     <>
       <tr style={{ background: 'var(--panel-alt)' }}>
@@ -126,29 +157,37 @@ function SeccionFilas({ sec, efectivo, personalizado, cambiar }) {
       </tr>
       {sec.items.map((item) => {
         const fijo = item.to === '/'
+        const hijos = HIJOS[item.to] || []
+        const abierto = !!abiertos[item.to]
+        const nPers = hijos.reduce((a, h) => a + ROLES_EDITABLES.filter((r) => personalizado(r.id, h)).length, 0)
         return (
-          <tr key={item.to} style={{ borderBottom: '1px solid var(--border)' }}>
-            <td className="px-4 py-2">{item.label}</td>
-            {ROLES_EDITABLES.map((r) => {
-              const on = fijo ? true : efectivo(r.id, item)
-              return (
-                <td key={r.id} className="px-3 py-2 text-center">
-                  <label className="inline-flex items-center gap-1 cursor-pointer" title={fijo ? 'El panel general lo ven todos' : ''}>
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      disabled={fijo}
-                      onChange={(e) => cambiar(r.id, item, e.target.checked)}
-                      style={{ width: 18, height: 18, accentColor: 'var(--accent)' }}
-                      aria-label={`${item.label} para ${r.label}`}
-                    />
-                  </label>
+          <FilaApartado key={item.to}>
+            <tr style={{ borderBottom: '1px solid var(--border)' }} data-apartado={item.to}>
+              <td className="px-4 py-2">
+                {hijos.length ? (
+                  <button type="button" onClick={() => alternar(item.to)} className="inline-flex items-center gap-2 text-left" data-desplegar={item.to} aria-expanded={abierto}>
+                    <span style={{ color: 'var(--accent)', display: 'inline-block', width: 12 }}>{abierto ? '▾' : '▸'}</span>
+                    <span>{item.label}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--panel-alt)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>{hijos.length} {hijos.length === 1 ? 'permiso' : 'permisos'}{nPers ? ` · ${nPers} cambiado${nPers === 1 ? '' : 's'}` : ''}</span>
+                  </button>
+                ) : item.label}
+              </td>
+              {ROLES_EDITABLES.map((r) => <CasillaPermiso key={r.id} item={item} rol={r} on={fijo ? true : efectivo(r.id, item)} fijo={fijo} cambiar={cambiar} />)}
+            </tr>
+            {abierto && hijos.map((h) => (
+              <tr key={h.to} style={{ borderBottom: '1px solid var(--border)', background: 'color-mix(in srgb, var(--panel-alt) 55%, transparent)' }} data-hijo={h.to}>
+                <td className="py-2 pr-4" style={{ paddingLeft: 44 }}>
+                  <span className="text-xs mr-2 px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>{ETIQUETA_TIPO[h.tipo] || 'Permiso'}</span>{h.label}
                 </td>
-              )
-            })}
-          </tr>
+                {ROLES_EDITABLES.map((r) => <CasillaPermiso key={r.id} item={h} rol={r} on={efectivo(r.id, h)} cambiar={cambiar} atenuado={!efectivo(r.id, item)} />)}
+              </tr>
+            ))}
+          </FilaApartado>
         )
       })}
     </>
   )
 }
+
+// Fragmento con clave para agrupar la fila del apartado y sus hijos
+function FilaApartado({ children }) { return <>{children}</> }

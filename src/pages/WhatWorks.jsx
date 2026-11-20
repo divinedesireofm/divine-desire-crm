@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTabsPermitidas } from '../lib/tabsPermitidas'
 import { useOrdenPestanas } from '../lib/ordenPestanas'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 
@@ -66,7 +67,9 @@ export default function WhatWorks() {
   const { hasAnyRole } = useAuth()
   const puedeEditar = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
   const puedeAjustar = hasAnyRole(['admin', 'ig_manager'])
-  const [tab, setTab] = useState('registro')
+  const [tabSel, setTab] = useState('registro')
+  const tabsW = useTabsPermitidas('/lo-que-funciona', TABS, tabSel)   // Equipo → Permisos
+  const tab = tabsW.actual
   const ordenTabs = useOrdenPestanas('whatworks', TABS)
   const [cuentas, setCuentas] = useState([])
   const [reels, setReels] = useState([])
@@ -205,7 +208,7 @@ export default function WhatWorks() {
       />
 
       <div className="flex rounded-md overflow-hidden mb-6 w-fit max-w-full overflow-x-auto" style={{ border: '1px solid var(--border)' }}>
-        {ordenTabs.items.map(([k, t]) => (
+        {ordenTabs.items.filter(([k]) => tabsW.puede(k)).map(([k, t]) => (
           <button key={k} onClick={() => setTab(k)} {...ordenTabs.dragProps(k)} className="px-4 py-2 text-sm whitespace-nowrap" style={{ background: tab === k ? 'var(--accent-soft)' : 'transparent', color: tab === k ? 'var(--accent)' : 'var(--text-muted)', ...ordenTabs.estilo(k) }}>{t}</button>
         ))}
       </div>

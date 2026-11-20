@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTabsPermitidas } from '../lib/tabsPermitidas'
 import { useOrdenPestanas } from '../lib/ordenPestanas'
 import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { exportCSV } from '../lib/csv'
@@ -151,7 +152,9 @@ export default function Recaptures() {
   const avisoStyle = { color: /^(No se pudo|Solo se|AVISO)/.test(genMsg) ? 'var(--danger)' : 'var(--success)', opacity: genFade ? 0 : 1, transition: 'opacity 2s ease' }
   const [importados, setImportados] = useState([])
   const [incluirImp, setIncluirImp] = useState(true)
-  const [pestana, setPestana] = useState('asignados')
+  const [pestanaSel, setPestana] = useState('asignados')
+  const tabsR = useTabsPermitidas('/recaptaciones', [['asignados'], ['reparto'], ['ranking'], ['desaparecidos']], pestanaSel)   // Equipo → Permisos
+  const pestana = esMgr ? (tabsR.actual || 'asignados') : 'asignados'
   const ordenTabs = useOrdenPestanas('recaptaciones', [['asignados', 'Fans asignados'], ['reparto', 'Repartir fans'], ['ranking', 'Ranking de fans'], ['desaparecidos', 'Fans desaparecidos']])
   const [desaps, setDesaps] = useState([])
   const [fModDesap, setFModDesap] = useState('todos')
@@ -451,7 +454,7 @@ export default function Recaptures() {
 
       {esMgr && (
         <div className="flex gap-2 mb-5">
-          {ordenTabs.items.map(([id, n]) => (
+          {ordenTabs.items.filter(([id]) => tabsR.puede(id)).map(([id, n]) => (
             <button key={id} type="button" onClick={() => setPestana(id)} {...ordenTabs.dragProps(id)} className="px-4 py-2 rounded-md text-sm"
               style={{ background: pestana === id ? 'var(--accent-soft)' : 'var(--panel)', border: `1px solid ${pestana === id ? 'var(--accent)' : 'var(--border)'}`, color: pestana === id ? 'var(--accent)' : 'var(--text)', ...ordenTabs.estilo(id) }}>
               {n}

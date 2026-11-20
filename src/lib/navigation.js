@@ -141,6 +141,47 @@ export const PERMISOS_EXTRA = [
   },
 ]
 
+// ───────────── Sub-permisos: pestañas y datos de cada apartado ─────────────
+// Cada apartado puede tener «hijos»: pestañas internas y datos concretos. En Equipo → Permisos salen
+// como un desplegable dentro de su apartado. Si no se toca nada, valen los permisos de siempre.
+export const permisoTab = (ruta, id) => `permiso:tab:${ruta}:${id}`
+const rolesDe = (ruta) => { for (const s of SECTIONS) for (const it of s.items) if (it.to === ruta) return it.roles; return ['admin'] }
+const SOLO_MGR = ['admin', 'manager']
+// Pestañas por apartado. `roles` solo si por defecto no las ven todos los que entran al apartado.
+export const PESTANAS = {
+  '/instagram': [
+    { id: 'metricas', label: 'Métricas de perfil' },
+    { id: 'cero', label: 'Cuentas de cero' },
+  ],
+  '/recaptaciones': [{ id: 'asignados', label: 'Fans asignados' }, { id: 'reparto', label: 'Repartir fans', roles: SOLO_MGR, soloRoles: SOLO_MGR }, { id: 'ranking', label: 'Ranking de fans', roles: SOLO_MGR, soloRoles: SOLO_MGR }, { id: 'desaparecidos', label: 'Fans desaparecidos', roles: SOLO_MGR, soloRoles: SOLO_MGR }],
+  '/metricas-chatters': [{ id: 'chatter', label: 'Por chatter' }, { id: 'equipo', label: 'Equipo por semana' }, { id: 'informes', label: 'Informes de IA' }],
+  '/lo-que-funciona': [{ id: 'registro', label: 'Registro de reels' }, { id: 'resumen', label: 'Resumen y Top 10' }, { id: 'auto', label: 'Automático (scrapper)' }],
+  '/horarios': [{ id: 'sem', label: 'Semana' }, { id: 'grp', label: 'Grupos de modelos' }],
+  '/masivos': [{ id: 'cal', label: 'Calendario' }, { id: 'fmt', label: 'Formatos' }],
+  '/solicitudes': [{ id: 'tarjetas', label: 'Tarjetas' }, { id: 'modelo', label: 'Por modelo' }],
+  '/fechas': [{ id: 'lista', label: 'Próximas' }, { id: 'calendario', label: 'Calendario' }],
+  '/equipo': [{ id: 'extrabajadores', label: 'Extrabajadores' }],
+}
+export const rolesDefectoTab = (ruta, id) => {
+  const t = (PESTANAS[ruta] || []).find((x) => x.id === id)
+  return t?.roles || rolesDe(ruta)
+}
+// Hijos de cada apartado (lo que se despliega en la tabla de permisos). `tipo`: pestana | dato | accion
+export const HIJOS = (() => {
+  const h = {}
+  Object.keys(PESTANAS).forEach((ruta) => { h[ruta] = PESTANAS[ruta].map((t) => ({ to: permisoTab(ruta, t.id), label: t.label, tipo: 'pestana', roles: t.roles || rolesDe(ruta), soloRoles: t.soloRoles })) })
+  // Cuentas de Instagram: las pestañas con credenciales ya tenían su permiso propio (se conserva la clave)
+  const ig = [['stock_mails', 'Stock mails'], ['propias', 'Cuentas propias'], ['modelos', 'Cuentas de modelos'], ['stock_ig', 'Stock Instagram'], ['eliminadas', 'Eliminadas']]
+    .map(([id, label]) => ({ to: permisoSeccionIG(id), label, tipo: 'pestana', roles: ['admin', 'ig_manager'] }))
+  h['/instagram'] = [...ig, ...(h['/instagram'] || []),
+    { to: PERMISO_IG_CONTRASENAS, label: 'Ver contraseñas', tipo: 'dato', roles: ['admin', 'ig_manager'] },
+    { to: PERMISO_IG_2FA, label: 'Ver 2FA (código y QR)', tipo: 'dato', roles: ['admin', 'ig_manager', 'ig_assistant'] },
+    { to: PERMISO_IG_HISTORIAL, label: 'Ver el historial y restaurar cambios', tipo: 'accion', roles: ['admin', 'ig_manager', 'ig_assistant'] }]
+  h['/modelos'] = DATOS_MODELOS.map((d) => ({ to: permisoModelos(d.k), label: `Ver «${d.label}»`, tipo: 'dato', roles: d.roles }))
+  h['/reportes-turno'] = [{ to: PERMISO_QUITAR_AVISOS, label: 'Quitar avisos de turno (reportes sin enviar y fichajes que faltan)', tipo: 'accion', roles: ['admin'] }]
+  return h
+})()
+
 export const ROLES_EDITABLES = [
   { id: 'manager', label: 'Manager de Chatting' },
   { id: 'chatter', label: 'Chatter' },

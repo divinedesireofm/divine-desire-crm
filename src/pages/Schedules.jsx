@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTabsPermitidas } from '../lib/tabsPermitidas'
 import { getProfilesByRoles, getExtrabajadorIds } from '../lib/roles'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { ModelAvatar } from '../components/ModelAvatar'
@@ -33,13 +34,15 @@ function fechaHoyISO() { return isoDate(new Date()) }
 export default function Schedules() {
   const { hasAnyRole } = useAuth()
   const esMgr = hasAnyRole(['admin', 'manager'])
-  const [tab, setTab] = useState('sem')
+  const [tabSel, setTab] = useState('sem')
+  const tabsH = useTabsPermitidas('/horarios', [['sem'], ['grp']], tabSel)   // Equipo → Permisos
+  const tab = tabsH.actual
 
   return (
     <div>
       <PageHeader title="Horarios" subtitle="Asignación semanal de chatters por turno y grupo de modelos." />
       <div className="flex gap-2 mb-5">
-        {[['sem', 'Semana'], ['grp', 'Grupos de modelos']].map(([id, label]) => (
+        {[['sem', 'Semana'], ['grp', 'Grupos de modelos']].filter(([id]) => tabsH.puede(id)).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}

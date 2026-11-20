@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useTabsPermitidas } from '../lib/tabsPermitidas'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { PAISES, COLOR_MANUAL, COLOR_PERSONA } from '../lib/festividades'
 import { iso, aDate, sumarDias, difDias, TIPOS, esLegacy, calcularEventos } from '../lib/fechasEventos'
@@ -29,7 +30,9 @@ export default function ImportantDates() {
   const [paises, setPaises] = useState(null) // selección de esta persona (null = aún sin cargar)
   const [selector, setSelector] = useState(false)
   const [nuevoPais, setNuevoPais] = useState(null) // { nombre, color }
-  const [vista, setVista] = useState('lista')
+  const [vistaSel, setVista] = useState('lista')
+  const tabsF = useTabsPermitidas('/fechas', [['lista'], ['calendario']], vistaSel)   // Equipo → Permisos
+  const vista = tabsF.actual
   const [verOcultas, setVerOcultas] = useState(false)
   const [mes, setMes] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [dia, setDia] = useState(null)
@@ -319,7 +322,7 @@ export default function ImportantDates() {
       )}
 
       <div className="flex items-center gap-2 mb-3">
-        {[['lista', 'Próximas'], ['calendario', 'Calendario']].map(([k, t]) => (
+        {[['lista', 'Próximas'], ['calendario', 'Calendario']].filter(([k]) => tabsF.puede(k)).map(([k, t]) => (
           <button key={k} onClick={() => setVista(k)} className="px-4 py-1.5 rounded-md text-sm font-medium"
             style={{ background: vista === k ? 'var(--accent)' : 'var(--panel-alt)', color: vista === k ? '#000' : 'var(--text)', border: '1px solid ' + (vista === k ? 'var(--accent)' : 'var(--border)') }}>{t}</button>
         ))}
