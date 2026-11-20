@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { actualizarMetricasIG, consultarCreditosIG } from '../lib/igScrape'
+import { actualizarMetricasIG, consultarCreditosIG, ajustesCreditosIG, guardarAjustesCreditosIG, gastoMesIG } from '../lib/igScrape'
 import { Panel, Button, Select } from '../components/ui'
 import ScrollSuperior from '../components/ScrollSuperior'
 import { urlInstagram } from '../lib/instagramLink'
@@ -14,6 +14,11 @@ import { useVerificadasIG, esVerificadaIG, refrescarVerificadas } from '../lib/v
 // Las cuentas suspendidas o en reposo no se miden: no aparecen en este cuadro
 const SIN_METRICAS = ['SUSPENDIDA', 'EN REPOSO', 'SUSPENDIDA INDEFINIDAMENTE']
 
+const MODOS_REELS = {
+  novedad: { corto: 'perfil + reels solo si hay publicaciones nuevas (o cada 7 días)', largo: 'Perfil + reels solo si hay publicaciones nuevas (o cada 7 días)' },
+  siempre: { corto: 'perfil + reels en cada lectura', largo: 'Perfil + reels en cada lectura (el más completo)' },
+  no: { corto: 'solo el perfil (sin reels)', largo: 'Solo el perfil (el más barato, sin reels)' },
+}
 const n0 = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 }))
 const n1 = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }))
 const fFecha = (d) => (d ? new Date(d).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—')
@@ -53,6 +58,22 @@ export default function IGProfileMetrics() {
   const [abierta, setAbierta] = useState(null)
   const [grafica, setGrafica] = useState('followers')
   const verificadas = useVerificadasIG()
+  const puedeAjustar = hasAnyRole(['admin', 'manager', 'ig_manager'])
+  const [ajustes, setAjustes] = useState({ tope: null, aviso: null, falta: false, faltaAuto: false, auto: { activo: false, cadaDias: 7, hora: 8, reels: 'novedad', ultima: null, resultado: null } })
+  const [fAuto, setFAuto] = useState({ activo: false, cadaDias: 7, hora: 8, reels: 'novedad' })
+  const [gastoMes, setGastoMes] = useState(0)
+  const [editTope, setEditTope] = useState(false)
+  const [fTope, setFTope] = useState('')
+  const [fAviso, setFAviso] = useState('')
+  const [msgTope, setMsgTope] = useState('')
+  async function cargarTope() { const [a, g] = await Promise.all([ajustesCreditosIG(), gastoMesIG()]); setAjustes(a); setGastoMes(g) }
+  useEffect(() => { cargarTope() }, [])
+  async function guardarTope() {
+    const num = (v) => (String(v).trim() === '' ? null : Math.max(0, Math.round(Number(v))))
+    const t = num(fTope), a = num(fAviso)
+    if ((t !== null && Number.isNaN(t)) || (a !== null && Number.isNaN(a))) { setMsgTope('Escribe solo números.'); return }
+    try { await guardarAjustesCreditosIG({ tope: t, aviso: a, auto: ajustes.faltaAuto ? undefined : { ...fAuto, cadaDias: Number(fAuto.cadaDias), hora: Number(fAuto.hora) } }); setMsgTope('✓ Guardado'); setEditTope(false); await cargarTope() } catch (e) { setMsgTope(e.message) }
+  }
   const [creditos, setCreditos] = useState(null) // { n, hora }: saldo actual de ScrapeCreators
   const [errCred, setErrCred] = useState('')
   const [cargandoCred, setCargandoCred] = useState(false)
@@ -112,11 +133,13 @@ export default function IGProfileMetrics() {
 
   async function actualizar(ids, etiqueta) {
     const n = ids.length || activas.length
+    if (ajustes.tope != null && gastoMes + creditosEst(n) > ajustes.tope) { setErr(`Tope mensual alcanzado: llevas ${gastoMes} de ${ajustes.tope} créditos este mes y esta lectura gastaría unos ${creditosEst(n)}. Sube el tope en «Tope mensual de créditos» si quieres seguir.`); return }
     if (!window.confirm(`Se leerán ${n} ${n === 1 ? 'perfil' : 'perfiles'} de Instagram con ScrapeCreators.\n\nConsumo aproximado: ${creditosEst(n)} créditos${reels ? ' (1 por el perfil + 1 por los reels)' : ''}.\n\n¿Continuar?`)) return
     setBusy(etiqueta); setErr(''); setResumen(null)
     try {
-      const r = await actualizarMetricasIG(ids, { reels })
+      const r = await actualizarMetricasIG(ids, { reels, estimado: creditosEst(n) })
       setResumen(r)
+      cargarTope()
       if (r.creditos_restantes != null) { setCreditos({ n: Number(r.creditos_restantes), hora: new Date() }); ultimaConsulta.current = Date.now(); setErrCred('') }
       await cargar()
       refrescarVerificadas()
@@ -152,6 +175,76 @@ export default function IGProfileMetrics() {
           {errCred && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }} data-creditos-error>{errCred}</p>}
         </Panel>
       </div>
+
+      <Panel className="p-4 mb-5" data-tope-creditos>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm font-medium">Créditos y lectura automática</p>
+          {puedeAjustar && !editTope && <button type="button" className="text-xs underline" style={{ color: 'var(--accent)' }} data-editar-tope onClick={() => { setFTope(ajustes.tope ?? ''); setFAviso(ajustes.aviso ?? ''); setFAuto({ activo: ajustes.auto.activo, cadaDias: ajustes.auto.cadaDias, hora: ajustes.auto.hora, reels: ajustes.auto.reels }); setMsgTope(''); setEditTope(true) }}>⚙ Configurar</button>}
+        </div>
+        {ajustes.falta ? <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Falta ejecutar la migración 145 en Supabase para activar el tope.</p> : (
+          <>
+            <p className="text-sm mt-1" data-gasto-mes>Este mes has gastado <strong>{n0(gastoMes)}</strong> créditos desde el CRM{ajustes.tope != null ? <> de un tope de <strong>{n0(ajustes.tope)}</strong> (te quedan {n0(Math.max(0, ajustes.tope - gastoMes))})</> : ' · sin tope fijado'}.</p>
+            {ajustes.tope != null && ajustes.tope > 0 && (
+              <div className="rounded-full overflow-hidden mt-2" style={{ height: 8, background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                <div data-barra-tope style={{ height: '100%', width: Math.min(100, Math.round((gastoMes / ajustes.tope) * 100)) + '%', background: gastoMes >= ajustes.tope ? 'var(--danger)' : gastoMes >= ajustes.tope * 0.8 ? 'var(--gold)' : 'var(--success)' }} />
+              </div>
+            )}
+            {ajustes.aviso != null && creditos && creditos.n < ajustes.aviso && <p className="text-sm mt-2" data-aviso-saldo style={{ color: 'var(--danger)' }}>⚠️ Saldo bajo: te quedan {n0(creditos.n)} créditos en ScrapeCreators (aviso configurado en {n0(ajustes.aviso)}).</p>}
+            {ajustes.tope != null && gastoMes >= ajustes.tope && <p className="text-sm mt-2" style={{ color: 'var(--danger)' }}>Has llegado al tope: las actualizaciones quedan bloqueadas hasta el mes que viene o hasta que lo subas.</p>}
+            <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }} data-resumen-auto>
+              {ajustes.faltaAuto ? (
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Lectura automática: para activarla ejecuta la migración 146 y despliega la función «ig-auto» (ver instrucciones del lote 224).</p>
+              ) : ajustes.auto.activo ? (
+                <p className="text-sm" data-auto-estado>🔄 <strong>Lectura automática activada</strong>: cada {ajustes.auto.cadaDias} {ajustes.auto.cadaDias === 1 ? 'día' : 'días'}, a partir de las {String(ajustes.auto.hora).padStart(2, '0')}:00 · {MODOS_REELS[ajustes.auto.reels]?.corto}</p>
+              ) : <p className="text-sm" data-auto-estado style={{ color: 'var(--text-muted)' }}>🔄 Lectura automática desactivada: todo se actualiza a mano con «Actualizar».</p>}
+              {!ajustes.faltaAuto && ajustes.auto.ultima && <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }} data-auto-ultima>Última ejecución: {fFechaHora(ajustes.auto.ultima)} · {ajustes.auto.resultado}</p>}
+            </div>
+          </>
+        )}
+        {editTope && (
+          <div className="mt-3 flex items-end gap-3 flex-wrap">
+            <label className="text-xs">Tope al mes (créditos)<input type="number" min="0" value={fTope} onChange={(e) => setFTope(e.target.value)} placeholder="sin tope" data-input-tope className="block mt-1 rounded-lg px-3 py-2 text-sm w-40" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }} /></label>
+            <label className="text-xs">Avisar si el saldo baja de<input type="number" min="0" value={fAviso} onChange={(e) => setFAviso(e.target.value)} placeholder="sin aviso" data-input-aviso className="block mt-1 rounded-lg px-3 py-2 text-sm w-40" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }} /></label>
+            {!ajustes.faltaAuto && (
+              <div className="w-full mt-2 pt-3" style={{ borderTop: '1px solid var(--border)' }} data-editor-auto>
+                <label className="text-sm flex items-center gap-2 mb-3"><input type="checkbox" checked={fAuto.activo} onChange={(e) => setFAuto({ ...fAuto, activo: e.target.checked })} data-auto-activo /> <strong>Activar la lectura automática</strong> (el tope mensual y el aviso de saldo se respetan siempre)</label>
+                <div className="flex gap-3 flex-wrap items-end">
+                  <label className="text-xs">Cada cuántos días
+                    <select value={fAuto.cadaDias} onChange={(e) => setFAuto({ ...fAuto, cadaDias: Number(e.target.value) })} data-auto-cada className="block mt-1 rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+                      {[1, 2, 3, 5, 7, 10, 14, 21, 30].map((d) => <option key={d} value={d}>{d === 1 ? 'Todos los días' : `Cada ${d} días`}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs">A partir de las (hora de España)
+                    <select value={fAuto.hora} onChange={(e) => setFAuto({ ...fAuto, hora: Number(e.target.value) })} data-auto-hora className="block mt-1 rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+                      {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs">Qué datos actualizar
+                    <select value={fAuto.reels} onChange={(e) => setFAuto({ ...fAuto, reels: e.target.value })} data-auto-reels className="block mt-1 rounded-lg px-3 py-2 text-sm" style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)', maxWidth: 320 }}>
+                      {Object.entries(MODOS_REELS).map(([k, m]) => <option key={k} value={k}>{m.largo}</option>)}
+                    </select>
+                  </label>
+                </div>
+                {(() => {
+                  const lecturas = activas.length * (30 / Math.max(1, Number(fAuto.cadaDias)))
+                  const min = Math.round(lecturas * 1), max = Math.round(lecturas * (fAuto.reels === 'no' ? 1 : 2))
+                  const tp = String(fTope).trim() === '' ? null : Number(fTope)
+                  return (
+                    <p className="text-xs mt-3" data-estimacion-auto style={{ color: 'var(--text-muted)' }}>
+                      Con tus <strong>{activas.length}</strong> cuentas activas, gastaría {min === max || fAuto.reels === 'siempre' ? <>unos <strong>{n0(max)}</strong></> : <>entre <strong>{n0(min)}</strong> y <strong>{n0(max)}</strong></>} créditos al mes{fAuto.reels === 'novedad' ? ' (los reels solo se leen si hay publicaciones nuevas o pasan 7 días, así que suele quedarse en la parte baja)' : ''}.
+                      {tp !== null && !Number.isNaN(tp) && max > tp && <span style={{ color: 'var(--danger)' }}> ⚠️ Supera tu tope mensual ({n0(tp)}): se pararía antes de leer todas las cuentas.</span>}
+                    </p>
+                  )
+                })()}
+              </div>
+            )}
+            <Button onClick={guardarTope} data-guardar-tope>Guardar</Button>
+            <Button variant="ghost" onClick={() => setEditTope(false)}>Cancelar</Button>
+          </div>
+        )}
+        {msgTope && <p className="text-xs mt-2" style={{ color: msgTope.startsWith('✓') ? 'var(--success)' : 'var(--danger)' }}>{msgTope}</p>}
+        <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>El gasto del mes suma las lecturas manuales y las automáticas hechas desde el CRM. Vacío = sin tope.</p>
+      </Panel>
 
       <Panel className="p-4 mb-5">
         <div className="flex items-center gap-3 flex-wrap">
