@@ -280,16 +280,32 @@ export default function IGProfileMetrics() {
                   </div>
                 )}
                 {(() => {
-                  const reelsOn = ajustes.faltaMetricas ? fAuto.reels !== 'no' : fAuto.metricas.includes('reels_vistas')
+                  const sel = ajustes.faltaMetricas ? null : fAuto.metricas
+                  const hayPerfil = sel ? sel.some((k) => METRICAS_AUTO.find((m) => m.k === k)?.g === 'perfil') : true
+                  const reelsOn = sel ? sel.includes('reels_vistas') : fAuto.reels !== 'no'
+                  const hayAlgo = hayPerfil || reelsOn
                   const modoEf = reelsOn ? (fAuto.reels === 'no' ? 'novedad' : fAuto.reels) : 'no'
-                  const lecturas = activas.length * (30 / Math.max(1, Number(fAuto.cadaDias)))
-                  const min = Math.round(lecturas * 1), max = Math.round(lecturas * (modoEf === 'no' ? 1 : 2))
+                  const lecturas = activas.length * (30 / Math.max(1, Number(fAuto.cadaDias)))   // lecturas de cuenta al mes
+                  const cPerfil = hayAlgo ? Math.round(lecturas) : 0   // si solo marcas reels, el perfil también se lee (hace falta para guardar la lectura)
+                  const rMax = reelsOn ? Math.round(lecturas) : 0
+                  const rMin = reelsOn && modoEf === 'novedad' ? 0 : rMax
+                  const min = cPerfil + rMin, max = cPerfil + rMax
                   const tp = String(fTope).trim() === '' ? null : Number(fTope)
+                  const porCuenta = (hayAlgo ? 1 : 0) + (reelsOn ? 1 : 0)
                   return (
-                    <p className="text-xs mt-3" data-estimacion-auto style={{ color: 'var(--text-muted)' }}>
-                      Con tus <strong>{activas.length}</strong> cuentas activas, gastaría {min === max || modoEf === 'siempre' ? <>unos <strong>{n0(max)}</strong></> : <>entre <strong>{n0(min)}</strong> y <strong>{n0(max)}</strong></>} créditos al mes{modoEf === 'novedad' ? ' (los reels solo se leen si hay publicaciones nuevas o pasan 7 días, así que suele quedarse en la parte baja)' : ''}.
-                      {tp !== null && !Number.isNaN(tp) && max > tp && <span style={{ color: 'var(--danger)' }}> ⚠️ Supera tu tope mensual ({n0(tp)}): se pararía antes de leer todas las cuentas.</span>}
-                    </p>
+                    <div className="mt-3 rounded-lg p-3" data-estimacion-auto style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)' }}>
+                      <p className="text-xs font-medium mb-2">Gasto de créditos con lo que has marcado</p>
+                      <div className="text-xs grid gap-1" style={{ gridTemplateColumns: '1fr auto' }}>
+                        <span>Perfil {hayPerfil ? '' : <em style={{ color: 'var(--text-muted)' }}>(sin marcar)</em>}{!hayPerfil && reelsOn ? <em style={{ color: 'var(--text-muted)' }}> · se lee igualmente porque los reels lo necesitan</em> : null}</span>
+                        <strong className="tabular-nums" data-coste-perfil>{n0(cPerfil)} / mes</strong>
+                        <span>Reels {reelsOn ? (modoEf === 'novedad' ? <em style={{ color: 'var(--text-muted)' }}>(solo con novedades o cada 7 días)</em> : '') : <em style={{ color: 'var(--text-muted)' }}>(sin marcar)</em>}</span>
+                        <strong className="tabular-nums" data-coste-reels>{rMin === rMax ? n0(rMax) : `${n0(rMin)}–${n0(rMax)}`} / mes</strong>
+                        <span className="pt-1" style={{ borderTop: '1px solid var(--border)' }}>Total estimado ({activas.length} cuentas activas, {porCuenta} {porCuenta === 1 ? 'crédito' : 'créditos'} por cuenta y lectura como máximo)</span>
+                        <strong className="tabular-nums pt-1" style={{ borderTop: '1px solid var(--border)' }} data-coste-total>{min === max ? n0(max) : `${n0(min)}–${n0(max)}`} créditos / mes</strong>
+                      </div>
+                      {!hayAlgo && <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>No hay nada marcado: la lectura automática no gastaría nada porque no leería nada.</p>}
+                      {tp !== null && !Number.isNaN(tp) && max > tp && <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>⚠️ El máximo supera tu tope mensual ({n0(tp)}): se pararía antes de leer todas las cuentas.</p>}
+                    </div>
                   )
                 })()}
               </div>
