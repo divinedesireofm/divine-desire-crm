@@ -46,6 +46,20 @@ export function EstadoEditable({ valor, opciones, onCambio, bloqueado = false })
   )
 }
 
+// Responsable que se cambia con un clic, directamente en la tabla (sin entrar a editar)
+export function PersonaEditable({ valor, personas, extras, onCambio }) {
+  const todos = personas.flatMap((g) => g.items)
+  return (
+    <select data-responsable-inline value={valor || ''} onChange={(e) => onCambio(e.target.value)} title="Pulsa para cambiar el responsable"
+      className="text-sm rounded-md px-2 py-1 outline-none cursor-pointer"
+      style={{ background: 'var(--panel-alt)', color: valor ? 'var(--text)' : 'var(--text-muted)', border: '1px solid var(--border)', maxWidth: 200 }}>
+      <option value="" style={{ color: 'var(--text)', background: 'var(--panel)' }}>Sin indicar</option>
+      {valor && !todos.includes(valor) && <option value={valor} style={{ color: 'var(--text)', background: 'var(--panel)' }}>{conEtiqueta(valor, extras)}</option>}
+      {personas.filter((g) => g.items.length).map((g) => <optgroup key={g.grupo} label={g.grupo}>{g.items.map((n) => <option key={g.grupo + n} value={n} style={{ color: 'var(--text)', background: 'var(--panel)' }}>{/^extrabajadores/i.test(g.grupo) ? `${n} ${ETIQUETA_EXTRA}` : n}</option>)}</optgroup>)}
+    </select>
+  )
+}
+
 // Contraseñas: ocultas por defecto, con ojo para verlas y botón de copiar
 // Candado en lugar de la contraseña para quien no tiene el permiso «Ver contraseñas»
 function Candado({ que = 'las contraseñas' }) {
@@ -284,7 +298,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
   }
 
   // Cambio de estado desde la propia tabla: se ve al instante y se guarda; si falla, vuelve al valor anterior
-  async function cambiarEstadoFila(f, k, nuevo) {
+  async function cambiarEstadoFila(f, k, nuevo, que = 'el estado') {
     const anterior = f[k]
     if (nuevo === anterior) return
     setError(null); setAviso(null)
@@ -292,7 +306,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
     const { data: guardada, error: err } = await supabase.from(cfg.tabla).update({ [k]: nuevo }).eq('id', f.id).select().single()
     if (err) {
       setFilas((prev) => prev.map((r) => (r.id === f.id ? { ...r, [k]: anterior } : r)))
-      setError('No se pudo cambiar el estado: ' + err.message); return
+      setError(`No se pudo cambiar ${que}: ` + err.message); return
     }
     if (onGuardado && guardada) { try { setAviso(await onGuardado(guardada)) } catch (ex) { setAviso({ tipo: 'error', texto: 'Se guardó, pero no se pudo actualizar el General: ' + ex.message }) } }
   }
@@ -390,7 +404,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
       return <CeldaCopia completo titulo={c.n} texto={v}>{url ? <a href={/^https?:\/\//i.test(url) ? url : `https://${url}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta">{v}</a> : null}</CeldaCopia>
     }
     let cuerpo
-    if (c.tipo === 'persona') cuerpo = <CeldaCopia completo titulo={c.n} texto={conEtiqueta(v, extras)} />
+    if (c.tipo === 'persona') cuerpo = canEdit && c.k === 'responsable' ? <PersonaEditable valor={v} personas={personas} extras={extras} onCambio={(n) => cambiarEstadoFila(f, c.k, n, 'el responsable')} /> : <CeldaCopia completo titulo={c.n} texto={conEtiqueta(v, extras)} />
     else if (c.tipo === 'modeloSel') cuerpo = <CeldaCopia completo titulo={c.n} texto={nombreModelo(v)} />
     else if (c.tipo === 'secreto') cuerpo = verPass ? <CeldaSecreto valor={v} /> : <Candado />
     else if (c.tipo === 'estado') cuerpo = canEdit && cfg.estados ? <EstadoEditable valor={v} opciones={cfg.estados} onCambio={(n) => cambiarEstadoFila(f, c.k, n)} /> : vacio(v) ? <span style={{ color: 'var(--text-muted)' }}>—</span> : <Etiqueta estado={v} />

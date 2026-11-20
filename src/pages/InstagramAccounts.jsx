@@ -448,6 +448,17 @@ export default function InstagramAccounts() {
     if (err) { setError('No se pudo cambiar el estado: ' + err.message); load() }
   }
 
+  // Responsable cambiado desde la tabla General, sin abrir la edición
+  async function cambiarResponsable(a, nuevoId) {
+    const actual = a.assigned_to || ''
+    if (nuevoId === actual) return
+    const persona = assistants.find((x) => x.id === nuevoId)
+    setError(null)
+    setAccounts((prev) => prev.map((x) => (x.id === a.id ? { ...x, assigned_to: nuevoId || null, profiles: persona ? { full_name: persona.full_name } : null } : x)))
+    const { error: err } = await supabase.from('instagram_accounts').update({ assigned_to: nuevoId || null }).eq('id', a.id)
+    if (err) { setError('No se pudo cambiar el responsable: ' + err.message); load() }
+  }
+
   async function borrarCuenta(a) {
     if (!confirm(`¿Eliminar la cuenta @${a.username}?\n\nSe borrarán también sus planificaciones, reels ganadores y registros de seguidores. No se puede deshacer.`)) return
     const { error: err } = await supabase.from('instagram_accounts').delete().eq('id', a.id)
@@ -681,7 +692,13 @@ export default function InstagramAccounts() {
                       </td>
                       <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Modelo" texto={a.models?.stage_name} /></td>
                       <td className="px-4 align-middle" style={fila}>{canEdit ? <EstadoEditable valor={estadoDeCuenta(a)} opciones={ESTADOS_GENERAL} onCambio={(n) => cambiarEstadoCuenta(a, n)} /> : <CeldaCopia completo titulo="Estado" texto={estadoDeCuenta(a)}><Etiqueta estado={estadoDeCuenta(a)} /></CeldaCopia>}</td>
-                      <td className="px-4 align-middle" style={fila}><CeldaCopia completo titulo="Responsable" texto={a.profiles?.full_name} /></td>
+                      <td className="px-4 align-middle" style={fila}>{canEdit ? (
+                        <select data-responsable-inline value={a.assigned_to || ''} onChange={(e) => cambiarResponsable(a, e.target.value)} title="Pulsa para cambiar el responsable" className="text-sm rounded-md px-2 py-1 outline-none cursor-pointer" style={{ background: 'var(--panel-alt)', color: a.assigned_to ? 'var(--text)' : 'var(--text-muted)', border: '1px solid var(--border)', maxWidth: 200 }}>
+                          <option value="" style={{ color: 'var(--text)', background: 'var(--panel)' }}>Sin responsable</option>
+                          {a.assigned_to && !assistants.some((x) => x.id === a.assigned_to) && <option value={a.assigned_to} style={{ color: 'var(--text)', background: 'var(--panel)' }}>{a.profiles?.full_name || 'Responsable actual'}</option>}
+                          {assistants.map((x) => <option key={x.id} value={x.id} style={{ color: 'var(--text)', background: 'var(--panel)' }}>{x.full_name}</option>)}
+                        </select>
+                      ) : <CeldaCopia completo titulo="Responsable" texto={a.profiles?.full_name} />}</td>
                       <td className="px-4 align-middle tabular-nums" style={fila}><CeldaCopia completo titulo="Seguidores" texto={seguidores[a.id] != null ? Number(seguidores[a.id]).toLocaleString('es-ES') : ''} /></td>
                       <td className="px-4 align-middle" style={fila}>
                         {esTextoFijo(a)
