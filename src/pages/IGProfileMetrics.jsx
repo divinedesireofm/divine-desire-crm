@@ -8,6 +8,8 @@ import ScrollSuperior from '../components/ScrollSuperior'
 import { urlInstagram } from '../lib/instagramLink'
 import { estadoDeCuenta } from '../lib/cuentasIGSecciones'
 import IGAccountAnalytics from './IGAccountAnalytics'
+import InsigniaVerificada from '../components/InsigniaVerificada'
+import { useVerificadasIG, esVerificadaIG, refrescarVerificadas } from '../lib/verificadasIG'
 
 // Las cuentas suspendidas o en reposo no se miden: no aparecen en este cuadro
 const SIN_METRICAS = ['SUSPENDIDA', 'EN REPOSO', 'SUSPENDIDA INDEFINIDAMENTE']
@@ -50,6 +52,7 @@ export default function IGProfileMetrics() {
   const [resumen, setResumen] = useState(null) // resultado de la última actualización
   const [abierta, setAbierta] = useState(null)
   const [grafica, setGrafica] = useState('followers')
+  const verificadas = useVerificadasIG()
   const [creditos, setCreditos] = useState(null) // { n, hora }: saldo actual de ScrapeCreators
   const [errCred, setErrCred] = useState('')
   const [cargandoCred, setCargandoCred] = useState(false)
@@ -116,6 +119,7 @@ export default function IGProfileMetrics() {
       setResumen(r)
       if (r.creditos_restantes != null) { setCreditos({ n: Number(r.creditos_restantes), hora: new Date() }); ultimaConsulta.current = Date.now(); setErrCred('') }
       await cargar()
+      refrescarVerificadas()
     } catch (e) { setErr(e.message) }
     setBusy(null)
   }
@@ -189,7 +193,7 @@ export default function IGProfileMetrics() {
                       <div className="flex items-center gap-3">
                         <FotoIG url={f.foto} nombre={f.username} />
                         <div>
-                          <div className="font-medium"><a href={f.profile_link || urlInstagram(f.username)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline" style={{ color: 'var(--accent)' }} title={`Abrir el perfil de @${f.username} en Instagram`} data-perfil-ig>@{f.username}</a>{f.ult?.is_verified ? ' ✔' : ''}{f.ult?.is_private ? ' 🔒' : ''}</div>
+                          <div className="font-medium"><a href={f.profile_link || urlInstagram(f.username)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline" style={{ color: 'var(--accent)' }} title={`Abrir el perfil de @${f.username} en Instagram`} data-perfil-ig>@{f.username}</a>{(f.ult?.is_verified || esVerificadaIG(verificadas, f.username)) && <> <InsigniaVerificada size={14} /></>}{f.ult?.is_private ? ' 🔒' : ''}</div>
                           <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{f.models?.stage_name || 'Sin modelo'}</div>
                         </div>
                       </div>

@@ -9,6 +9,8 @@ import { moverFila, guardarOrden } from '../lib/ordenManual'
 import { useAuth } from '../context/AuthContext'
 import { PERMISO_IG_CONTRASENAS, PERMISO_IG_2FA } from '../lib/navigation'
 import { urlInstagram, usuarioIG } from '../lib/instagramLink'
+import InsigniaVerificada from './InsigniaVerificada'
+import { useVerificadasIG, esVerificadaIG } from '../lib/verificadasIG'
 import { conjuntoExtrabajadores, conEtiqueta, ETIQUETA_EXTRA } from '../lib/personasIG'
 
 const vacio = (v) => v === null || v === undefined || v === ''
@@ -148,6 +150,7 @@ function CeldaSecreto({ valor }) {
 
 export default function TablaRegistros({ cfg, canEdit = true, modelos = [], modelosLista = [], personas = [], onRehabilitar, onDarDeBaja, onGuardado, version = 0 }) {
   const { puedeVer } = useAuth()
+  const verificadas = useVerificadasIG()
   const verPass = puedeVer(PERMISO_IG_CONTRASENAS, ['admin', 'ig_manager'])   // permiso adicional «Ver contraseñas»
   const ver2fa = puedeVer(PERMISO_IG_2FA, ['admin', 'ig_manager', 'ig_assistant'])   // permiso adicional «Ver 2FA»
   const es2faBloq = (c) => c.k === 'dos_fa' && !ver2fa
@@ -379,7 +382,7 @@ export default function TablaRegistros({ cfg, canEdit = true, modelos = [], mode
     if (ocultar) return null
     if (c.usuarioIG && v) {
       const url = urlInstagram(v)
-      const cuerpoIG = <CeldaCopia completo titulo={c.n} texto={usuarioIG(v)}>{url ? <a href={url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta de Instagram">{v}</a> : null}</CeldaCopia>
+      const cuerpoIG = <CeldaCopia completo titulo={c.n} texto={usuarioIG(v)}>{url ? <a href={url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta de Instagram">{v}</a> : null}{esVerificadaIG(verificadas, v) && <> <InsigniaVerificada size={14} /></>}</CeldaCopia>
       return cuerpoIG
     }
     if (c.enlaceDe && v) {

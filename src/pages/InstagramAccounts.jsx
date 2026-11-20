@@ -16,6 +16,8 @@ import { SECCIONES, ORDEN_SECCIONES, ESTADOS_CUENTA, ESTADOS_GENERAL, estadoDeCu
 import QrCelda from '../components/QrCelda'
 import { PERMISO_IG_2FA, PERMISO_IG_HISTORIAL, PERMISO_IG_CONTRASENAS, permisoSeccionIG } from '../lib/navigation'
 import { urlInstagram, usuarioIG } from '../lib/instagramLink'
+import InsigniaVerificada from '../components/InsigniaVerificada'
+import { useVerificadasIG, esVerificadaIG } from '../lib/verificadasIG'
 import HistorialIG from '../components/HistorialIG'
 import ExportarCuentasIG from '../components/ExportarCuentasIG'
 import { moverFila, guardarOrden } from '../lib/ordenManual'
@@ -64,6 +66,7 @@ function diasTranscurridos(fecha) {
 
 export default function InstagramAccounts() {
   const { hasAnyRole, puedeVer } = useAuth()
+  const verificadas = useVerificadasIG()
   const ver2fa = puedeVer(PERMISO_IG_2FA, ['admin', 'ig_manager', 'ig_assistant'])
   const canEdit = hasAnyRole(['admin', 'ig_manager', 'ig_assistant'])
   const canDelete = hasAnyRole(['admin', 'ig_manager'])
@@ -671,7 +674,7 @@ export default function InstagramAccounts() {
                         <CeldaCopia completo titulo="Cuenta actual" texto={`@${a.username}`}>
                           <span className="inline-flex items-center gap-2.5 align-middle font-medium">
                             <FotoIG url={fotos[a.id]} nombre={a.username} size={38} />
-                            <a href={urlInstagram(a.username)} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta de Instagram">@{a.username}</a>
+                            <a href={urlInstagram(a.username)} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta de Instagram">@{a.username}</a>{(a.verificada || esVerificadaIG(verificadas, a.username)) && <InsigniaVerificada size={16} />}
                           </span>
                         </CeldaCopia>
                         </div>

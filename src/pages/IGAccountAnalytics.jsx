@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { actualizarMetricasIG } from '../lib/igScrape'
 import { Panel, Button } from '../components/ui'
 import { urlInstagram } from '../lib/instagramLink'
+import InsigniaVerificada from '../components/InsigniaVerificada'
+import { refrescarVerificadas } from '../lib/verificadasIG'
 
 const PERIODOS = [[7, 'Últimos 7 días'], [14, 'Últimos 14 días'], [30, 'Últimos 30 días'], [90, 'Últimos 3 meses'], [180, 'Últimos 6 meses'], [365, 'Últimos 12 meses']]
 const PESTANAS = [['graficas', 'Gráficas'], ['historial', 'Historial'], ['top', 'Top vídeos']]
@@ -80,6 +82,7 @@ export default function IGAccountAnalytics({ cuenta, puedeActualizar, onVolver }
       if (fallo) setErr(fallo.error)
       else setAviso(`✓ Datos actualizados${r.creditos_gastados ? ` · ${r.creditos_gastados} créditos gastados` : ''}${r.creditos_restantes != null ? ` · quedan ${n0(r.creditos_restantes)}` : ''}`)
       await cargar()
+      refrescarVerificadas()
     } catch (e) { setErr(e.message) }
     setBusy(false)
   }
@@ -166,7 +169,7 @@ export default function IGAccountAnalytics({ cuenta, puedeActualizar, onVolver }
         <div className="flex items-start gap-4 flex-wrap">
           {foto ? <img src={foto} alt="" referrerPolicy="no-referrer" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} /> : <span style={{ width: 64, height: 64, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, fontSize: 24 }}>{(cuenta.username || '?').charAt(0).toUpperCase()}</span>}
           <div className="min-w-0 flex-1">
-            <p className="font-display text-lg font-semibold"><a href={enlace} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent)' }}>@{cuenta.username}</a>{ult?.is_verified ? ' ✔' : ''}</p>
+            <p className="font-display text-lg font-semibold"><a href={enlace} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent)' }}>@{cuenta.username}</a>{ult?.is_verified && <> <InsigniaVerificada size={18} /></>}</p>
             {ult?.full_name && <p className="text-sm">{ult.full_name}</p>}
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{cuenta.models?.stage_name || 'Sin modelo'}{primera ? ` · Seguimiento desde ${fLarga(primera.captured_at)}` : ''}{ult ? ` · Última lectura ${fLarga(ult.captured_at)}` : ''}</p>
             {ult?.biography && <p className="text-xs mt-1 whitespace-pre-line break-words" style={{ color: 'var(--text-muted)' }}>{ult.biography}</p>}
