@@ -8,7 +8,7 @@ import InsigniaVerificada from '../components/InsigniaVerificada'
 import { refrescarVerificadas } from '../lib/verificadasIG'
 
 const PERIODOS = [[7, 'Últimos 7 días'], [14, 'Últimos 14 días'], [30, 'Últimos 30 días'], [90, 'Últimos 3 meses'], [180, 'Últimos 6 meses'], [365, 'Últimos 12 meses']]
-const PESTANAS = [['graficas', 'Gráficas'], ['historial', 'Historial'], ['top', 'Top vídeos']]
+const PESTANAS = [['graficas', 'Gráficas'], ['historial', 'Historial'], ['top', 'Top vídeos'], ['relacionadas', 'Relacionadas']]
 
 const n0 = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 }))
 const n1 = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString('es-ES', { maximumFractionDigits: 1 }))
@@ -55,12 +55,45 @@ function GraficaArea({ titulo, datos, nombre, color = 'var(--accent)', dataTest 
 
 // Pantalla de análisis de una cuenta de Instagram (estilo OFM Pro) con lo que da ScrapeCreators:
 // una foto del perfil cada vez que se actualiza + el detalle de las últimas publicaciones y reels.
+
+// Evolución de un reel concreto: sus vistas, likes y comentarios en cada lectura guardada
+function CurvaReel({ accountId, codigo }) {
+  const [datos, setDatos] = useState(null)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    let vivo = true
+    supabase.rpc('ig_curva_reel', { p_account: accountId, p_codigo: codigo }).then(({ data, error }) => {
+      if (!vivo) return
+      if (error) setErr(/ig_curva_reel|function/i.test(error.message) ? 'Falta ejecutar la migración 147 en Supabase.' : error.message)
+      else setDatos((data || []).map((r) => ({ etiqueta: new Date(r.captured_at).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }), vistas: r.vistas == null ? null : Number(r.vistas), likes: r.likes == null ? null : Number(r.likes) })))
+    })
+    return () => { vivo = false }
+  }, [accountId, codigo])
+  if (err) return <p className="text-xs mt-2" style={{ color: 'var(--danger)' }}>{err}</p>
+  if (!datos) return <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>Cargando curva…</p>
+  if (datos.length < 2) return <p className="text-xs mt-2" data-curva-vacia style={{ color: 'var(--text-muted)' }}>Este reel solo aparece en {datos.length} lectura: hacen falta al menos dos (en días distintos) para dibujar su curva.</p>
+  return (
+    <div className="mt-2" data-curva-reel>
+      <ResponsiveContainer width="100%" height={160}>
+        <AreaChart data={datos}>
+          <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" />
+          <XAxis dataKey="etiqueta" stroke="var(--text-muted)" fontSize={11} />
+          <YAxis stroke="var(--text-muted)" fontSize={11} width={48} domain={['auto', 'auto']} tickFormatter={(v) => n0(v)} />
+          <Tooltip contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8 }} formatter={(v) => n0(v)} />
+          <Area type="monotone" dataKey="vistas" name="Vistas" stroke="var(--accent)" fill="var(--accent)" fillOpacity={0.15} strokeWidth={2} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 export default function IGAccountAnalytics({ cuenta, puedeActualizar, onVolver }) {
   const [filas, setFilas] = useState([]) // lecturas, de más nueva a más vieja
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [dias, setDias] = useState(30)
   const [pestana, setPestana] = useState('graficas')
+  const [curvaDe, setCurvaDe] = useState(null) // código del reel con la curva desplegada
   const [busy, setBusy] = useState(false)
   const [aviso, setAviso] = useState('')
 
@@ -77,7 +110,7 @@ export default function IGAccountAnalytics({ cuenta, puedeActualizar, onVolver }
     if (!window.confirm('Se leerá el perfil de @' + cuenta.username + ' con ScrapeCreators.\n\nConsumo aproximado: 2 créditos (1 por el perfil + 1 por los reels).\n\n¿Continuar?')) return
     setBusy(true); setErr(''); setAviso('')
     try {
-      const r = await actualizarMetricasIG([cuenta.id], { reels: true })
+      const r = await actualizarMetricasIG([cuenta.id], { reels: true, estimado: 2 })
       const fallo = (r.resultados || []).find((x) => !x.ok)
       if (fallo) setErr(fallo.error)
       else setAviso(`✓ Datos actualizados${r.creditos_gastados ? ` · ${r.creditos_gastados} créditos gastados` : ''}${r.creditos_restantes != null ? ` · quedan ${n0(r.creditos_restantes)}` : ''}`)
@@ -268,7 +301,10 @@ export default function IGAccountAnalytics({ cuenta, puedeActualizar, onVolver }
                       <Miniatura url={c.miniatura} es_video />
                       <div className="min-w-0 flex-1">
                         <a href={`https://www.instagram.com/reel/${c.codigo}/`} target="_blank" rel="noopener noreferrer" className="text-sm underline" style={{ color: 'var(--accent)' }}>Ver en Instagram</a>
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{fLarga(c.fecha)}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{fLarga(c.fecha)}{c.tipo ? ` · ${c.tipo}` : ''}{c.duracion ? ` · ${n0(c.duracion)} s` : ''}{c.audio === false ? ' · sin audio' : c.audio === true ? ' · con audio' : ''}</p>
+                        {c.caption && <p className="text-xs mt-0.5 line-clamp-2 break-words" data-caption>{c.caption}</p>}
+                        <button type="button" className="text-xs underline mt-1" style={{ color: 'var(--accent)' }} data-ver-curva onClick={() => setCurvaDe(curvaDe === c.codigo ? null : c.codigo)}>{curvaDe === c.codigo ? 'Ocultar curva' : '📈 Curva'}</button>
+                        {curvaDe === c.codigo && <CurvaReel accountId={cuenta.id} codigo={c.codigo} />}
                       </div>
                       <div className="grid grid-cols-3 gap-4 text-center text-sm tabular-nums">
                         <div><p className="font-semibold">{n0(c.vistas)}</p><p className="text-xs" style={{ color: 'var(--text-muted)' }}>Vistas</p></div>
@@ -281,6 +317,28 @@ export default function IGAccountAnalytics({ cuenta, puedeActualizar, onVolver }
               )}
             </Panel>
           )}
+
+          {pestana === 'relacionadas' && (() => {
+            const ult = filas.find((f) => Array.isArray(f.raw?.related) && f.raw.related.length)
+            const lista = ult ? ult.raw.related : []
+            return (
+              <Panel className="p-4" data-relacionadas>
+                <p className="text-sm font-medium mb-1">Cuentas relacionadas</p>
+                <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Perfiles que Instagram sugiere junto a esta cuenta: es una pista de en qué nicho te sitúa el algoritmo y a quién se parece tu audiencia.</p>
+                {!lista.length ? <p className="text-sm py-6 text-center" style={{ color: 'var(--text-muted)' }}>Todavía no hay cuentas relacionadas guardadas. Se guardan en las lecturas hechas con la versión nueva de la función; actualiza esta cuenta. Si tras actualizar sigue vacío, Instagram no devuelve sugerencias para ella.</p> : (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {lista.map((r) => (
+                      <a key={r.username} href={`https://www.instagram.com/${r.username}/`} target="_blank" rel="noopener noreferrer" className="rounded-lg px-3 py-2 flex items-center gap-2" style={{ border: '1px solid var(--border)' }}>
+                        <span className="text-sm font-medium break-all">@{r.username}</span>
+                        {r.is_verified && <InsigniaVerificada />}
+                        <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{r.full_name || ''}{r.is_private ? ' · privada' : ''}</span>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            )
+          })()}
 
           <p className="text-xs mt-4" style={{ color: 'var(--text-muted)' }}>ℹ️ Fuente: ScrapeCreators (datos públicos). La API devuelve solo las últimas ~12 publicaciones y reels, y no da histórico de seguidores ni datos de audiencia: la evolución se construye con cada lectura que haces, así que cuantas más veces actualices, más completa queda.</p>
         </>

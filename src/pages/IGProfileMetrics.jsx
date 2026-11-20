@@ -8,6 +8,8 @@ import ScrollSuperior from '../components/ScrollSuperior'
 import { urlInstagram } from '../lib/instagramLink'
 import { estadoDeCuenta } from '../lib/cuentasIGSecciones'
 import IGAccountAnalytics from './IGAccountAnalytics'
+import { PanelAlertas, PanelRanking, PanelPublicacion, PanelComparativa } from './IGMetricasExtra'
+import { computeAlertas } from '../lib/igAlertas'
 import InsigniaVerificada from '../components/InsigniaVerificada'
 import { useVerificadasIG, esVerificadaIG, refrescarVerificadas } from '../lib/verificadasIG'
 
@@ -93,12 +95,13 @@ export default function IGProfileMetrics() {
     document.addEventListener('visibilitychange', alVolver)
     return () => document.removeEventListener('visibilitychange', alVolver)
   }, [])
+  const [vista, setVista] = useState('cuentas') // cuentas | alertas | ranking | publicacion | comparativa
   const [analizando, setAnalizando] = useState(null) // id de la cuenta que se está analizando a fondo
 
   async function cargar() {
     setLoading(true)
     const [{ data: acc }, { data: st, error: e }] = await Promise.all([
-      supabase.from('instagram_accounts').select('id, username, status, estado_cuenta, archivada, profile_link, models(stage_name)').eq('archivada', false).order('username'),
+      supabase.from('instagram_accounts').select('*, models(stage_name)').eq('archivada', false).order('username'),
       supabase.from('ig_profile_stats').select('id, account_id, captured_at, followers, following, posts_count, avg_likes, avg_comments, engagement_rate, avg_reel_views, reels_sampled, posts_sampled, last_post_at, is_verified, is_private, biography, external_url, full_name, profile_pic_url').order('captured_at', { ascending: false }).limit(3000),
     ])
     if (e) setErr(e.message.includes('ig_profile_stats') ? 'Falta ejecutar la migración 61 en Supabase.' : e.message)
@@ -122,9 +125,10 @@ export default function IGProfileMetrics() {
     const hace7 = ult ? h.find((s) => new Date(ult.captured_at) - new Date(s.captured_at) >= 6 * 86400000) : null
     const ref = hace7 || h[1] || null
     const foto = (h.find((s) => s.profile_pic_url) || {}).profile_pic_url || null // la última foto de perfil leída
-    return { ...c, historial: h, ult, ref, foto }
+    return { ...c, modelo: c.models?.stage_name || null, historial: h, ult, ref, foto }
   }), [cuentas, porCuenta])
 
+  const nAlertas = useMemo(() => computeAlertas(filas).filter((a) => a.severidad !== 'info').length, [filas])
   const totalSeg = filas.reduce((a, f) => a + (f.ult?.followers || 0), 0)
   const conDatos = filas.filter((f) => f.ult).length
   const ultimaAct = stats[0]?.captured_at
@@ -175,6 +179,17 @@ export default function IGProfileMetrics() {
           {errCred && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }} data-creditos-error>{errCred}</p>}
         </Panel>
       </div>
+
+      <div className="flex gap-2 mb-5 overflow-x-auto" data-pestanas-ig>
+        {[['cuentas', 'Cuentas'], ['alertas', 'Alertas' + (nAlertas ? ` (${nAlertas})` : '')], ['ranking', 'Ranking de reels'], ['publicacion', 'Publicación'], ['comparativa', 'Comparativa']].map(([k, t]) => (
+          <button key={k} type="button" onClick={() => setVista(k)} data-vista={k} className="text-sm px-3 py-1.5 rounded-lg whitespace-nowrap" style={{ border: '1px solid var(--border)', background: vista === k ? 'var(--accent)' : 'var(--panel)', color: vista === k ? '#fff' : 'var(--text)' }}>{t}</button>
+        ))}
+      </div>
+      {vista === 'alertas' && <PanelAlertas filas={filas} />}
+      {vista === 'ranking' && <PanelRanking filas={filas} />}
+      {vista === 'publicacion' && <PanelPublicacion filas={filas} />}
+      {vista === 'comparativa' && <PanelComparativa filas={filas} />}
+      {vista === 'cuentas' && (<>
 
       <Panel className="p-4 mb-5" data-tope-creditos>
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -351,6 +366,7 @@ export default function IGProfileMetrics() {
           </div>
         </Panel>
       )}
+      </>)}
     </div>
   )
 }
