@@ -49,6 +49,7 @@ export default function ReelsModelo({ modo = 'modelo' }) {
   const [abierto, setAbierto] = useState(null)
   const [vista, setVista] = useState('porhacer')
   const [toast, setToast] = useState('')
+  const [soloAire, setSoloAire] = useState(false)   // filtro opcional de la modelo: solo los reels que se graban al aire libre
 
   useEffect(() => {
     const cargaPlanes = asist
@@ -84,7 +85,17 @@ export default function ReelsModelo({ modo = 'modelo' }) {
 
   const porHacer = useMemo(() => planes.filter((p) => !completa(p)), [planes, hechos])
   const hechas = useMemo(() => planes.filter((p) => completa(p)), [planes, hechos])
-  const lista = vista === 'porhacer' ? porHacer : hechas
+  // Reels al aire libre que aún faltan por hacer (para el filtro «Solo al aire libre»)
+  const pendAire = (p) => (p.dias || []).reduce((a, d, di) => a + (d.reels || []).filter((r, ri) => r.aire_libre && !hechos[p.id]?.[di + ':' + ri]).length, 0)
+  const hayAire = !asist && vista === 'porhacer'
+  const filtrando = hayAire && soloAire
+  const totAire = porHacer.reduce((a, p) => a + pendAire(p), 0)
+  const lista = vista === 'porhacer' ? (filtrando ? porHacer.filter((p) => pendAire(p) > 0) : porHacer) : hechas
+  function alternarAire() {
+    const nuevo = !soloAire
+    setSoloAire(nuevo)
+    if (nuevo) { const primera = porHacer.find((p) => pendAire(p) > 0); setAbierto(primera ? primera.id : null) }
+  }
 
   // Progreso global de lo pendiente (para el mensaje de ánimo)
   const totPend = porHacer.reduce((a, p) => a + totalReels(p), 0)
@@ -134,12 +145,21 @@ export default function ReelsModelo({ modo = 'modelo' }) {
         ))}
       </div>
 
+      {!loading && hayAire && porHacer.length > 0 && (
+        <button type="button" onClick={alternarAire} aria-pressed={soloAire} data-filtro-aire
+          className="w-full rounded-xl py-3 px-4 mb-4 text-sm font-medium text-left flex items-center justify-between gap-3"
+          style={{ background: soloAire ? 'var(--accent-soft)' : 'var(--panel)', color: 'var(--text)', border: `1px solid ${soloAire ? 'var(--accent)' : 'var(--border)'}` }}>
+          <span>🌳 Solo al aire libre <span style={{ color: 'var(--text-muted)' }} data-contador-aire>({totAire} por hacer)</span></span>
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: soloAire ? 'var(--accent)' : 'var(--panel-alt)', color: soloAire ? '#0B1020' : 'var(--text-muted)' }}>{soloAire ? 'Activado' : 'Desactivado'}</span>
+        </button>
+      )}
+
       {loading ? (
         <Panel><p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>Cargando…</p></Panel>
       ) : planes.length === 0 ? (
         <Panel><p className="p-6 text-sm" style={{ color: 'var(--text-muted)' }}>{asist ? 'Todavía no hay planificaciones enviadas. Cuando el equipo envíe una a la modelo, aparecerá aquí.' : 'Todavía no tienes ninguna planificación. Cuando el equipo te envíe una, aparecerá aquí.'}</p></Panel>
       ) : lista.length === 0 ? (
-        <Panel><p className="p-6 text-sm text-center" style={{ color: 'var(--text-muted)' }}>{vista === 'porhacer' ? (asist ? '🎉 No hay nada pendiente de subir.' : '🎉 No tienes nada pendiente. Todas tus planificaciones están hechas.') : (asist ? 'Aún no hay ninguna planificación con todos los reels subidos.' : 'Aún no has completado ninguna planificación. Cuando marques todos sus reels, aparecerá aquí.')}</p></Panel>
+        <Panel><p className="p-6 text-sm text-center" data-vacio-aire={filtrando ? '1' : undefined} style={{ color: 'var(--text-muted)' }}>{filtrando ? '🌳 No te queda ningún reel al aire libre por hacer. Desactiva el filtro para ver el resto.' : vista === 'porhacer' ? (asist ? '🎉 No hay nada pendiente de subir.' : '🎉 No tienes nada pendiente. Todas tus planificaciones están hechas.') : (asist ? 'Aún no hay ninguna planificación con todos los reels subidos.' : 'Aún no has completado ninguna planificación. Cuando marques todos sus reels, aparecerá aquí.')}</p></Panel>
       ) : lista.map((p) => {
         const on = abierto === p.id
         const t = totalReels(p)
@@ -155,6 +175,7 @@ export default function ReelsModelo({ modo = 'modelo' }) {
                   <span>🎬 <strong>{t}</strong> {t === 1 ? 'reel' : 'reels'}</span>
                   <span style={{ color: 'var(--success, #30a46c)' }}>{asist ? '⬆️' : '✅'} <strong>{h}</strong> {h === 1 ? V.hecho : V.hechos}</span>
                   {t - h > 0 && <span style={{ color: 'var(--text-muted)' }}>⏳ <strong>{t - h}</strong> {V.porHacer}</span>}
+                  {filtrando && <span data-aire-plan={p.id}>🌳 <strong>{pendAire(p)}</strong> al aire libre por hacer</span>}
                 </span>
                 {t > 0 && (
                   <span className="flex items-center gap-2 mt-2">
@@ -167,7 +188,7 @@ export default function ReelsModelo({ modo = 'modelo' }) {
               </span>
               <span className="text-xs underline shrink-0 pt-0.5" style={{ color: 'var(--text-muted)' }}>{on ? 'Ocultar' : 'Ver'}</span>
             </button>
-            {on && <div className="mt-4"><PlanContenido plan={p} usuario={p.usuario} paraModelo={!asist} paraAsistente={asist} onHechos={alCambiar} /></div>}
+            {on && <div className="mt-4"><PlanContenido plan={p} usuario={p.usuario} paraModelo={!asist} paraAsistente={asist} onHechos={alCambiar} soloAireLibre={filtrando} /></div>}
           </Panel>
         )
       })}

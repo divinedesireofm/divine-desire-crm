@@ -13,7 +13,7 @@ const esUrl = (t) => /^https?:\/\//i.test(String(t || '').trim())
 
 // Contenido de una planificación en solo lectura (se muestra desplegado dentro de la lista)
 // paraModelo: la modelo marca «hecho» y no ve «subido». paraAsistente: el asistente marca «subido» y no ve «hecho». Sin ninguno (admin, manager, planner): ve los dos, sin poder marcar.
-export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = false, paraAsistente = false, onHechos = null }) {
+export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = false, paraAsistente = false, onHechos = null, soloAireLibre = false }) {
   const texto = useMemo(() => textoPlan(plan, usuario || 'cuenta'), [plan, usuario])
   const lbl = { color: 'var(--text-muted)' }
   // Reels marcados como hechos por la modelo: ella los marca; el equipo los ve
@@ -98,14 +98,15 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
       )}
 
       <div className="space-y-4">
-        {(plan.dias || []).map((d, di) => (
+        {soloAireLibre && <p className="text-sm rounded-md px-3 py-2" data-filtro-aire-libre style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent)' }}>🌳 Mostrando solo los reels que se graban al aire libre.</p>}
+        {(plan.dias || []).map((d, di) => (soloAireLibre && !(d.reels || []).some((r) => r.aire_libre) ? null : (
           <Panel key={di} className="p-4">
             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
               <p className="font-medium">Día {di + 1}</p>
               <CopyButton text={textoDia(d, di)} label={`Copiar día ${di + 1}`} />
             </div>
             <div className="space-y-3">
-              {(d.reels || []).map((r, ri) => (
+              {(d.reels || []).map((r, ri) => (soloAireLibre && !r.aire_libre ? null : (
                 <div key={ri} className="rounded-md p-3 text-sm" style={{ background: 'var(--panel-alt)', border: `1px solid ${hecho(di + ':' + ri) ? 'var(--success, #30a46c)' : 'var(--border)'}` }}>
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
                     <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--gold, var(--accent))' }}>
@@ -159,10 +160,10 @@ export default function PlanContenido({ plan, usuario, linkPlan, paraModelo = fa
                         {editados[di + ':' + ri] ? `✓ Subido · ${fmtH(editados[di + ':' + ri])}` : 'Marcar como subido'}
                       </button></div>}
                 </div>
-              ))}
+              )))}
             </div>
           </Panel>
-        ))}
+        )))}
       </div>
     </div>
   )
