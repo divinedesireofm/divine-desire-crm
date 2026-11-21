@@ -112,6 +112,7 @@ export default function IGPlans() {
   const [planes, setPlanes] = useState([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState('todas')
+  const [filtroModelo, setFiltroModelo] = useState('todas') // 'todas' | id de modelo | 'sin'
   const [ed, setEd] = useState(null) // planificación en edición
   const [nDias, setNDias] = useState(7)
   const [nPorDia, setNPorDia] = useState(2)
@@ -159,7 +160,18 @@ export default function IGPlans() {
   const cuenta = (id) => cuentas.find((c) => c.id === id)
   const usuarioDe = (id) => cuenta(id)?.username || ''
   const nombreDe = (id) => equipo.find((x) => x.id === id)?.full_name || todosNombres[id] || '—'
-  const delFiltro = useMemo(() => planes.filter((p) => filtro === 'todas' || p.account_id === filtro), [planes, filtro])
+  const modeloDe = (accountId) => cuenta(accountId)?.model_id || 'sin'
+  const delFiltro = useMemo(() => planes.filter((p) => (filtro === 'todas' || p.account_id === filtro) && (filtroModelo === 'todas' || modeloDe(p.account_id) === filtroModelo)), [planes, filtro, filtroModelo, cuentas])
+  // Modelos con sus planificaciones (en la pestaña que estás viendo), para el desplegable de «Modelo»
+  const modelosOpc = useMemo(() => {
+    const m = new Map()
+    cuentas.forEach((c) => { const id = c.model_id || 'sin'; if (!m.has(id)) m.set(id, c.models?.stage_name || 'Sin modelo') })
+    const cuenta0 = (p) => (esAsistente ? p.estado !== 'borrador' && p.enviado_at : vista === 'planes' ? p.estado !== 'borrador' : p.estado === 'borrador')
+    const n = {}
+    planes.filter(cuenta0).forEach((p) => { const id = modeloDe(p.account_id); n[id] = (n[id] || 0) + 1 })
+    return [...m.entries()].sort((a, b) => (a[0] === 'sin') - (b[0] === 'sin') || String(a[1]).localeCompare(String(b[1]), 'es')).map(([id, nombre]) => ({ id, nombre, n: n[id] || 0 }))
+  }, [cuentas, planes, vista, esAsistente])
+  const cuentasDelModelo = filtroModelo === 'todas' ? cuentas : cuentas.filter((c) => (c.model_id || 'sin') === filtroModelo)
   const borradores = delFiltro.filter((p) => p.estado === 'borrador')
   const visibles = delFiltro.filter((p) => p.estado !== 'borrador' && (!esAsistente || p.enviado_at))
   const texto = useMemo(() => (ed ? textoPlan(ed, usuarioDe(ed.account_id) || 'cuenta') : ''), [ed, cuentas])
@@ -262,7 +274,7 @@ export default function IGPlans() {
 
   function nueva() {
     setMsg(''); setErr('')
-    const acc = filtro !== 'todas' ? filtro : (cuentas[0]?.id || '')
+    const acc = filtro !== 'todas' ? filtro : ((filtroModelo !== 'todas' ? cuentasDelModelo[0]?.id : null) || cuentas[0]?.id || '')
     const inicial = { ...VACIA, account_id: acc, titulo: tituloHoy(), reglas: ultimasReglas(acc), responsable_id: profile?.id || '', dias: estructura(7, 2) }
     baseRef.current = instantanea(inicial)
     setEd(inicial)
@@ -601,11 +613,19 @@ export default function IGPlans() {
               >{label}</button>
             ))}
           </div>
-          <div className="min-w-[220px]">
-            <Select value={filtro} onChange={(e) => setFiltro(e.target.value)}>
-              <option value="todas">Todas las cuentas</option>
-              {cuentas.map((c) => <option key={c.id} value={c.id}>@{sinArroba(c.username)}</option>)}
-            </Select>
+          <div className="flex flex-wrap gap-2">
+            <div className="min-w-[200px]">
+              <Select value={filtroModelo} onChange={(e) => { setFiltroModelo(e.target.value); setFiltro('todas') }} data-filtro-modelo>
+                <option value="todas">Todas las modelos</option>
+                {modelosOpc.map((m) => <option key={m.id} value={m.id}>{m.nombre} ({m.n})</option>)}
+              </Select>
+            </div>
+            <div className="min-w-[220px]">
+              <Select value={filtro} onChange={(e) => setFiltro(e.target.value)} data-filtro-cuenta>
+                <option value="todas">Todas las cuentas</option>
+                {cuentasDelModelo.map((c) => <option key={c.id} value={c.id}>@{sinArroba(c.username)}</option>)}
+              </Select>
+            </div>
           </div>
         </div>
         {loading ? (
@@ -641,7 +661,7 @@ export default function IGPlans() {
                       onClick={() => { if (window.getSelection && String(window.getSelection()).length) return; alternar(p.id) }}
                       onMouseEnter={(e) => { if (!abiertos.has(p.id)) e.currentTarget.style.background = 'var(--panel-alt)' }}
                       onMouseLeave={(e) => { e.currentTarget.style.background = abiertos.has(p.id) ? 'var(--panel-alt)' : '' }}>
-                      <td className="px-3 py-2 whitespace-nowrap"><span className="text-xs mr-2" style={{ color: 'var(--accent)' }}>{abiertos.has(p.id) ? '▲' : '▼'}</span><strong>@{sinArroba(usuarioDe(p.account_id))}</strong></td>
+                      <td className="px-3 py-2 whitespace-nowrap"><span className="text-xs mr-2" style={{ color: 'var(--accent)' }}>{abiertos.has(p.id) ? '▲' : '▼'}</span><strong>@{sinArroba(usuarioDe(p.account_id))}</strong>{cuenta(p.account_id)?.models?.stage_name && <span className="block text-xs" style={{ color: 'var(--text-muted)', paddingLeft: 18 }} data-modelo-plan>{cuenta(p.account_id).models.stage_name}</span>}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{fmtExacta(p.created_at)}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{textoPeriodo(p) || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{nombreDe(p.responsable_id || p.created_by)}</td>
