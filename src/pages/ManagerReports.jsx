@@ -36,19 +36,23 @@ export default function ManagerReports({ area = 'chatting' }) {
   const [managers, setManagers] = useState([])
   const [cargando, setCargando] = useState(true)
   const [err, setErr] = useState('')
+  const [borradoresOtros, setBorradoresOtros] = useState([]) // borradores míos de otras semanas, para terminarlos
 
   async function cargar() {
-    const [{ data: inf, error }, ps, team, mgrs, activos] = await Promise.all([
+    const [{ data: inf, error }, ps, teamRpc, mgrs, activos, { data: otros }] = await Promise.all([
       supabase.from('manager_weekly_reports').select('*').eq('area', area).eq('week_start', semana),
       supabase.from('profiles').select('id, full_name'),
-      getProfilesByRoles(cfg.rolesEquipo, { onlyActive: true }),
+      supabase.rpc('mwr_equipo', { p_area: area }),   // equipo activo del área (migración 149): lo ve aunque los permisos de lectura de perfiles sean limitados
       esAdmin ? getProfilesByRoles([cfg.rolManager]) : Promise.resolve([]),
       getProfilesByRoles(cfg.rolesEquipo), // para añadir a mano: solo gente de esta área (p. ej. chatters inactivos)
+      profile?.id ? supabase.from('manager_weekly_reports').select('id, week_start').eq('manager_id', profile.id).eq('area', area).is('enviado_at', null).neq('week_start', semana).order('week_start', { ascending: false }) : Promise.resolve({ data: [] }),
     ])
+    const team = !teamRpc.error && Array.isArray(teamRpc.data) ? teamRpc.data : await getProfilesByRoles(cfg.rolesEquipo, { onlyActive: true })   // sin la migración 149 se usa el método de siempre
     if (error) { setErr(/manager_weekly_reports|area/.test(error.message) ? 'Falta ejecutar la migración 66 en Supabase.' : error.message); setCargando(false); return }
     setErr('')
     setInformes(inf || [])
-    setNombres(Object.fromEntries((ps.data || []).map((x) => [x.id, x.full_name])))
+    setNombres({ ...Object.fromEntries((ps.data || []).map((x) => [x.id, x.full_name])), ...Object.fromEntries(team.map((x) => [x.id, x.full_name])) })
+    setBorradoresOtros(otros || [])
     setEquipo(team.filter((x) => x.id !== profile?.id))
     setTodos(activos.filter((x) => x.id !== profile?.id))
     setManagers(mgrs)
@@ -102,6 +106,14 @@ export default function ManagerReports({ area = 'chatting' }) {
               <p className="text-sm"><strong style={{ color: 'var(--gold)' }}>⚠ Sin enviar esta semana:</strong> {sinInforme.map((m) => m.full_name).join(', ')}</p>
             </Panel>
           )}
+          {puedeEscribir && borradoresOtros.length > 0 && (
+            <Panel className="p-4 mb-4" data-borradores-otros style={{ borderColor: 'var(--accent)' }}>
+              <p className="text-sm mb-2"><strong>📝 Tienes {borradoresOtros.length === 1 ? 'un borrador sin terminar' : `${borradoresOtros.length} borradores sin terminar`}</strong> de otras semanas. Ábrelo para completarlo y enviarlo:</p>
+              <div className="flex flex-wrap gap-2">
+                {borradoresOtros.map((b) => <Button key={b.id} variant="ghost" onClick={() => setSemana(b.week_start)}>Semana del {fmtF(b.week_start)}</Button>)}
+              </div>
+            </Panel>
+          )}
           {visibles.length === 0 && (
             <Panel className="p-6 text-sm text-center" style={lbl}>
               {esAdmin ? 'Todavía no hay informes esta semana. Puedes crear el tuyo con «+ Añadir informe de la semana».' : puedeEscribir ? 'Aún no has añadido el informe de esta semana. Pulsa «+ Añadir informe de la semana».' : 'No hay informe esta semana.'}
@@ -141,11 +153,15 @@ function Informe({ informe, editable, mostrarManager, nombreManager, equipo, tod
 
   // Apartados obligatorios que faltan
   const faltan = []
+  if (ids.length === 0) faltan.push(`Supervisión de los trabajadores (no hay ${quienes} cargados: añade al menos uno a mano con «Añadir otro trabajador»)`)
   ids.forEach((id) => { if (!(sup[id] || '').trim()) faltan.push(`Supervisión de ${nombreDe(id)}`) })
   if (recaptacion && !recap.trim()) faltan.push('Recaptación de ballenas y favoritos')
   if (recaptacion && !recOk) faltan.push('Confirmar la recaptación de ballenas y favoritos')
   if (!general.trim()) faltan.push('Observaciones, correcciones e indicaciones generales')
   const completo = faltan.length === 0
+  const nApartados = Math.max(ids.length, 1) + (recaptacion ? 2 : 0) + 1
+  const nHechos = Math.max(0, nApartados - faltan.length)
+  const [guardadoEn, setGuardadoEn] = useState(null) // hora del último «Guardar borrador»
   const rojo = (vacio) => (intento && vacio ? { borderColor: 'var(--danger)' } : {})
 
   const cuerpo = (extraCampos = {}) => ({ supervision: sup, general, recaptacion: recap, recaptacion_ok: recOk, updated_at: new Date().toISOString(), ...extraCampos })
@@ -163,6 +179,9 @@ function Informe({ informe, editable, mostrarManager, nombreManager, equipo, tod
   async function enviar() {
     if (!completo) { setIntento(true); return }
     if (await guardar({ enviado_at: new Date().toISOString() })) setIntento(false)
+  }
+  async function guardarBorrador() {
+    if (await guardar()) setGuardadoEn(new Date())
   }
   async function guardarImagenes(clave, lista) {
     const nuevo = { ...imagenes, [clave]: lista }
@@ -212,7 +231,8 @@ function Informe({ informe, editable, mostrarManager, nombreManager, equipo, tod
           {editable && <span className="text-xs" style={{ color: estado === 'guardado' && !cambiado ? 'var(--success)' : cambiado ? 'var(--gold)' : 'var(--text-muted)' }}>{estado === 'guardando' ? 'Guardando…' : cambiado ? 'Cambios sin guardar' : estado === 'guardado' ? '✓ Guardado' : ''}</span>}
           <CopyButton text={texto} label="Copiar informe" />
           {editable && enviado && <Button variant="ghost" onClick={() => (completo ? guardar() : setIntento(true))} disabled={!cambiado || estado === 'guardando'}>Guardar cambios</Button>}
-          {editable && !enviado && <Button onClick={enviar}>Enviar informe</Button>}
+          {editable && !enviado && <Button variant="ghost" onClick={guardarBorrador} data-guardar-borrador>💾 Guardar borrador</Button>}
+          {editable && !enviado && <Button onClick={enviar} data-enviar-informe>Enviar informe</Button>}
           {puedeBorrar && (enviado || !editable
             ? <Button variant="danger" onClick={() => eliminar(false)}>🗑 Borrar informe</Button>
             : <Button variant="ghost" onClick={() => eliminar(true)}>Cancelar informe</Button>)}
@@ -225,7 +245,17 @@ function Informe({ informe, editable, mostrarManager, nombreManager, equipo, tod
           <ul className="list-disc ml-5 mt-1">{faltan.map((f) => <li key={f}>{f}</li>)}</ul>
         </div>
       )}
-      {editable && !enviado && <p className="text-xs mb-4" style={lbl}>Todos los apartados marcados con <span style={{ color: 'var(--danger)' }}>*</span> son obligatorios para enviar el informe. Lo que escribas se guarda solo como borrador. Las imágenes son opcionales.</p>}
+      {editable && !enviado && (
+        <div className="mb-3" data-progreso-informe>
+          <div className="flex items-center gap-2 text-xs mb-1" style={lbl}>
+            <span>{nHechos} de {nApartados} apartados completos</span>
+            {guardadoEn && <span style={{ color: 'var(--success)' }} data-borrador-guardado>· 💾 Borrador guardado a las {guardadoEn.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>}
+          </div>
+          <div className="rounded-full overflow-hidden" style={{ height: 6, background: 'var(--panel-alt)', border: '1px solid var(--border)' }}><div style={{ height: '100%', width: Math.round((nHechos / nApartados) * 100) + '%', background: completo ? 'var(--success)' : 'var(--accent)' }} /></div>
+          {!completo && <p className="text-xs mt-1" style={lbl}>Para enviar aún falta: {faltan.join(' · ')}</p>}
+        </div>
+      )}
+      {editable && !enviado && <p className="text-xs mb-4" style={lbl}>Todos los apartados marcados con <span style={{ color: 'var(--danger)' }}>*</span> son obligatorios para enviar el informe. Puedes guardarlo como borrador y terminarlo más tarde (también se guarda solo al salir de cada casilla); el informe no se puede enviar hasta que esté TODO relleno. Las imágenes son opcionales.</p>}
 
       <p className="text-sm font-medium mb-2">Supervisión por trabajador{req}</p>
       {ids.length === 0 && <p className="text-sm mb-3" style={lbl}>No hay {quienes} activos. Añade uno a mano abajo.</p>}
