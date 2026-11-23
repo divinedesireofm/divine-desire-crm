@@ -1,4 +1,3 @@
-import ReportesFaltantes from '../components/ReportesFaltantes'
 import { useEffect, useMemo, useRef, useState, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
@@ -565,7 +564,6 @@ export default function ShiftReports() {
   return (
     <div>
       <PageHeader title="Reportes de turno" subtitle="Al final de tu turno, reporta cómo fue con cada modelo que llevaste." />
-      <ReportesFaltantes />
 
       <Panel className="p-5 mb-6">
         <p className="text-sm font-medium mb-4">Nuevo reporte</p>

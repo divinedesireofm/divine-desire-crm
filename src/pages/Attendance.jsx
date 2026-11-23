@@ -6,6 +6,7 @@ import { Panel, Select, Input, Button, PageHeader } from '../components/ui'
 import { exportCSV } from '../lib/csv'
 import { horarioTurno } from '../lib/horasTurno'
 import AsistenciaFaltante from '../components/AsistenciaFaltante'
+import ReportesFaltantes from '../components/ReportesFaltantes'
 
 const TIPOS = {
   entrada: { n: 'Entró', color: 'var(--success)' },
@@ -119,6 +120,7 @@ export default function Attendance() {
         subtitle={`Marca tu jornada y tus breaks. Turnos: Mañana ${horarioTurno('noche')} · Tarde ${horarioTurno('mañana')} · Noche ${horarioTurno('tarde')}`}
       />
 
+      <ReportesFaltantes enlace />
       <AsistenciaFaltante />
 
       {mostrarRecordatorioReporte && (
