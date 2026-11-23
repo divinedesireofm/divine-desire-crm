@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { exportCSV } from '../lib/csv'
 import { Panel, Button, Input, Select, PageHeader } from '../components/ui'
 import { TURNOS_FAN, traerComprasFans, aplanar, rankingFans } from '../lib/topFans'
+import { claveFan } from '../lib/fanFicha'
+import FichaFan from '../components/FichaFan'
 
 const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
 const hoy = () => iso(new Date())
@@ -27,12 +29,17 @@ export default function TopFans() {
   const [buscar, setBuscar] = useState('')
   const [vista, setVista] = useState('general')
   const [limite, setLimite] = useState(50)
+  const [fichas, setFichas] = useState({})      // { fan_key: { etiquetas, nombre } }
+  const [nombres, setNombres] = useState({})    // id de persona → nombre (autores de las notas)
+  const [fEtiqueta, setFEtiqueta] = useState('todas')
+  const [abierto, setAbierto] = useState(null)  // fan con la ficha abierta
 
   useEffect(() => {
     let vivo = true
     ;(async () => {
-      const [{ filas, error }, { data: ms }] = await Promise.all([traerComprasFans(), supabase.from('models').select('id, stage_name').order('stage_name')])
+      const [{ filas, error }, { data: ms }, { data: fs }, { data: ps }] = await Promise.all([traerComprasFans(), supabase.from('models').select('id, stage_name').order('stage_name'), supabase.from('fan_fichas').select('fan_key, etiquetas, nombre'), supabase.from('profiles').select('id, full_name')])
       if (!vivo) return
+      setFichas(Object.fromEntries((fs || []).map((x) => [x.fan_key, x]))); setNombres(Object.fromEntries((ps || []).map((x) => [x.id, x.full_name])))
       if (error) setErr('No se pudieron leer todas las compras: ' + error)
       const a = aplanar(filas)
       setCompras(a.compras); setSinMonto(a.sinMonto); setModelos(ms || []); setCargando(false)
@@ -51,8 +58,13 @@ export default function TopFans() {
   }
   const rango = preset === -1 ? {} : { desde, hasta }
   const base = { chatter: fChatter, modelo: fModelo, buscar, ...rango }
-  const ranking = useMemo(() => rankingFans(compras, { ...base, turno: fTurno }), [compras, fChatter, fModelo, buscar, fTurno, preset, desde, hasta]) // eslint-disable-line
-  const porTurno = useMemo(() => TURNOS_FAN.map((t) => ({ ...t, lista: rankingFans(compras, { ...base, turno: t.id }) })), [compras, fChatter, fModelo, buscar, preset, desde, hasta]) // eslint-disable-line
+  const conEtiqueta = (lista) => (fEtiqueta === 'todas' ? lista : lista.filter((r) => (fichas[claveFan(r.user)]?.etiquetas || []).includes(fEtiqueta)))
+  const ranking = useMemo(() => conEtiqueta(rankingFans(compras, { ...base, turno: fTurno })), [compras, fChatter, fModelo, buscar, fTurno, preset, desde, hasta, fEtiqueta, fichas]) // eslint-disable-line
+  const porTurno = useMemo(() => TURNOS_FAN.map((t) => ({ ...t, lista: conEtiqueta(rankingFans(compras, { ...base, turno: t.id })) })), [compras, fChatter, fModelo, buscar, preset, desde, hasta, fEtiqueta, fichas]) // eslint-disable-line
+  const todasEtiquetas = useMemo(() => Array.from(new Set(Object.values(fichas).flatMap((x) => x.etiquetas || []))).sort((a, b) => a.localeCompare(b, 'es')), [fichas])
+  const comprasDe = (u) => compras.filter((c) => c.user.toLowerCase().replace(/^@+/, '') === claveFan(u)).sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
+  const fanAbierto = abierto ? (rankingFans(compras, {}).find((r) => claveFan(r.user) === claveFan(abierto)) || { user: abierto, nombre: '', total: 0, n: 0, ultima: '' }) : null
+  const chips = (u) => (fichas[claveFan(u)]?.etiquetas || []).map((t) => <span key={t} className="ml-1 px-2 py-0.5 rounded-full text-xs" style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{t}</span>)
   const total = ranking.reduce((a, r) => a + r.total, 0)
 
   function exportar() {
@@ -73,11 +85,12 @@ export default function TopFans() {
       {err && <p className="text-sm mb-3" style={{ color: 'var(--danger)' }}>{err}</p>}
 
       <Panel className="p-4 mb-4">
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
           {campo('Periodo', <Select value={preset} onChange={(e) => cambiarPreset(e.target.value)} data-f-periodo>{PRESETS.map((p) => <option key={p.id} value={p.id}>{p.n}</option>)}</Select>)}
           {campo('Chatter', <Select value={fChatter} onChange={(e) => setFChatter(e.target.value)} data-f-chatter><option value="todos">Todos</option>{chatters.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}</Select>)}
           {campo('Turno', <Select value={fTurno} onChange={(e) => setFTurno(e.target.value)} data-f-turno><option value="todos">Todos</option>{TURNOS_FAN.map((t) => <option key={t.id} value={t.id}>{t.n}</option>)}</Select>)}
           {campo('Modelo', <Select value={fModelo} onChange={(e) => setFModelo(e.target.value)} data-f-modelo><option value="todos">Todas</option>{modelos.map((m) => <option key={m.id} value={m.id}>{m.stage_name}</option>)}</Select>)}
+          {campo('Etiqueta', <Select value={fEtiqueta} onChange={(e) => setFEtiqueta(e.target.value)} data-f-etiqueta><option value="todas">Todas</option>{todasEtiquetas.map((t) => <option key={t} value={t}>{t}</option>)}</Select>)}
           <div className="col-span-2">{campo('Buscar fan', <Input value={buscar} onChange={(e) => setBuscar(e.target.value)} placeholder="@usuario o nombre" data-f-buscar />)}</div>
         </div>
         {preset !== -1 && (
@@ -113,7 +126,7 @@ export default function TopFans() {
                     {ranking.slice(0, limite).map((r, i) => (
                       <tr key={r.user} style={{ borderBottom: '1px solid var(--border)' }} data-fan={r.user}>
                         <td className="px-3 py-2 tabular-nums" style={lbl}>{i + 1}</td>
-                        <td className="px-3 py-2 whitespace-nowrap"><strong>{r.user}</strong>{r.nombre ? <span style={lbl}> · {r.nombre}</span> : null} <button type="button" onClick={() => copiar(r.user)} className="text-xs ml-1 hover:underline" style={{ color: 'var(--accent)' }}>copiar</button></td>
+                        <td className="px-3 py-2 whitespace-nowrap"><button type="button" onClick={() => setAbierto(r.user)} className="font-bold hover:underline text-left" data-abrir-ficha title="Abrir la ficha del fan">{r.user}</button>{r.nombre ? <span style={lbl}> · {r.nombre}</span> : null}{chips(r.user)} <button type="button" onClick={() => copiar(r.user)} className="text-xs ml-1 hover:underline" style={{ color: 'var(--accent)' }}>copiar</button></td>
                         <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--success)' }}><strong>{money(r.total)}</strong></td>
                         <td className="px-3 py-2 tabular-nums">{money(r.ppv)}</td>
                         <td className="px-3 py-2 tabular-nums">{money(r.tips)}</td>
@@ -141,7 +154,7 @@ export default function TopFans() {
               {t.lista.length === 0 ? <p className="text-sm" style={lbl}>Sin compras.</p> : t.lista.slice(0, 15).map((r, i) => (
                 <div key={r.user} className="flex items-center gap-2 py-1.5 text-sm" style={{ borderBottom: '1px solid var(--border)' }}>
                   <span className="w-5 text-xs tabular-nums" style={lbl}>{i + 1}</span>
-                  <span className="min-w-0 flex-1 truncate"><strong>{r.user}</strong>{r.nombre ? <span style={lbl}> · {r.nombre}</span> : null}</span>
+                  <button type="button" onClick={() => setAbierto(r.user)} className="min-w-0 flex-1 truncate text-left hover:underline" data-abrir-ficha><strong>{r.user}</strong>{r.nombre ? <span style={lbl}> · {r.nombre}</span> : null}</button>
                   <span className="tabular-nums font-medium" style={{ color: 'var(--success)' }}>{money(r.total)}</span>
                 </div>
               ))}
@@ -149,6 +162,7 @@ export default function TopFans() {
           ))}
         </div>
       )}
+      {fanAbierto && <FichaFan fan={fanAbierto} compras={comprasDe(fanAbierto.user)} nombres={nombres} onClose={() => setAbierto(null)} onCambio={(k, nuevo) => setFichas((m) => ({ ...m, [k]: { fan_key: k, etiquetas: nuevo.etiquetas, nombre: nuevo.nombre } }))} />}
     </div>
   )
 }
