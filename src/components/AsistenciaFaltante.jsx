@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { cargarFaltasAsistencia, textoFalta } from '../lib/asistenciaFaltante'
@@ -11,6 +12,7 @@ const NOMBRE_TURNO = { noche: 'Mañana', 'mañana': 'Tarde', tarde: 'Noche', mad
 // Aviso para admin y managers: chatters con turno en el horario que no han marcado entrada y/o salida
 export default function AsistenciaFaltante() {
   const { hasAnyRole, puedeVer, profile } = useAuth()
+  const enReportesTurno = useLocation().pathname.startsWith('/reportes-turno') // los avisos de fichajes van en Entradas y salidas, no aquí
   const aplica = hasAnyRole(['admin', 'manager'])
   const puedeQuitar = puedeVer(PERMISO_QUITAR_AVISOS, ['admin'])
   const [faltas, setFaltas] = useState([])
@@ -53,7 +55,7 @@ export default function AsistenciaFaltante() {
     setRecarga((n) => n + 1)
   }
 
-  if (!aplica || (!faltas.length && !(puedeQuitar && quitadas.length))) return null
+  if (enReportesTurno || !aplica || (!faltas.length && !(puedeQuitar && quitadas.length))) return null
   return (
     <Panel className="p-4 mb-6" style={{ border: '1px solid var(--gold)' }} data-asistencia-faltante>
       <button type="button" onClick={() => setAbierto(!abierto)} className="w-full flex items-center justify-between gap-2 text-left">

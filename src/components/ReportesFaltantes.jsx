@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { getExtrabajadorIds } from '../lib/roles'
@@ -11,6 +11,7 @@ import { Panel } from './ui'
 // Aviso para admin y managers: turnos trabajados (entrada + salida) de los que el chatter no envió el reporte
 export default function ReportesFaltantes({ enlace = false }) {
   const { hasAnyRole, puedeVer, profile } = useAuth()
+  const enReportesTurno = useLocation().pathname.startsWith('/reportes-turno') // los avisos de fichajes van en Entradas y salidas, no aquí
   const esAdmin = puedeVer(PERMISO_QUITAR_AVISOS, ['admin']) // admin siempre; otros roles solo si se les da el permiso
   const aplica = hasAnyRole(['admin', 'manager'])
   const [faltan, setFaltan] = useState([])
@@ -66,7 +67,7 @@ export default function ReportesFaltantes({ enlace = false }) {
     setRecarga((n) => n + 1)
   }
 
-  if (!aplica || (!faltan.length && !(esAdmin && descartados.length))) return null
+  if (enReportesTurno || !aplica || (!faltan.length && !(esAdmin && descartados.length))) return null
   return (
     <Panel className="p-4 mb-6" style={{ border: '1px solid var(--danger)' }} data-faltantes>
       <button type="button" onClick={() => setAbierto(!abierto)} className="w-full flex items-center justify-between gap-2 text-left">
