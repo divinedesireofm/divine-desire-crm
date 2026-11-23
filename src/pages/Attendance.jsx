@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { Panel, Select, Input, Button, PageHeader } from '../components/ui'
 import { exportCSV } from '../lib/csv'
 import { horarioTurno } from '../lib/horasTurno'
+import AsistenciaFaltante from '../components/AsistenciaFaltante'
 
 const TIPOS = {
   entrada: { n: 'Entró', color: 'var(--success)' },
@@ -117,6 +118,8 @@ export default function Attendance() {
         title="Entradas y salidas"
         subtitle={`Marca tu jornada y tus breaks. Turnos: Mañana ${horarioTurno('noche')} · Tarde ${horarioTurno('mañana')} · Noche ${horarioTurno('tarde')}`}
       />
+
+      <AsistenciaFaltante />
 
       {mostrarRecordatorioReporte && (
         <Panel className="p-4 mb-6 flex items-center justify-between" style={{ borderColor: 'var(--gold)' }}>
