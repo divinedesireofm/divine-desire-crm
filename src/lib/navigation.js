@@ -26,6 +26,7 @@ export const SECTIONS = [
       { to: '/reportes-turno', label: 'Reportes de turno', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
       { to: '/solicitudes', label: 'Solicitudes personalizadas', icon: 'file', roles: ['admin', 'manager', 'chatter'] },
       { to: '/recaptaciones', label: 'Recaptaciones', icon: 'target', roles: ['admin', 'manager', 'chatter'] },
+      { to: '/top-fans', label: 'Top fans', icon: 'diamond', roles: ['admin', 'manager'], soloRoles: ['admin', 'manager'] },
       { to: '/contenido', label: 'Contenido pedido', icon: 'package', roles: ['admin', 'manager'] },
       { to: '/solicitudes-modelos', label: 'Solicitudes de modelos', icon: 'sparkle', roles: ['admin', 'manager'] },
       { to: '/metricas-chatters', label: 'Métricas de chatters', icon: 'chart', roles: ['admin', 'manager'] },

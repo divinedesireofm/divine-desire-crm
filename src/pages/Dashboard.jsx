@@ -1,4 +1,5 @@
 import ReportesFaltantes from '../components/ReportesFaltantes'
+import TopFansResumen from '../components/TopFansResumen'
 import AsistenciaFaltante from '../components/AsistenciaFaltante'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -124,7 +125,7 @@ function TarjetaReporte({ r }) {
 }
 
 export default function Dashboard() {
-  const { profile, hasAnyRole } = useAuth()
+  const { profile, hasAnyRole, puedeVer } = useAuth()
   const [stats, setStats] = useState(null)
   const [sanciones, setSanciones] = useState(null)
   const [enTurno, setEnTurno] = useState(null)
@@ -226,6 +227,8 @@ export default function Dashboard() {
               sub={chatStats?.formacion ? `#${chatStats.formacion.numero} · han respondido` : ''}
             />
           </div>
+
+          {puedeVer('/top-fans', ['admin', 'manager']) && <TopFansResumen />}
 
           <Panel className="p-5 mb-6">
             <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">

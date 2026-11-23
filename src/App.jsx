@@ -54,6 +54,7 @@ import SltLinks from './pages/SltLinks'
 import RedditAccounts from './pages/RedditAccounts'
 import RedditReports from './pages/RedditReports'
 import ManagerReports from './pages/ManagerReports'
+import TopFans from './pages/TopFans'
 import Massives from './pages/Massives'
 import SetPassword from './pages/SetPassword'
 import ReelsModelo from './pages/ReelsModelo'
@@ -149,6 +150,7 @@ function AppRoutes() {
         <Route path="informes-metricas" element={<Navigate to="/metricas-chatters?vista=informes" replace />} />
         <Route path="solicitudes" element={<Requests />} />
         <Route path="recaptaciones" element={<Recaptures />} />
+        <Route path="top-fans" element={<TopFans />} />
         <Route path="planificaciones" element={<PlanificacionesRuta />} />
         <Route path="mis-planificaciones" element={<ReelsModelo />} />
         <Route path="mi-perfil" element={<MiPerfil />} />
