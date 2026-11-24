@@ -120,13 +120,14 @@ export default function TopFans() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm" data-tabla-fans>
                   <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    {['#', 'Fan', 'Gasto total', 'PPV', 'Tips', 'Compras', 'Mañana', 'Tarde', 'Noche', 'Última compra', 'Modelos', 'Chatters'].map((c) => <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={lbl}>{c}</th>)}
+                    {['#', 'Fan', 'Ficha', 'Gasto total', 'PPV', 'Tips', 'Compras', 'Mañana', 'Tarde', 'Noche', 'Última compra', 'Modelos', 'Chatters'].map((c) => <th key={c} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={lbl}>{c}</th>)}
                   </tr></thead>
                   <tbody>
                     {ranking.slice(0, limite).map((r, i) => (
                       <tr key={r.user} style={{ borderBottom: '1px solid var(--border)' }} data-fan={r.user}>
                         <td className="px-3 py-2 tabular-nums" style={lbl}>{i + 1}</td>
                         <td className="px-3 py-2 whitespace-nowrap"><button type="button" onClick={() => setAbierto(r.user)} className="font-bold hover:underline text-left" data-abrir-ficha title="Abrir la ficha del fan">{r.user}</button>{r.nombre ? <span style={lbl}> · {r.nombre}</span> : null}{chips(r.user)} <button type="button" onClick={() => copiar(r.user)} className="text-xs ml-1 hover:underline" style={{ color: 'var(--accent)' }}>copiar</button></td>
+                        <td className="px-3 py-2 whitespace-nowrap"><Button variant="ghost" onClick={() => setAbierto(r.user)} data-boton-ficha title="Añadir información, notas, fotos, vídeos y archivos de este fan">📋 Ficha</Button></td>
                         <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--success)' }}><strong>{money(r.total)}</strong></td>
                         <td className="px-3 py-2 tabular-nums">{money(r.ppv)}</td>
                         <td className="px-3 py-2 tabular-nums">{money(r.tips)}</td>
@@ -156,6 +157,7 @@ export default function TopFans() {
                   <span className="w-5 text-xs tabular-nums" style={lbl}>{i + 1}</span>
                   <button type="button" onClick={() => setAbierto(r.user)} className="min-w-0 flex-1 truncate text-left hover:underline" data-abrir-ficha><strong>{r.user}</strong>{r.nombre ? <span style={lbl}> · {r.nombre}</span> : null}</button>
                   <span className="tabular-nums font-medium" style={{ color: 'var(--success)' }}>{money(r.total)}</span>
+                  <button type="button" onClick={() => setAbierto(r.user)} data-boton-ficha className="text-xs px-2 py-0.5 rounded-full" style={{ border: '1px solid var(--border)', color: 'var(--accent)' }}>📋 Ficha</button>
                 </div>
               ))}
             </Panel>
