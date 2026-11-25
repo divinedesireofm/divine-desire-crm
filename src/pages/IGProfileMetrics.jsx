@@ -39,10 +39,12 @@ const fFechaHora = (d) => (d ? new Date(d).toLocaleString('es-ES', { day: '2-dig
 const hace = (d) => { if (!d) return '—'; const dias = Math.floor((Date.now() - new Date(d).getTime()) / 86400000); return dias <= 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} d` }
 
 // Foto de perfil del propio Instagram; si no hay lectura o no carga, la inicial
-function FotoIG({ url, nombre, size = 40 }) {
-  const [fallo, setFallo] = useState(false)
+function FotoIG({ url, url2, nombre, size = 40 }) {
+  // url = copia permanente guardada; url2 = enlace de Instagram (puede haber caducado). Se prueba primero la permanente.
+  const lista = [url, url2].filter(Boolean)
+  const [i, setI] = useState(0)
   const base = { width: size, height: size, minWidth: size, borderRadius: '50%', flexShrink: 0 }
-  if (url && !fallo) return <img src={url} alt={nombre} loading="lazy" referrerPolicy="no-referrer" onError={() => setFallo(true)} style={{ ...base, objectFit: 'cover', border: '1px solid var(--border)' }} />
+  if (lista[i]) return <img key={lista[i]} src={lista[i]} alt={nombre} loading="lazy" referrerPolicy="no-referrer" onError={() => setI((n) => n + 1)} style={{ ...base, objectFit: 'cover', border: '1px solid var(--border)' }} />
   return <span aria-hidden="true" style={{ ...base, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, fontSize: 15 }}>{(nombre || '?').charAt(0).toUpperCase()}</span>
 }
 
@@ -356,7 +358,7 @@ export default function IGProfileMetrics() {
                   <tr key={f.id} onClick={() => setAbierta(abierta === f.id ? null : f.id)} className="cursor-pointer" style={{ borderBottom: '1px solid var(--border)', background: abierta === f.id ? 'var(--accent-soft)' : undefined }}>
                     <td className="px-3 py-3 whitespace-nowrap col-cuenta-fija" style={{ position: 'sticky', left: 0, zIndex: 5, background: 'var(--panel)' }}>
                       <div className="flex items-center gap-3">
-                        <FotoIG url={f.foto} nombre={f.username} />
+                        <FotoIG url={f.foto_url} url2={f.foto} nombre={f.username} />
                         <div>
                           <div className="font-medium"><a href={f.profile_link || urlInstagram(f.username)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="underline" style={{ color: 'var(--accent)' }} title={`Abrir el perfil de @${f.username} en Instagram`} data-perfil-ig>@{f.username}</a>{(f.ult?.is_verified || esVerificadaIG(verificadas, f.username)) && <> <InsigniaVerificada size={14} /></>}{f.ult?.is_private ? ' 🔒' : ''}</div>
                           <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{f.models?.stage_name || 'Sin modelo'}</div>

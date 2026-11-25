@@ -122,7 +122,9 @@ export default function IGAccountAnalytics({ cuenta, puedeActualizar, onVolver }
 
   const ult = filas[0] || null
   const primera = filas.length ? filas[filas.length - 1] : null
-  const foto = (filas.find((s) => s.profile_pic_url) || {}).profile_pic_url || null
+  const fotoCaducada = (filas.find((s) => s.profile_pic_url) || {}).profile_pic_url || null   // enlace de Instagram (caduca)
+  const [permFalla, setPermFalla] = useState(false)
+  const foto = (cuenta.foto_url && !permFalla) ? cuenta.foto_url : fotoCaducada   // primero la copia permanente guardada
 
   // Catálogo de contenidos conocidos: une todas las lecturas por código (gana el dato más reciente)
   const catalogo = useMemo(() => {
@@ -200,7 +202,7 @@ export default function IGAccountAnalytics({ cuenta, puedeActualizar, onVolver }
 
       <Panel className="p-5 mb-5">
         <div className="flex items-start gap-4 flex-wrap">
-          {foto ? <img src={foto} alt="" referrerPolicy="no-referrer" style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} /> : <span style={{ width: 64, height: 64, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, fontSize: 24 }}>{(cuenta.username || '?').charAt(0).toUpperCase()}</span>}
+          {foto ? <img key={foto} src={foto} alt="" referrerPolicy="no-referrer" onError={() => { if (foto === cuenta.foto_url) setPermFalla(true) }} style={{ width: 64, height: 64, borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} /> : <span style={{ width: 64, height: 64, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, fontSize: 24 }}>{(cuenta.username || '?').charAt(0).toUpperCase()}</span>}
           <div className="min-w-0 flex-1">
             <p className="font-display text-lg font-semibold"><a href={enlace} target="_blank" rel="noopener noreferrer" className="underline" style={{ color: 'var(--accent)' }}>@{cuenta.username}</a>{ult?.is_verified && <> <InsigniaVerificada size={18} /></>}</p>
             {ult?.full_name && <p className="text-sm">{ult.full_name}</p>}

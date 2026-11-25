@@ -31,10 +31,12 @@ const COLS = [
   { k: 'restr', n: 'Restricciones', w: 260 }, { k: 'acc', n: '' },
 ]
 // Foto de perfil del propio Instagram (la última leída con ScrapeCreators); si no hay o no carga, la inicial de la cuenta
-function FotoIG({ url, nombre, size = 36 }) {
-  const [fallo, setFallo] = useState(false)
+function FotoIG({ url, url2, nombre, size = 36 }) {
+  // url = copia permanente guardada; url2 = enlace de Instagram (puede haber caducado). Se prueba primero la permanente.
+  const lista = [url, url2].filter(Boolean)
+  const [i, setI] = useState(0)
   const base = { width: size, height: size, minWidth: size, borderRadius: '50%', flexShrink: 0 }
-  if (url && !fallo) return <img src={url} alt={nombre} loading="lazy" referrerPolicy="no-referrer" onError={() => setFallo(true)} style={{ ...base, objectFit: 'cover', border: '1px solid var(--border)' }} />
+  if (lista[i]) return <img key={lista[i]} src={lista[i]} alt={nombre} loading="lazy" referrerPolicy="no-referrer" onError={() => setI((n) => n + 1)} style={{ ...base, objectFit: 'cover', border: '1px solid var(--border)' }} />
   return <span aria-hidden="true" style={{ ...base, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', color: 'var(--accent)', fontWeight: 600, fontSize: 14 }}>{(nombre || '?').charAt(0).toUpperCase()}</span>
 }
 
@@ -693,7 +695,7 @@ export default function InstagramAccounts() {
                         )}
                         <CeldaCopia completo titulo="Cuenta actual" texto={`@${a.username}`}>
                           <span className="inline-flex items-center gap-2.5 align-middle font-medium">
-                            <FotoIG url={fotos[a.id]} nombre={a.username} size={38} />
+                            <FotoIG url={a.foto_url} url2={fotos[a.id]} nombre={a.username} size={38} />
                             <a href={urlInstagram(a.username)} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }} title="Abrir la cuenta de Instagram">@{a.username}</a>{(a.verificada || esVerificadaIG(verificadas, a.username)) && <InsigniaVerificada size={16} />}
                           </span>
                         </CeldaCopia>
