@@ -18,12 +18,15 @@ export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, 
   const inputRef = useRef(null)
   const path = video?.path
 
-  useEffect(() => {
-    let vivo = true
-    setUrl(null); setFallo(false)
-    if (path) urlVideo(path).then((u) => { if (!vivo) return; if (u) setUrl(u); else setFallo(true) })
-    return () => { vivo = false }
-  }, [path])
+  const [quiere, setQuiere] = useState(false)   // el video SOLO se descarga cuando alguien pulsa ▶ (si no, cada planificación abierta gastaba datos de Supabase)
+
+  useEffect(() => { setUrl(null); setFallo(false); setQuiere(false) }, [path])
+
+  async function cargar() {
+    setQuiere(true); setFallo(false)
+    const u = await urlVideo(path)
+    if (u) setUrl(u); else setFallo(true)
+  }
 
   async function reintentar() {
     const u = await urlVideo(path, true)
@@ -61,13 +64,17 @@ export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, 
     <div className="mt-2 flex gap-3 items-start">
       <div className="rounded-md overflow-hidden shrink-0" style={{ width: 150, background: '#000', border: '1px solid var(--border)' }}>
         {url
-          ? <video ref={ref} src={url} controls playsInline preload="metadata" onError={reintentar} onPlay={soloUno} style={{ width: '100%', maxHeight: 270, display: 'block', background: '#000' }} />
-          : <div className="flex items-center justify-center text-[11px] text-center p-3" style={{ height: 150, ...lbl }}>{fallo ? 'No se pudo cargar el video' : 'Cargando video…'}</div>}
+          ? <video ref={ref} src={url} controls autoPlay playsInline preload="auto" onError={reintentar} onPlay={soloUno} style={{ width: '100%', maxHeight: 270, display: 'block', background: '#000' }} />
+          : fallo
+            ? <div className="flex items-center justify-center text-[11px] text-center p-3" style={{ height: 150, ...lbl }}>No se pudo cargar el video</div>
+            : quiere
+              ? <div className="flex items-center justify-center text-[11px] text-center p-3" style={{ height: 150, ...lbl }}>Cargando video…</div>
+              : <button type="button" onClick={cargar} data-ver-video className="w-full flex flex-col items-center justify-center gap-1 text-[11px]" style={{ height: 150, background: '#000', color: '#fff' }} title="Cargar y reproducir el video"><span style={{ fontSize: 30, lineHeight: 1 }}>▶</span>Ver video</button>}
       </div>
       <div className="text-xs space-y-1.5 min-w-0">
         <p className="truncate" style={lbl} title={video.nombre}>🎞 {video.nombre || 'video'}{video.size ? ` · ${tam(video.size)}` : ''}</p>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
-          <button type="button" onClick={pantallaCompleta} disabled={!url} className="underline" style={{ color: 'var(--accent)' }}>⛶ Pantalla completa</button>
+          <button type="button" onClick={pantallaCompleta} disabled={!url} title={url ? '' : 'Pulsa ▶ primero para cargar el video'} className="underline" style={{ color: 'var(--accent)' }}>⛶ Pantalla completa</button>
           <button type="button" onClick={descargar} disabled={bajando} className="underline" style={{ color: 'var(--accent)' }}>{bajando ? '⬇ Descargando…' : '⬇ Descargar'}</button>
           {errDesc && <span style={{ color: 'var(--danger)' }}>{errDesc}</span>}
           {fallo && <button type="button" onClick={reintentar} className="underline">Reintentar</button>}
