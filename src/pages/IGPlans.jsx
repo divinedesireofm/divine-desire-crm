@@ -319,7 +319,7 @@ export default function IGPlans() {
   }
   async function subirReel(di, ri, file) {
     const k = `${di}-${ri}`; setErr(''); setSubiendoV((s0) => ({ ...s0, [k]: true }))
-    const res = await subirVideo(file, ed.account_id)
+    const res = await subirVideo(file, ed.account_id, (t) => setSubiendoV((s0) => ({ ...s0, [k]: t })))   // el texto es el progreso («Comprimiendo… 40 %»)
     setSubiendoV((s0) => ({ ...s0, [k]: false }))
     if (res.error) { setErr(res.error); return }
     const previo = edRef.current?.dias[di]?.reels[ri]?.video; if (previo?.path) porBorrar.current.push(previo.path)
@@ -562,7 +562,7 @@ export default function IGPlans() {
                           className="w-full px-3 py-2 rounded-md text-sm outline-none" style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', resize: 'vertical' }} />
                         <EnlacesDetectados texto={r.edicion} />
                       </div>
-                      <VideoReel video={r.video} subiendo={!!subiendoV[`${di}-${ri}`]} onSubir={(f) => subirReel(di, ri, f)} onQuitar={() => quitarVideoReel(di, ri)} />
+                      <VideoReel video={r.video} subiendo={subiendoV[`${di}-${ri}`] || false} onSubir={(f) => subirReel(di, ri, f)} onQuitar={() => quitarVideoReel(di, ri)} />
                       <ImagenesReel editable imagenes={r.imagenes || []} subiendo={!!subiendoV[`${di}-${ri}-img`]} onSubir={(fs) => subirImagenesReel(di, ri, fs)} onQuitar={(im) => quitarImagenReel(di, ri, im)} />
                       {d.reels.length > 1 && (
                         <button onClick={() => quitarReel(di, ri)} className="text-xs hover:underline mt-2" style={{ color: 'var(--danger)' }}>Quitar este reel</button>

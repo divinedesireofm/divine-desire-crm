@@ -54,9 +54,9 @@ export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, 
         <input ref={inputRef} type="file" accept="video/*" className="hidden" onChange={elegir} />
         <button type="button" disabled={subiendo} onClick={() => inputRef.current?.click()} className="text-xs px-3 py-1.5 rounded-md"
           style={{ background: 'var(--panel)', border: '1px dashed var(--accent)', color: 'var(--accent)', opacity: subiendo ? 0.6 : 1 }}>
-          {subiendo ? 'Subiendo video…' : '🎞 Subir el video de este reel (por si lo tumban)'}
+          {subiendo ? (typeof subiendo === 'string' ? subiendo : 'Subiendo video…') : '🎞 Subir el video de este reel (por si lo tumban)'}
         </button>
-        <span className="text-[11px] ml-2" style={lbl}>mp4 / mov / webm · máx. {MAX_MB} MB</span>
+        <span className="text-[11px] ml-2" style={lbl}>mp4 / mov / webm · se comprime solo al subirlo (resultado máx. {MAX_MB} MB)</span>
       </div>
     )
   }
@@ -72,7 +72,7 @@ export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, 
               : <button type="button" onClick={cargar} data-ver-video className="w-full flex flex-col items-center justify-center gap-1 text-[11px]" style={{ height: 150, background: '#000', color: '#fff' }} title="Cargar y reproducir el video"><span style={{ fontSize: 30, lineHeight: 1 }}>▶</span>Ver video</button>}
       </div>
       <div className="text-xs space-y-1.5 min-w-0">
-        <p className="truncate" style={lbl} title={video.nombre}>🎞 {video.nombre || 'video'}{video.size ? ` · ${tam(video.size)}` : ''}</p>
+        <p className="truncate" style={lbl} title={video.nombre}>🎞 {video.nombre || 'video'}{video.size ? ` · ${tam(video.size)}` : ''}{video.original_size ? ` (comprimido, antes ${tam(video.original_size)})` : ''}</p>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           <button type="button" onClick={pantallaCompleta} disabled={!url} title={url ? '' : 'Pulsa ▶ primero para cargar el video'} className="underline" style={{ color: 'var(--accent)' }}>⛶ Pantalla completa</button>
           <button type="button" onClick={descargar} disabled={bajando} className="underline" style={{ color: 'var(--accent)' }}>{bajando ? '⬇ Descargando…' : '⬇ Descargar'}</button>
@@ -81,7 +81,7 @@ export default function VideoReel({ video, onSubir, onQuitar, subiendo = false, 
           {!soloLectura && (
             <>
               <input ref={inputRef} type="file" accept="video/*" className="hidden" onChange={elegir} />
-              <button type="button" disabled={subiendo} onClick={() => inputRef.current?.click()} className="underline">{subiendo ? 'Subiendo…' : 'Cambiar video'}</button>
+              <button type="button" disabled={subiendo} onClick={() => inputRef.current?.click()} className="underline">{subiendo ? (typeof subiendo === 'string' ? subiendo : 'Subiendo…') : 'Cambiar video'}</button>
               <button type="button" onClick={onQuitar} className="underline" style={{ color: 'var(--danger)' }}>Quitar video</button>
             </>
           )}

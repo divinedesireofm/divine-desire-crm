@@ -14,7 +14,7 @@
     "docx": "^9.0.3",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
-    "mediabunny": "^1.66.0",
+    "mediabunny": "^1.66.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3",

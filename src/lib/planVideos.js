@@ -1,10 +1,12 @@
 import { supabase } from './supabase'
 import { reducirAdjunto } from './imagenesInforme'
+import { comprimirVideo } from './comprimirVideo'
 
 // Videos de los reels de referencia de las planificaciones de Instagram (copia propia por si tumban el reel original).
 // Se guardan en el bucket privado «ig-plan-videos» y en cada reel queda { path, nombre, size }.
 export const BUCKET = 'ig-plan-videos'
-export const MAX_MB = 50
+export const MAX_MB = 50              // peso máximo que se guarda (ya comprimido)
+export const MAX_ORIGINAL_MB = 800    // lo que se acepta elegir: se comprime en el navegador antes de subir
 
 // Archivos de los reels que ocupan espacio en el almacén: el video de cada reel y sus imágenes de aclaración
 export const videosDe = (dias) => (dias || []).flatMap((d) => d.reels || []).flatMap((r) => [r.video, ...(Array.isArray(r.imagenes) ? r.imagenes : [])]).filter((v) => v && v.path)
@@ -25,19 +27,25 @@ export async function subirImagenReel(file, cuentaId) {
   } catch (ex) { return { error: ex.message } }
 }
 
-export async function subirVideo(file, cuentaId) {
+// onEstado(texto) avisa de lo que se está haciendo («Comprimiendo… 40 %», «Subiendo…»)
+export async function subirVideo(file, cuentaId, onEstado) {
   if (!file) return { error: 'No hay archivo.' }
   if (!/^video\//.test(file.type || '')) return { error: 'Ese archivo no es un video (usa mp4, mov o webm).' }
-  if (file.size > MAX_MB * 1024 * 1024) return { error: `El video pesa ${(file.size / 1048576).toFixed(0)} MB y el máximo es ${MAX_MB} MB. Comprímelo o recórtalo e inténtalo de nuevo.` }
-  const ext = (String(file.name || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'mp4'
+  if (file.size > MAX_ORIGINAL_MB * 1024 * 1024) return { error: `El video pesa ${(file.size / 1048576).toFixed(0)} MB; el máximo para elegirlo es ${MAX_ORIGINAL_MB} MB. Recórtalo e inténtalo de nuevo.` }
+  onEstado?.('Comprimiendo… 0 %')
+  const c = await comprimirVideo(file, (p) => onEstado?.(`Comprimiendo… ${Math.round(p * 100)} %`))
+  const archivo = c.file
+  if (archivo.size > MAX_MB * 1024 * 1024) return { error: `El video pesa ${(archivo.size / 1048576).toFixed(0)} MB incluso después de comprimirlo y el máximo es ${MAX_MB} MB. Recórtalo (más corto) e inténtalo de nuevo.${c.motivo ? ' (' + c.motivo + ')' : ''}` }
+  onEstado?.('Subiendo video…')
+  const ext = (String(archivo.name || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'mp4'
   const rnd = Math.random().toString(36).slice(2, 10)
   const path = `${cuentaId || 'general'}/${Date.now()}-${rnd}.${ext}`
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type, upsert: false })
+  const { error } = await supabase.storage.from(BUCKET).upload(path, archivo, { contentType: archivo.type, upsert: false, cacheControl: '31536000' })
   if (error) {
     const falta = /bucket|not found|does not exist/i.test(error.message || '')
     return { error: falta ? 'Falta ejecutar la migración 93 en Supabase (almacén de videos).' : 'No se pudo subir el video: ' + error.message }
   }
-  return { video: { path, nombre: file.name, size: file.size } }
+  return { video: { path, nombre: archivo.name || file.name, size: archivo.size, ...(c.comprimido ? { original_size: c.antes } : {}) }, aviso: c.comprimido ? '' : c.motivo }
 }
 
 export async function borrarVideos(paths) {
